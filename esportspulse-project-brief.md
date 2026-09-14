@@ -239,71 +239,64 @@ pandascore_api_key = os.environ["PANDASCORE_API_KEY"]
 
 ---
 
-## Roadmap de Features per Bloc
+## Roadmap de Features d'EsportsPulse
 
-### **Bloc 1: Fundaments, POO i Concurrència (Setmanes 1-6)**
+Cada bloc afegeix capacitats reals a l'aplicació. Al final de cada bloc, EsportsPulse **fa coses noves** que abans no podia fer.
 
-**Objectiu:** Domini bàsic de Java 21 + Python, estructura de projecte, i concurrència pràctica.
+### **Bloc 1: Motor de Dades Local (Setmanes 1-6)**
 
-**Features:**
-- **(S1)** Benchmark O(n) vs O(1): Search lineal vs HashMap amb 100.000 jugadors sintètics (`PlayerRecord`)
-- **(S2)** Ampliar `PlayerRecord` amb validació; crear `ChampionRecord` immutable (record / dataclass) connectat a APIs
-- **(S3)** Concurrència pràctica: race conditions, @Transactional, CompletableFuture, extractor concurrent d'APIs Riot/PandaScore
-- **(S4)** Code review, refactorització d'anti-patrons IA, Git workflow, CI bàsic
-- **(S5)** Factory + Repository patterns amb JPA + H2; SQL pur a consola
-- **(S6)** Suite JUnit 5 + pytest; coverage gates al CI
+**L'aplicació pot:**
+- Emmagatzemar jugadors i campions en memòria amb cerca instantània per ID (HashMap)
+- Validar que cap entitat invàlida entri al sistema (compact constructors)
+- Ingerir dades de múltiples fonts en paral·lel (extractor concurrent de Riot API + PandaScore)
+- Persistir campions i jugadors a una base de dades local (H2) amb repositoris
+- Executar una suite de tests automatitzats (JUnit 5 + pytest) integrada al CI
 
-**Lliurament:** Codi Java + Python netejat, amb tests, versionat a `v0.1`
+**Lliurament:** `v0.1` — Motor de dades local amb ingesta concurrent, persistència i tests
 
-### **Bloc 2: APIs REST i Output Estructurat amb IA (Setmanes 7-10)**
+### **Bloc 2: API REST i Dashboard (Setmanes 7-10)**
 
-**Objectiu:** Contractes REST clars, integració amb LLMs, primera interfície.
+**L'aplicació pot:**
+- Exposar una API REST per consultar campions per rol, win rate i pick rate (endpoints Swagger documentats)
+- Generar anàlisis estructurades de campions via LLM (output Pydantic validat)
+- Connectar agents IA a la base de dades d'EsportsPulse via MCP
+- Mostrar un dashboard interactiu amb tier list de campions, filtres per rol, i imatges de Data Dragon
 
-**Features:**
-- **(S7)** Endpoints REST Spring Boot 3: CRUD de campiòns, query params per role/winRate, Swagger, Virtual Threads. API spec com a exercici de specs.
-- **(S8)** Python Pydantic models + LLM output estructurat (Claude/OpenAI API). MCP basics: connectar l'agent a la BD d'EsportsPulse.
-- **(S9)** Error handling inter-serveis Java↔Python, logging estructurat, gestió de rate limit de Riot API. MCP server personalitzat.
-- **(S10)** Dashboard Streamlit que consumeix l'API REST: llistat de campiòns, filtres per rol/tier, tier list visual. Spec del dashboard.
+**Lliurament:** `v0.2` — API REST + dashboard Streamlit + MCP servers
 
-**Lliurament:** Backend REST funcional + dashboard Streamlit + MCP servers
+### **Bloc 3: Infraestructura i Knowledge Base (Setmanes 11-16)**
 
-### **Bloc 3: Infraestructura, Knowledge, Seguretat i Integració (Setmanes 11-16)**
+**L'aplicació pot:**
+- Córrer tots els serveis amb un sol `docker-compose up` (Java, Python, PostgreSQL, Qdrant, Redis, RabbitMQ)
+- Respondre "quan van nerfar Yasuo?" cercant semànticament entre patch notes indexades a Qdrant, amb citació de la font
+- Cachear respostes de l'LLM i queries freqüents a Redis (reducció de latència i cost)
+- Protegir endpoints amb autenticació JWT (login, tokens, endpoints protegits)
+- Persistir dades a PostgreSQL amb migracions versionades (Flyway) i queries optimitzades
+- Reaccionar a events asíncrons: quan es publica un patch nou → parsejar notes → indexar a Qdrant → invalidar cache (RabbitMQ)
 
-**Objectiu:** Contenidors, knowledge retrieval de patch notes, autenticació, BD real, caching, message queues.
+**Lliurament:** `v0.3` — Infraestructura dockeritzada + knowledge base de patch notes + auth + cache + events asíncrons
 
-**Features:**
-- **(S11)** Docker i Docker Compose: imatges, Dockerfile, volums, docker-compose amb PostgreSQL + Qdrant.
-- **(S12)** Parser de patch notes LoL + wiki estructurada (markdown amb metadades de campiò/patch) + Qdrant (ja dockeritzat des de S11). Buscar i avaluar skills/MCP existents.
-- **(S13)** Knowledge retrieval semàntic sobre patch notes amb anti-al·lucinació i evals. Cache de respostes LLM amb Redis. Cost management d'APIs IA (Riot API + Claude API).
-- **(S14)** Spring Security + JWT. Endpoints protegits. Session store amb Redis. Auth en Python (FastAPI).
-- **(S15)** PostgreSQL (ja dockeritzat des de S11), Flyway migrations, JOINs per campiò+patch+meta, EXPLAIN ANALYZE, optimitzar N+1. Cache de queries amb Redis.
-- **(S16)** Integració de sistemes: Redis consolidat (cache-aside, TTL, invalidació). RabbitMQ: events asíncrons (patch.released → parse notes → indexa Qdrant → invalida cache). Patterns: retry amb backoff, idempotència, dead letter queue.
+### **Bloc 4: Agents Intel·ligents (Setmanes 17-19)**
 
-**Lliurament:** Infraestructura dockeritzada + knowledge retrieval de patch notes amb citació + API protegida amb JWT + BD PostgreSQL + Redis cache + message queue funcional
+**L'aplicació pot:**
+- Respondre preguntes complexes combinant dos agents: l'Agent Estadístic (consulta stats de campions a la BD) i l'Agent de Knowledge (cerca patch notes a Qdrant)
+- Recomanar picks i bans per a una partida concreta (Draft Assistant) basant-se en stats actuals i canvis recents del meta
+- Mesurar la qualitat de les respostes dels agents amb evals automatitzats al CI (20+ preguntes de referència)
+- Traçar cada interacció dels agents amb LangFuse (cost, latència, qualitat)
+- Mostrar un dashboard d'agents amb historial de preguntes, qualitat i cost acumulat
 
-### **Bloc 4: Agents i Spec-Driven Development (Setmanes 17-19)**
+**Lliurament:** `v0.4` — Agents amb evals al CI + Draft Assistant + dashboard d'agents
 
-**Objectiu:** Agents autònoms per anàlisi competitiva, workflow de specs, consolidació.
+### **Bloc 5: Producció (Setmanes 20-24)**
 
-**Features:**
-- **(S17)** Agents via API directa amb tool use (sense framework): Agent Estadístic (queries de campiò stats) + Agent de Knowledge (retrieval de patch notes). Evals (20+ preguntes, pytest, CI gate). Observabilitat amb LangFuse (traces, cost). OpenSpec per documentar agents.
-- **(S18)** Spec-Driven Development: feature completa (Draft Assistant per recomanar picks/bans) implementada per agent a partir de spec. Skill personalitzat `/review-esportspulse` + hooks.
-- **(S19)** Consolidació: Dashboard Streamlit avançat d'agents (historial de preguntes, qualitat de respostes, cost acumulat). `CLAUDE.md` + `.cursorrules` finals. MCP/skills documentats.
+**L'aplicació pot:**
+- Desplegar-se automàticament a cloud (Render/Fly.io) via CI/CD amb cada push a `main`
+- Ser accessible via URL pública (`esportspulse.fly.dev`) amb tota la funcionalitat operativa
+- Passar tests E2E complets (login → cerca de campió → anàlisi d'agent → resultat)
+- Resistir auditoria de seguretat bàsica (OWASP top 10)
+- Presentar-se en una demo de 5 minuts amb documentació tècnica (diagrames C4, Swagger, portfolio GitHub)
 
-**Lliurament:** Agents amb evals al CI; dashboard d'agents; skill `/review-esportspulse`
-
-### **Bloc 5: Producció, Portfolio i Entrevista (Setmanes 20-24)**
-
-**Objectiu:** Producció: CI/CD, deploy cloud, portfolio, preparació professional.
-
-**Features:**
-- **(S20)** CI/CD consolidat (GitHub Actions). Dockeritzar tots els serveis al `docker-compose.yml` (Java, Python, Streamlit, PostgreSQL, Qdrant, Redis, RabbitMQ). Logging i monitoring bàsic.
-- **(S21)** Desplegament cloud (Render/Fly.io) accessible via URL pública amb suport per a Riot API key segura.
-- **(S22)** Testing E2E complet (login → cerca de campiò → anàlisi d'agent) + revisió seguretat OWASP + hardening.
-- **(S23)** Diagrames C4 (context, containers, components) + documentació tècnica + Swagger consolidat + Portfolio GitHub amb pinned repo.
-- **(S24)** Preparació entrevista tècnica (system design d'EsportsPulse, live coding, behavioral) + demo final 5 min de la plataforma completa.
-
-**Lliurament:** Plataforma íntegra en cloud (esportspulse.fly.dev), amb documentació sòlida, demo profesional i preparació per a entrevistes
+**Lliurament:** `v1.0` — Plataforma completa en cloud, documentada i presentable en entrevista
 
 ---
 
