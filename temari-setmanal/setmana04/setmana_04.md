@@ -1,253 +1,151 @@
-**Setmana 4: Clean Code, Code Review, Git Workflow i CI Bàsic**
+**Setmana 3: Concurrència Pràctica per a Developers Web (Java 21)**
 
 ---
 
-### **Dilluns: Llegir i Entendre Codi d'Altri**
+### **Dilluns: Com Funciona un Servidor Web Per Dins**
 
 * **Cursos i Material de Lectura:**
-* **Llibre:** [*Clean Code*](https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882) (Robert C. Martin) — Capítols 1-3 (Clean Code, Meaningful Names, Functions).
-* **Article:** [*How to Read Other People's Code*](https://blog.codinghorror.com/learn-to-read-the-source-luke/) — Coding Horror.
-* **Vídeo:** [*Code Review Best Practices*](https://www.youtube.com/results?search_query=code+review+best+practices+developers) — qualsevol vídeo pràctic.
+* **Article:** Baeldung — [*How Spring Boot Handles Requests*](https://www.baeldung.com/spring-boot-start).
+* **Article:** Baeldung — [*Introduction to Java Threads*](https://www.baeldung.com/java-thread-lifecycle).
+* **Vídeo:** [*Concurrency in 15 Minutes*](https://www.youtube.com/results?search_query=java+concurrency+basics+for+beginners) — qualsevol vídeo introductori clar.
+* **Documentació:** Oracle — [*Concurrency Lesson*](https://docs.oracle.com/javase/tutorial/essential/concurrency/).
 
 
 * **Activitat i Què s'espera programar:**
-* **Teoria: El 80% del temps d'un developer és llegir codi, no escriure'l.**
-  * A la feina, el primer que faràs és obrir un repositori de 50.000 línies que no has escrit tu. Has de poder navegar-lo, entendre la intenció, i trobar on fer un canvi sense trencar res.
-  * Skills de lectura: seguir el flux d'una request (Controller → Service → Repository → BD), identificar responsabilitats, detectar code smells.
-* **Exercici pràctic: "Investiga el bug".**
-  * Es proporciona un projecte Spring Boot petit (preparat pel formador) amb un bug real: un endpoint `GET /games?title=X` retorna resultats duplicats en certes condicions.
-  * L'estudiant ha de:
-    1. Llegir el codi (sense executar-lo encara) i intentar identificar el bug.
-    2. Executar-lo i reproduir el bug amb curl/Postman.
-    3. Escriure un test que falla per demostrar el bug.
-    4. Corregir el bug.
-    5. Verificar que el test ara passa.
-  * **Lliçó:** Això és el dia a dia. Et donen un ticket Jira que diu "resultats duplicats al cercar jocs" i tu has de trobar-ho en codi que no has escrit.
-* **Exercici de Prompt Engineering:** Dona el codi bugat a Cursor i demana: *"Troba el bug en aquest codi."* Compara la resposta de l'IA amb la teva anàlisi. L'IA l'ha trobat? Ha donat la causa correcta o només un símptoma?
-
-
----
-
-### **Dimarts: Refactoritzar Codi Generat per IA — Anti-Patrons Pràctics**
-
-* **Cursos i Material de Lectura:**
-* **Article:** [*OWASP Top 10*](https://owasp.org/www-project-top-ten/) — Llegir els 3 primers (Injection, Broken Auth, Sensitive Data Exposure).
-* **Article:** Baeldung — [*Common Java Mistakes*](https://www.baeldung.com/java-common-mistakes).
-* **Article:** Baeldung — [*SQL Injection Prevention*](https://www.baeldung.com/sql-injection).
-
-
-* **Activitat i Què s'espera programar:**
-* **Exercici: Auditoria de 5 snippets generats per IA.**
-  * Es proporcionen 5 blocs de codi Java "generats per un assistent IA" (preparats pel formador). Cada un conté almenys un problema greu. L'estudiant ha d'identificar-lo i corregir-lo:
-
-  * **Snippet 1 — SQL Injection:**
-    ```java
-    @Query("SELECT g FROM Game g WHERE g.title = '" + title + "'")
-    ```
-    Problema: concatenació de strings en query → SQL injection. Solució: paràmetres vinculats (`:title`).
-
-  * **Snippet 2 — Secret hardcodejat:**
-    ```java
-    private static final String API_KEY = "sk-abc123def456";
-    ```
-    Problema: secret en codi font → acaba a Git. Solució: variable d'entorn o `application.properties` exclòs de Git.
-
-  * **Snippet 3 — NullPointerException amagat:**
-    ```java
-    GameRecord game = repository.findById(appId);
-    return game.title();  // Si no existeix → NPE en producció
-    ```
-    Problema: `findById` retorna `null` si no existeix. Solució: `Optional` + `orElseThrow()` amb missatge clar.
-
-  * **Snippet 4 — Test que no testeja res:**
-    ```java
-    @Test void testGetGame() {
-        when(mockService.findById("APP-1")).thenReturn(testGame);
-        GameRecord result = mockService.findById("APP-1");
-        assertNotNull(result);  // Verifica que el mock retorna el que li hem dit que retorni!
-    }
-    ```
-    Problema: el test verifica el mock, no el codi real. Solució: testejar el controller o service, no el mock directament.
-
-  * **Snippet 5 — Excepció silenciada:**
-    ```java
-    try {
-        apiClient.fetchData(appId);
-    } catch (Exception e) {
-        // TODO: handle later
-    }
-    ```
-    Problema: l'error desapareix silenciosament → bugs impossibles de diagnosticar en producció. Solució: com a mínim `log.error()`, o re-throw amb context.
-
-* **Exercici de Prompt Engineering:** Per cada snippet corregit, demana a Cursor: *"Revisa aquest codi per problemes de seguretat i robustesa."* La IA ha trobat el que tu has trobat? Ha trobat coses que tu no has vist?
-* **Lliçó:** La IA genera codi que **compila i funciona en el happy path**. El teu valor com a developer és detectar el que falla en producció: seguretat, nulls, errors silenciats, tests buits.
+* **Teoria: El model thread-per-request.**
+  * Quan un usuari fa `GET /games/APP-123`, Spring Boot assigna un thread del pool a aquella request. Si arriben 200 requests simultànies, hi ha 200 threads treballant en paral·lel.
+  * Dibuixa el diagrama: `Client → Tomcat thread pool → Controller → Service → Repository → BD`.
+  * Pregunta clau: *"Què passa si el Service modifica una variable compartida entre threads?"*
+* **Exercici pràctic: Demostrar el problema.**
+  * Crea una classe `UnsafeCounter` amb un camp `int count` i un mètode `increment()` que fa `count++`.
+  * Llança 10 threads que criden `increment()` 10.000 vegades cadascun.
+  * Resultat esperat: el comptador **no** arriba a 100.000. Imprimeix el valor real.
+  * Explica per què: `count++` no és atòmic (read-modify-write), dos threads poden llegir el mateix valor.
+* **Exercici: Solucions bàsiques.**
+  * Versió amb `synchronized`: funciona, però bloqueja.
+  * Versió amb `AtomicInteger`: funciona sense bloquejar.
+  * Mesura el temps de les dues solucions amb 10 threads × 1M increments. Quina és més ràpida? Per què?
+* **Connexió amb S2:** Per què `GameRecord` és un `record` immutable? Perquè si fos mutable i compartit entre requests, tindríem exactament el problema de l'`UnsafeCounter`.
+* **Exercici de Prompt Engineering:** Demana a Cursor: *"Genera un exemple Java 21 de race condition amb ArrayList compartida entre 4 threads."* Executa'l 5 vegades — el resultat canvia? L'IA t'ha avisat del problema? Revisa si l'explicació de l'assistent és correcta.
 
 
 ---
 
-### **Dimecres: Git Workflow Professional — Branching, Rebase i Conflictes**
+### **Dimarts: Race Conditions a la Vida Real — BD i @Transactional**
 
 * **Cursos i Material de Lectura:**
-* **Llibre:** [*Pro Git*](https://git-scm.com/book/en/v2) — Capítol 3 (Branching) i Capítol 6.4 (Rewriting History).
-* **Article:** Atlassian — [*Merging vs Rebasing*](https://www.atlassian.com/git/tutorials/merging-vs-rebasing).
-* **Article:** Atlassian — [*Resolving Merge Conflicts*](https://www.atlassian.com/git/tutorials/using-branches/merge-conflicts).
+* **Article:** Baeldung — [*Spring @Transactional*](https://www.baeldung.com/transaction-configuration-with-jpa-and-spring).
+* **Article:** Baeldung — [*Optimistic vs Pessimistic Locking*](https://www.baeldung.com/jpa-optimistic-locking).
+* **Article:** Vlad Mihalcea — [*Lost Update Problem*](https://vladmihalcea.com/lost-update-problem/).
 
 
 * **Activitat i Què s'espera programar:**
-* **Teoria: Git Flow simplificat per equips.**
-  * `main` → codi estable, sempre desplegable.
-  * `feature/xxx` → branca per cada tasca/ticket.
-  * Workflow: crea branca → treballa → rebase sobre main → PR → code review → merge.
-  * Per què rebase i no merge? Historial net, més fàcil de llegir `git log`.
-* **Exercici pràctic: Resolució de conflictes.**
-  * Simula un conflicte real:
-    1. Crea branca `feature/price-format` que canvia com es mostra el preu a `GameDTO`.
-    2. A `main`, un "company" (el formador o el propi estudiant en una altra branca) ha canviat el mateix fitxer per afegir un camp `currency`.
-    3. Intenta `git rebase main` → conflicte.
-    4. Resol el conflicte manualment (no amb "accept theirs/ours" cegament).
-    5. Verifica que els tests passen després del rebase.
-  * Repeteix amb un conflicte al `pom.xml` (dependències) — això passa sovint en equip.
-* **Exercici: `git bisect` per trobar un bug.**
-  * Prepara un historial de 10 commits on un d'ells introdueix un bug (un test que falla).
-  * Usa `git bisect` per trobar automàticament el commit culpable.
-  * **Lliçó:** `git bisect` és una eina que pocs juniors coneixen i que impressiona en entrevistes.
-* **Comandes que has de dominar:**
-  * `git rebase main` / `git rebase -i HEAD~3` (squash commits)
-  * `git stash` / `git stash pop` (guardar treball temporal)
-  * `git log --oneline --graph` (visualitzar historial)
-  * `git cherry-pick <commit>` (portar un commit específic)
-  * `git reflog` (recuperar treball "perdut")
+* **Teoria: El "Lost Update" Problem.**
+  * Dos usuaris obren la fitxa del mateix joc. Un canvia el preu, l'altre canvia el títol. Tots dos fan "Save" al mateix temps. Resultat: un dels canvis es perd.
+  * Això és el que passa a qualsevol aplicació web amb BD. No és teòric — és el bug #1 de producció.
+* **Exercici amb codi:**
+  * Simula el problema: dos threads llegeixen el mateix `GameRecord` de la BD, el modifiquen, i el guarden. Verifica que un canvi es perd.
+  * **Solució 1 — `@Transactional`:** Entendre que Spring obre una transacció per request i fa rollback si falla. Programar un `@Transactional` al `GameManagementService` i veure com la BD protegeix la integritat.
+  * **Solució 2 — Optimistic Locking:** Afegir un camp `@Version` a l'entity `GameRecord`. Ara si dos threads intenten guardar la mateixa versió, un rep `OptimisticLockException`. Programar el handler.
+* **Reflexió:** A una empresa, aquest problema apareix amb qualsevol formulari d'edició. Saber diagnosticar-lo i resoldre'l és el que diferencia un junior que funciona d'un que crea bugs en producció.
 
 
 ---
 
-### **Dijous: Code Review i GitHub Actions Bàsic**
+### **Dimecres: Crides a APIs Externes sense Bloquejar**
 
 * **Cursos i Material de Lectura:**
-* **Article:** Google — [*How to Do a Code Review*](https://google.github.io/eng-practices/review/reviewer/).
-* **Article:** GitHub — [*About Pull Request Reviews*](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews).
-* **Documentació:** GitHub — [*GitHub Actions Quickstart*](https://docs.github.com/en/actions/quickstart).
+* **Article:** Baeldung — [*Guide to CompletableFuture*](https://www.baeldung.com/java-completablefuture).
+* **Article:** Baeldung — [*Spring @Async*](https://www.baeldung.com/spring-async).
+* **Documentació:** Oracle — [*CompletableFuture API*](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html).
 
 
 * **Activitat i Què s'espera programar:**
-* **Teoria: Code Review com a skill professional.**
-  * A una empresa, no es merja res sense review. El reviewer busca:
-    * Correcció: fa el que hauria de fer?
-    * Seguretat: hi ha vulnerabilitats?
-    * Mantenibilitat: un altre developer ho entendrà dins 6 mesos?
-    * Tests: els canvis estan testejats?
-  * Feedback constructiu: "Això podria fallar si X perquè Y. Suggeriria Z." — mai "Això està malament."
-* **Exercici pràctic: Fer una code review real.**
-  * Es proporciona una PR preparada (pel formador) amb 8-10 fitxers canviats. Conté:
-    * 2 problemes de seguretat (els de dimarts en context real)
-    * 1 test insuficient
-    * 1 canvi de rendiment dubtós (bucle innecessari)
-    * 3-4 fitxers correctes
-  * L'estudiant ha d'escriure comentaris de review a cada fitxer, com si fos un reviewer real a GitHub.
-  * **Lliçó:** No tot és un problema. Saber dir "LGTM" als fitxers correctes és tan important com trobar bugs.
-* **Exercici d'Escriptura de Specs: Spec de Refactorització.**
-  * Agafa un dels mòduls refactoritzats dimarts (ex: el snippet amb SQL injection corregit dins del seu context complet).
-  * Escriu una spec en markdown que descrigui la refactorització desitjada:
-    ```markdown
-    ## Spec: Refactoritzar GameSearchService
-    
-    ### Objectiu
-    Eliminar SQL injection i millorar error handling.
-    
-    ### Regles
-    - Totes les queries SQL han d'usar paràmetres vinculats (:param), mai concatenació.
-    - Tot accés a repository que retorna Optional ha d'usar orElseThrow() amb missatge descriptiu.
-    - Les excepcions mai es poden silenciar (catch buit). Mínim: log.error() + re-throw.
-    
-    ### Tests esperats
-    - Test que verifica que una query amb caràcters especials (', ", ;) no causa error.
-    - Test que verifica que buscar un ID inexistent llança EntityNotFoundException.
-    - Test que verifica que un error d'API externa es propaga amb missatge clar.
-    ```
-  * Dona la spec a Cursor (en una conversa nova, sense context previ) i demana: *"Refactoritza GameSearchService seguint aquesta spec."*
-  * Compara el resultat amb la refactorització manual de dimarts.
-  * Si el resultat és dolent, **itera la spec** (no el prompt): afegeix exemples, restriccions, o context que faltava.
-  * **Lliçó:** Una bona spec produeix bon codi al primer intent. Una spec vaga requereix 5 iteracions de "no, això no és el que volia". El teu valor és saber escriure la spec, no picar el codi.
-* **GitHub Actions — El mínim funcional:**
-  * Crear `.github/workflows/ci.yml`:
-    ```yaml
-    name: CI
-    on: [push, pull_request]
-    jobs:
-      build-and-test:
-        runs-on: ubuntu-latest
-        steps:
-          - uses: actions/checkout@v4
-          - uses: actions/setup-java@v4
-            with:
-              java-version: '21'
-              distribution: 'temurin'
-          - run: mvn test
-          - run: mvn checkstyle:check
-    ```
-  * Entendre cada línia: trigger, runner, steps.
-  * **No anar més enllà.** S6 afegirà coverage, S10 afegirà Python, S22 consolidarà tot.
-  * Configurar Checkstyle mínim al `pom.xml`: format d'importacions, llargada de línia, noms de variables.
+* **Problema real:** EsportsPulse ha de consultar Riot API (300ms) i Data Dragon (100ms) per obtenir dades d'un champion. Si ho fem seqüencial: 400ms. Si ho fem en paral·lel: ~300ms (el màxim de les dues).
+* **Exercici seqüencial:**
+  * Crea `RiotApiClient` amb un mètode `fetchChampionData(String championId)` que simula una crida HTTP amb `Thread.sleep(300)` i retorna un `RiotChampionData` record.
+  * Crea `DataDragonClient` amb un mètode similar amb `Thread.sleep(100)`.
+  * Crida ambdós seqüencialment i mesura el temps total (~400ms).
+* **Exercici paral·lel amb `CompletableFuture`:**
+  * Usa `CompletableFuture.supplyAsync()` per llançar les dues crides en paral·lel.
+  * `CompletableFuture.allOf()` per esperar que ambdues acabin.
+  * Mesura el temps total (~300ms).
+  * Combina els resultats en un sol `GameRecord` amb `thenCombine()`.
+* **Exercici amb `@Async` de Spring:**
+  * Anota els mètodes de fetch amb `@Async` i retorna `CompletableFuture<RiotChampionData>`.
+  * Configura `@EnableAsync` a l'aplicació.
+  * Crida des del service i combina resultats.
+* **Lliçó pràctica:** Cada cop que un service ha de cridar més d'una API externa, has de pensar: "Puc fer-ho en paral·lel?" Això és el que es fa cada dia a una empresa amb microserveis.
 
 
 ---
 
-### **Divendres: Consolidació, Tag v0.1 i Pull Request**
+### **Dijous: Python Mirall — Concurrència i I/O Paral·lel**
 
 * **Cursos i Material de Lectura:**
-* **Especificació:** [*Semantic Versioning*](https://semver.org/).
-* **Especificació:** [*Conventional Commits*](https://www.conventionalcommits.org/).
+* **Article:** Real Python — [*An Intro to Threading in Python*](https://realpython.com/intro-to-python-threading/).
+* **Article:** Real Python — [*Async IO in Python*](https://realpython.com/async-io-python/).
+* **Documentació:** Python — [*asyncio — Asynchronous I/O*](https://docs.python.org/3/library/asyncio.html).
 
 
 * **Activitat i Què s'espera programar:**
-* **Revisió global del repositori:**
-  * Verificar que l'estructura de carpetes és neta i consistent.
-  * Verificar que `.gitignore` exclou tot el que ha d'excloure (classes compilades, IDE config, `.env`).
-  * Verificar que no hi ha secrets al repositori (`git log --all -p | grep -i "api_key\|password\|secret"` — eina bàsica).
-  * Verificar que tots els tests passen: `mvn test`.
-  * Verificar que Checkstyle passa: `mvn checkstyle:check`.
-* **README professional:**
-  * Secció "Què és EsportsPulse" (2 frases).
-  * Secció "Com executar" amb comandes exactes.
-  * Badge de CI: `![CI](https://github.com/USER/esportspulse-engine/actions/workflows/ci.yml/badge.svg)`.
-* **Tag de versió:**
-  * `git tag -a v0.1 -m "Bloc 1 complete: domain model, repository patterns, concurrency, CI"`.
-  * `git push origin v0.1`.
-* **Reflexió de Bloc 1:**
-  * Escriu en 5 línies: *"Què he après en les primeres 4 setmanes que podria explicar en una entrevista?"* Exemples:
-    * "Sé per què HashMap és O(1) i quan importa per rendiment."
-    * "Sé implementar el patró Repository per desacoblar la persistència."
-    * "Sé detectar race conditions i entenc @Transactional."
-    * "Sé fer code review identificant problemes de seguretat i tests buits."
-    * "He configurat CI amb GitHub Actions des de zero."
+* **Race condition en Python:**
+  * Replica l'exercici de dilluns (`UnsafeCounter`) en Python amb `threading`: 10 threads fent `count += 1` 100.000 vegades. Verifica que el resultat NO és 1.000.000.
+  * Discussió del GIL: "El GIL no protegeix contra race conditions en operacions compostes." `count += 1` és LOAD + ADD + STORE, i el GIL pot canviar de thread entre ells.
+  * Solució amb `threading.Lock()` — l'equivalent de `synchronized`.
+* **I/O paral·lel amb `asyncio`:**
+  * Replicar l'exercici de dimecres (crides a Riot API + Data Dragon) en Python amb `asyncio` + `aiohttp`.
+  * Comparar patrons: `CompletableFuture.supplyAsync()` ↔ `asyncio.create_task()`, `.allOf()` ↔ `asyncio.gather()`, `.thenCombine()` ↔ `await`.
+* **Exercici: Extractor concurrent en Python.**
+  * Implementar `GameDataExtractor` amb `asyncio`: 50 crides simulades (`asyncio.sleep(0.3)`) en paral·lel.
+  * Mesura: ha de trigar ~0.3s, no ~15s.
+  * Gestió d'errors parcials: si algunes crides fallen, l'extractor retorna resultats vàlids + llista d'errors.
+* **Connexió amb S2:** Les `dataclass(frozen=True)` de Python també són thread-safe per immutabilitat — el mateix principi que els `record` de Java.
+
+
+---
+
+### **Divendres: Tests de Concurrència, Integració i Pull Request**
+
+* **Cursos i Material de Lectura:**
+* **Documentació:** JUnit 5 — [*Parallel Test Execution*](https://junit.org/junit5/docs/current/user-guide/#writing-tests-parallel-execution).
+* **Article:** Baeldung — [*Testing Concurrent Code*](https://www.baeldung.com/java-testing-multithreaded).
+
+
+* **Activitat i Què s'espera programar:**
+* **Tests de concurrència (`ConcurrencyTests`):**
+  * Test que demostra que `UnsafeCounter` falla amb múltiples threads (el test ha de fallar si el comptador no és atòmic).
+  * Test que `AtomicInteger` versió passa amb múltiples threads.
+  * Test que `CompletableFuture` paral·lel retorna els mateixos resultats que la versió seqüencial (consistència).
+* **Tests d'integració de l'extractor (`GameDataExtractorTests`):**
+  * Mock de `RiotApiClient` amb delays simulats.
+  * Test que la versió paral·lela és almenys 3x més ràpida que la seqüencial per a 20 jocs.
+  * Test que gestiona errors parcials: si 2 de 20 crides fallen, l'extractor retorna 18 resultats + 2 errors (no es perd tot).
+* **Tests Python (`test_concurrency.py`):**
+  * Test que l'extractor `asyncio` retorna 50 resultats en <1s.
+  * Test que la race condition amb `threading` efectivament perd increments (sense Lock).
 
 * **Finalització del cicle Git:**
-* Commit final: `chore: tag v0.1 with CI badge, README, and repository cleanup`
-* Puja branca `feature/week4-clean-code-ci`, crea PR.
-* Practica: fes la teva pròpia code review de la PR abans de merge.
-* Merge a `main`.
+* Executa `mvn test` i verifica que la suite sencera passa.
+* Commit: `feat: concurrent data extraction with CompletableFuture (Java) and asyncio (Python)`
+* Puja branca `feature/week3-concurrency` i crea PR.
 
 ---
 
 ## Vídeos Recomanats
 
-- **Clean Code:** Cerca "CodelyTV Clean Code" (castellà, equip de referència en bones pràctiques). En anglès: "Uncle Bob Clean Code" (la conferència original).
-- **Git workflow:** Cerca "MoureDev Git y GitHub" (castellà, molt complet) o "Midudev Git tutorial". En anglès: "Fireship Git explained in 100 seconds" (molt visual).
-- **Code review:** Cerca "Google Engineering code review best practices" o "CodelyTV code review".
-- **CI/CD bàsic:** Cerca "GitHub Actions tutorial español" o "Fireship GitHub Actions" (anglès, curt i directe).
+- **Concurrència Java:** Cerca "TodoCode Java concurrencia hilos" o "MitoCode Java threads" (castellà). En anglès: "Java Brains Java concurrency" o "Amigoscode Java multithreading".
+- **CompletableFuture:** Cerca "Java CompletableFuture tutorial" (Java Brains té una sèrie excel·lent).
+- **asyncio Python:** Cerca "MoureDev Python asyncio" o "ArjanCodes Python async" (anglès, molt clar).
+- **Race conditions:** Cerca "race condition explained programming" — qualsevol vídeo curt amb animacions ajuda a visualitzar el problema.
 
 ---
 
-## Nota sobre Empliabilitat
+## Nota sobre Progressió
 
-Setmana 4 tanca el Bloc 1 amb les skills que un junior utilitza des del **dia 1 a qualsevol empresa**:
+- **S1:** Big-O i estructures → *entens per què una query és lenta*
+- **S2:** SOLID i immutabilitat → *entens per què el codi ha de ser desacoblat i thread-safe*
+- **S3:** Concurrència pràctica → *entens per què dues requests simultànies poden corrompre dades, i com paral·lelitzar I/O (Java + Python)*
+- **S4:** Clean Code i CI → *entens com detectar problemes en codi d'altri (inclòs IA)*
 
-| Skill | On es practica | Per què importa |
-|-------|---------------|-----------------|
-| Llegir codi d'altri | Dilluns | El 80% del temps d'un dev és llegir, no escriure |
-| Detectar problemes en codi IA | Dimarts | La IA és el teu copilot, però tu ets el responsable |
-| Git workflow amb rebase | Dimecres | Cap empresa fa merge sense PR + historial net |
-| Code review | Dijous | El filtre de qualitat de qualsevol equip |
-| CI bàsic | Dijous | Saber per què el build falla és survival skill |
-
-Cap d'aquestes skills requereix algorítmica avançada. Totes requereixen **criteri professional** — que és el que diferencia un junior contractable d'un que només sap fer tutorials.
+Cada setmana resol un problema real que el developer trobarà al primer mes de feina.

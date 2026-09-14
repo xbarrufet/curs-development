@@ -1,79 +1,42 @@
-# Setmana 7 — Exercicis de Consolidació
+# Setmana 6 — Exercicis de Consolidació
+
+---
 
 ## Bàsics (has de saber fer-ho)
 
-### 1. Construir una API CRUD de champions
-Crea una API REST per `Champion` amb els endpoints:
-- `GET /champions/{championId}`
-- `GET /champions`
-- `POST /champions`
-- `PUT /champions/{championId}`
-- `DELETE /champions/{championId}`
+### 1. Suite de tests per ChampionManagementService
+Escriu una suite de tests completa per a `ChampionManagementService`. Com a mínim 3 unit tests amb Mockito (`@Mock` per `ChampionJpaRepository`, `@InjectMocks` pel servei) i 2 integration tests amb `@SpringBootTest` i H2. Els tests han de cobrir: registrar un champion nou, buscar per ID inexistent (verificar que llança excepció), i llistar meta champions amb un mix de champions que compleixen i no compleixen el criteri. Usa `@Nested` per organitzar i `@DisplayName` per fer l'output llegible.
 
-Requisits:
-- DTOs separats del model de persistència
-- validació d’input (`name` no buit, `winRate` entre 0 i 100)
-- `404` si el champion no existeix
-- `201` en creació
-- `204` en eliminació
+**Connexió S2-S5:** El servei és el de S2, el repository és el JPA de S5, i l'organització de tests segueix les bones pràctiques de clean code de S4.
 
-**Fet quan:** els endpoints funcionen amb curl/Postman i retornin errors consistents.
+**Fet quan:** `mvn verify` passa, JaCoCo reporta >70% de line coverage a `ChampionManagementService`, i l'output de Maven es llegeix com una documentació del servei.
 
-### 2. Spec d’API en markdown i validació contra codi
-Escriu una `api-spec.md` amb:
-- ruta,
-- mètode,
-- request body,
-- response body,
-- codis d’error
+### 2. Mirror Python amb pytest
+Escriu els tests equivalents per al mòdul Python d'EsportsPulse. Usa `@pytest.fixture` (a `conftest.py`) per crear el `SqliteChampionRepository` amb BD `:memory:` i dades de prova. Usa `@pytest.mark.parametrize` per testejar validació de winRate amb múltiples inputs (positiu, zero, negatiu). Usa `monkeypatch` per simular un error de base de dades i verificar que el codi el gestiona correctament.
 
-Després genera el controller i els DTOs a partir d’aquesta spec i valida:
-- un GET existent retorna JSON correcte
-- un GET no existent retorna 404
-- un POST invàlid retorna 400
+**Connexió S5:** El `SqliteChampionRepository` és el que vas crear a S5. Ara li poses tests de veritat.
 
-**Fet quan:** el codi generat coincideix amb la spec i els exemples de resposta són correctes.
+**Fet quan:** `pytest --cov=esportspulse --cov-fail-under=70` passa. L'informe HTML mostra quines línies estan cobertes.
 
-### 3. Global exception handler
-Configura un `@ControllerAdvice` que converteix excepcions com:
-- `EntityNotFoundException`
-- `ValidationException`
-- errors de serialització
+### 3. Coverage gate al CI
+Afegeix el plugin JaCoCo al `pom.xml` amb la regla de 70% mínim de line coverage (goal `check`). Afegeix `pytest-cov` al job de Python del CI. Actualitza el `ci.yml` de GitHub Actions (S4) perquè el job Java executi `mvn verify` (en lloc de `mvn test`) i el job Python executi `pytest --cov-fail-under=70`. El CI ha de fallar si el coverage baixa del llindar.
 
-en una resposta JSON estructurada amb `status` i `error`.
+**Connexió S4:** El workflow de GitHub Actions és el que vas crear a S4. Ara li afegeixes quality gates.
 
-**Fet quan:** totes les respostes d’error tenen format coherent i el client no rep stack traces cruels.
+**Fet quan:** CI completament verd amb coverage gates actius. Si elimines un test i el coverage baixa del 70%, el CI ha de fallar.
 
 ---
 
 ## Avançats (si vas sobrat)
 
-### 4. Virtual Threads i benchmark simple
-Crea una versió de prova de `ChampionDataExtractor` que executi 20 crides concurrentes a la Riot API o un endpoint local simulant espera.
+### 4. Test de la race condition de S3
+Reprodueix la race condition del comptador concurrent de S3 dins d'un test JUnit 5. Crea un test que llança 100 threads (o Virtual Threads) que incrementen un comptador compartit. Sense protecció (`int` normal), el resultat ha de ser inconsistent. Amb protecció (`AtomicInteger` o `synchronized`), el resultat ha de ser exactament 100. El test ha de fallar SENSE la solució i passar AMB ella.
 
-Compara:
-- `Executors.newFixedThreadPool(10)`
-- `Executors.newVirtualThreadPerTaskExecutor()`
+**Connexió S3:** Demostrar dins d'un test el que vas aprendre sobre concurrència. Això és un test que serveix com a prova de concepte.
 
-Mesura temps i anota la diferència.
+**Fet quan:** Un test que demostra el bug (falla amb `int`) i un test que demostra la solució (passa amb `AtomicInteger`). Bonus: usa `@RepeatedTest(10)` per augmentar la probabilitat de detectar la race condition.
 
-**Fet quan:** pots explicar en què millora Virtual Threads i quan no és la solució adequada.
+### 5. Mutation testing manual
+Modifica 5 línies del codi de EsportsPulse (una per una, executant tests entre cada canvi): canvia un `>` per `<` a `getMetaChampions()`, elimina un null check a `findByIdOrThrow()`, canvia un return value a `calculateAdjustedWinRate()`, inverteix una condició a la validació de winRate, i elimina un `@Transactional`. Per cada mutació, executa `mvn test`. Si els tests segueixen passant, aquell és un forat a la suite: escriu el test que detectaria la mutació.
 
-### 5. CLI Python que consumeix l’API REST
-Crea una mini CLI en Python amb `requests` que permeti:
-- llistar champions,
-- consultar un champion per ID,
-- crear un champion nou,
-- i mostrar resultats en format legible.
-
-**Fet quan:** la CLI pot interactuar amb l’API Java i la sortida és clara per a un usuari de terminal.
-
----
-
-## Connexió amb les setmanes anteriors
-
-- **S5**: persistència JPA i repositories
-- **S6**: tests de controller i validació
-- **S3**: concurrència i async
-
-La setmanes 7 és on la teoria de domini i arquitectura es transforma en un sistema de producció amb contractes reals.
+**Fet quan:** 5 mutacions documentades (en un comentari o fitxer). Totes detectades pels tests originals, o tests nous escrits per les que no ho eren. El codi torna a l'estat original al final.

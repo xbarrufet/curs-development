@@ -1,45 +1,38 @@
-# Setmana 5 — Exercicis de Consolidació
+# Setmana 4 — Exercicis de Consolidació
 
 ---
 
 ## Bàsics (has de saber fer-ho)
 
-### 1. SQL a mà: 5 queries sense JPA
-Obre la consola H2 i escriu 5 queries SQL a mà (sense tocar Java):
-1. Els 5 jocs més populars ordenats per jugadors actius (DESC).
-2. El preu mitjà dels jocs de pagament (price > 0).
-3. Quants jocs hi ha per rang de preu (free / <20€ / >=20€) — usa `CASE`.
-4. Insereix 3 jocs nous amb `INSERT INTO`.
-5. Actualitza el preu d'un joc amb `UPDATE` i verifica amb `SELECT`.
+### 1. Troba el bug (sense pistes)
+El formador proporciona un segon projecte Spring Boot petit amb un bug diferent al de dilluns. L'estudiant ha de: llegir el codi, reproduir el bug, escriure un test que falla, corregir-lo, verificar que el test passa. **Sense cap pista sobre on és el bug.**
 
-**Connexió S1:** Executa `EXPLAIN` sobre la query 1 amb i sense index a `active_player_count`. Quina diferència veus?
+**Connexió S1-S3:** El bug podria estar en qualsevol capa (model, repository, service) i podria ser de rendiment (O(n²) amagat), de concurrència (race condition), o de lògica.
 
-**Fet quan:** Les 5 queries copiades a un fitxer `queries.sql` dins el projecte. L'EXPLAIN mostra la diferència entre table scan i index scan.
+**Fet quan:** Bug identificat, test que falla, fix aplicat, test que passa. Commit amb missatge que explica el bug.
 
-### 2. Swap verification: els tests de S2 passen amb JPA
-Executa tots els tests de S2 (`ChampionRepositoryTests`, `ChampionManagementServiceTests`) sense modificar-los. Han de passar ara que el repository és JPA en lloc d'InMemory. Si algun falla, identifica per què i corregeix **sense canviar el test** — el problema és a la implementació, no al test.
+### 2. Code review escrita d'una PR real
+Busca una PR oberta a un projecte open source de Spring Boot a GitHub (ex: qualsevol PR petita amb 3-5 fitxers canviats). Escriu una code review simulada: 3-5 comentaris constructius (format: Observació + Impacte + Suggeriment). No cal publicar-la — l'objectiu és practicar el format.
 
-**Connexió S2 + SOLID:** Això demostra el poder del patró Repository i DIP. Si els tests no passen, és que l'abstracció té un forat.
+**Fet quan:** Document markdown amb la URL de la PR i 3-5 comentaris en format professional.
 
-**Fet quan:** `mvn test` passa al 100% incloent tots els tests de setmanes anteriors.
+### 3. Spec → Agent → Verificació
+Escull una funcionalitat senzilla que falta al projecte (ex: un mètode `exportGamesToCsv()` al `GameManagementService`). Escriu una spec de 10-15 línies (input, output, edge cases, tests esperats). Dona-la a Cursor en conversa nova. Avalua el resultat: quants tests de la spec passa? Si algun falla, itera la spec (no el codi) i regenera.
 
-### 3. Python: SQLite repository
-Implementa `SqlitePlayerRepository` en Python (per al `PlayerRecord` de l'exercici de consolidació S2). Mètodes: `save()`, `find_by_id()`, `find_all()`, `find_by_level_greater_than()`. Tests amb `pytest` usant una BD `:memory:`.
+**Connexió transversal:** Primer exercici complet del cicle spec → agent → review → iteració.
 
-**Fet quan:** 4 tests que passen, usant `sqlite3` amb paràmetres vinculats (mai concatenació de strings).
+**Fet quan:** Spec documentada, codi generat per agent, tests que passen. Nota de quantes iteracions van ser necessàries.
 
 ---
 
 ## Avançats (si vas sobrat)
 
-### 4. Query derivada custom
-Afegeix a `ChampionJpaRepository` una query derivada que Spring Data no pot generar automàticament: "champions amb winRate entre X i Y, ordenats per partides jugades, limitant a N resultats". Usa `@Query` amb JPQL. Escriu el test corresponent.
+### 4. git bisect sobre el teu propi historial
+Introdueix un bug deliberat en un commit antic del teu projecte (ex: canvia un `>` per un `<` en una condició). Fes 5-10 commits més per sobre. Ara usa `git bisect` per trobar-lo automàticament, usant `mvn test` com a criteri.
 
-**Connexió S7:** Aquesta mateixa query serà l'endpoint `GET /games?minPrice=X&maxPrice=Y&limit=N` a la setmana 7.
+**Fet quan:** `git bisect` identifica el commit culpable correctament.
 
-**Fet quan:** Query funcional amb `@Query`, test que verifica el filtratge i l'ordre.
+### 5. Auditoria de seguretat del projecte
+Passa per tot el codi del projecte EsportsPulse (S1-S4) i busca problemes de seguretat reals: secrets hardcodejats, SQL injection potencial, null handling absent, excepcions silenciades. Escriu un informe breu (màx 1 pàgina) amb els problemes trobats i les correccions proposades.
 
-### 5. Migrar un repository extern
-Busca un projecte open source petit a GitHub que tingui un `InMemoryRepository` (o equivalent). Fes un fork, crea una branca, i migra'l a JPA + H2. Verifica que els tests originals passen. No cal fer PR — l'objectiu és practicar el swap en codi que no has escrit.
-
-**Fet quan:** Fork amb branca on el repository és JPA i els tests originals passen.
+**Fet quan:** Document markdown amb problemes + fixes. Aplica els fixes i verifica que els tests passen.

@@ -73,15 +73,19 @@ Cursor és un IDE basat en VS Code amb IA integrada. El faràs servir com a eina
 Verifica que tens les eines instal·lades:
 
 ```bash
-java --version    # Ha de ser 21+
-mvn --version     # Ha de ser 3.9+
-python3 --version # Ha de ser 3.11+
-git --version     # Ha de ser 2.40+
+# Comprova la versió de Java (ha de ser 21 o superior)
+java --version
+# Comprova la versió de Maven (ha de ser 3.9 o superior)
+mvn --version
+# Comprova la versió de Python (ha de ser 3.11 o superior)
+python3 --version
+# Comprova la versió de Git (ha de ser 2.40 o superior)
+git --version
 ```
 
 Si falta alguna eina, instal·la-la:
 ```bash
-# macOS amb Homebrew
+# Instal·la totes les eines d'un cop amb Homebrew (macOS)
 brew install openjdk@21 maven python@3.12 git
 ```
 
@@ -92,23 +96,33 @@ Instal·la [Cursor IDE](https://cursor.sh). A Settings → Features, activa "Tab
 Crea el projecte des de zero. Obre la terminal i executa:
 
 ```bash
-mkdir esportspulse-engine && cd esportspulse-engine
+# Crea la carpeta del projecte
+mkdir esportspulse-engine
+# Entra dins la carpeta (a partir d'ara tot es fa aquí)
+cd esportspulse-engine
 ```
 
 Crea el fitxer `pom.xml` a l'arrel amb aquest contingut mínim:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Capçalera estàndard de Maven — no cal tocar-la -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Identificació del projecte: grup + nom + versió.
+         Maven usa això per distingir el teu projecte de qualsevol altre al món.
+         SNAPSHOT indica que és una versió en desenvolupament, no publicada. -->
     <groupId>com.esportspulse</groupId>
     <artifactId>esportspulse-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
+    <!-- Configuració del compilador.
+         Diem a Maven que el codi font és Java 21 i que volem compilar per Java 21.
+         UTF-8 evita problemes amb accents i caràcters especials. -->
     <properties>
         <java.version>21</java.version>
         <maven.compiler.source>21</maven.compiler.source>
@@ -116,6 +130,9 @@ Crea el fitxer `pom.xml` a l'arrel amb aquest contingut mínim:
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <!-- Llibreries externes que necessitem.
+         Per ara només JUnit 5 per a tests.
+         scope=test vol dir que només s'usa als tests, no al codi de producció. -->
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -130,18 +147,21 @@ Crea el fitxer `pom.xml` a l'arrel amb aquest contingut mínim:
 Crea l'estructura de directoris:
 
 ```bash
-# Java
+# Crea les carpetes del codi font Java (on escriuràs les classes)
 mkdir -p backend-java/src/main/java/com/esportspulse/engine
+# Crea les carpetes dels tests Java (on escriuràs els tests JUnit)
 mkdir -p backend-java/src/test/java/com/esportspulse/engine
 
-# Python
+# Crea la carpeta del codi Python
 mkdir -p ai-python/src
+# Crea el fitxer de dependències Python (buit per ara, s'omplirà més endavant)
 touch ai-python/requirements.txt
 ```
 
 Verifica que compila:
 
 ```bash
+# Compila el projecte Java — ha de sortir BUILD SUCCESS
 mvn compile
 ```
 
@@ -178,21 +198,27 @@ __pycache__/
 ### 4. Inicialitzar Git i pujar a GitHub (15 min)
 
 ```bash
+# Inicialitza un repositori Git buit a la carpeta actual
 git init
+# Afegeix tots els fitxers a l'àrea de staging (els prepara per al commit)
 git add .
+# Crea el primer commit amb un missatge descriptiu (format Conventional Commits)
 git commit -m "feat: initial project structure (Java 21 + Python polyglot)"
 ```
 
 Crea un repositori a GitHub (`esportspulse-engine`, privat o públic). Connecta'l:
 
 ```bash
+# Associa el repositori local amb el remot de GitHub (canvia EL_TEU_USER pel teu username)
 git remote add origin https://github.com/EL_TEU_USER/esportspulse-engine.git
+# Puja el codi a GitHub (-u recorda la connexió per a futurs push)
 git push -u origin main
 ```
 
 Crea la branca de treball de la setmana:
 
 ```bash
+# Crea una branca nova i canvia a ella (tot el treball de S1 es fa aquí)
 git checkout -b feature/week1-benchmarking
 ```
 

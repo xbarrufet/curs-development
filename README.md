@@ -1,38 +1,38 @@
 # Curs de Desenvolupament per a Juniors — AI-SDLC
 
-Pla de formació de 24 setmanes per formar un enginyer de software junior (no només un developer). Combina fonaments d'enginyeria de software (algorítmica, SOLID, testing, APIs, SQL, seguretat, observabilitat) amb les noves formes de treballar amb IA (prompt engineering, MCP, agents, specs, eval-driven development). L'objectiu: codi que no només funciona, sinó que es pot operar, mantenir i escalar en producció.
+Pla de formació de 24 setmanes per formar un enginyer de software junior (no només un developer). Combina fonaments d'enginyeria de software (algorítmica, SOLID, testing, Linux, Docker, APIs, SQL, seguretat, observabilitat) amb les noves formes de treballar amb IA (prompt engineering, MCP, agents, specs, eval-driven development). L'objectiu: codi que no només funciona, sinó que es pot operar, mantenir i escalar en producció.
 
 **Projecte vehicle:** [EsportsPulse](esportspulse-project-brief.md) — un sistema multi-agent per analitzar champions, metes i estadístiques d'eSports de League of Legends (Java 21 + Python + Qdrant + Streamlit).
 
 ## Priorització Recomanada per Empleabilitat
 
-Si l’objectiu és maximitzar la inserció laboral i la capacitat d’operar software real, la seqüència ideal és:
+Si l'objectiu és maximitzar la inserció laboral i la capacitat d'operar software real, la seqüència ideal és:
 
-### Fase 1 — Base imprescindible (S1–S6)
-- **Fundaments reals**: Big-O, estructures, POO, SOLID, testing, Git, CI.
+### Fase 1 — Base imprescindible (S1–S8)
+- **Fundaments reals**: Big-O, estructures, POO, SOLID, Linux/terminal, concurrència, testing, Git, CI, Docker.
 - **Per què primer**: és la base que permet a un junior ser útil en qualsevol equip tecnològic.
-- **Resultat buscats**: construir codi fiable, llegible i validable.
+- **Resultat buscats**: construir codi fiable, llegible i validable sobre infraestructura que controles.
 
-### Fase 2 — Productivitat i software operatiu (S7–S12)
-- **REST + contractes + SQL + observabilitat + Docker**.
-- **Per què ara**: són les habilitats més presents en projectes reals d’empresa i d’API/backend.
-- **Resultat buscats**: servei que funciona, s’administra, es monitoritza i es desplega sense drama.
+### Fase 2 — Productivitat i software operatiu (S9–S13)
+- **REST + contractes + SQL + observabilitat + autenticació + Streamlit**.
+- **Per què ara**: són les habilitats més presents en projectes reals d'empresa i d'API/backend.
+- **Resultat buscats**: servei que funciona, s'administra, es monitoritza i es desplega sense drama.
 
-### Fase 3 — IA aplicada amb rigor (S13–S18)
-- **Python per IA, prompt engineering, structured output, MCP, agents i specs**.
+### Fase 3 — IA aplicada amb rigor (S14–S17)
+- **Knowledge engineering, retrieval, agents amb tool use, spec-driven development**.
 - **Per què després**: la IA és multiplicadora, no substitut de la base tècnica.
 - **Resultat buscats**: treballar amb IA de manera productiva i segura, no com un chatbot.
 
-### Fase 4 — Producció, portfolio i entrevista (S19–S24)
-- **CI/CD, observabilitat, deploy, C4, docs, demo i preparació d’entrevista**.
+### Fase 4 — Infraestructura avançada i producció (S18–S24)
+- **SQL avançat, message queues, CI/CD, deploy cloud, C4, docs, GitHub Pages, demo i preparació d'entrevista**.
 - **Per què al final**: la demostració professional és la part que converteix el projecte en peça de portfolio.
 
 ### Resum executiu
 La priorització ideal és:
-1. **Construcció de software real**
-2. **Infraestructura i operabilitat**
+1. **Construcció de software real + infraestructura bàsica**
+2. **APIs, integració i seguretat**
 3. **IA aplicada amb disciplina**
-4. **Presentació i portfolio**
+4. **Producció, portfolio i presentació**
 
 > En una frase: primer solidesa tècnica, després productivitat amb IA, i finalment demostració professional.
 
@@ -54,33 +54,33 @@ La priorització ideal és:
 
 | Eina | Quan s'introdueix | Instal·lació | Per què |
 |------|-------------------|-------------|---------|
-| **Docker Desktop** | S11 (Docker, Qdrant, PostgreSQL) | [docker.com](https://www.docker.com/products/docker-desktop/) | Contenidors per BD, serveis, deploy |
-| **PostgreSQL** | S15 | Via Docker (`docker run postgres:16`) | BD de producció (reemplaça H2) |
-| **Streamlit** | S10 | `pip install streamlit` | Dashboard / spec-driven UI |
-| **Qdrant** | S12 | Via Docker (`docker run qdrant/qdrant`) | Base vectorial per knowledge retrieval |
-| **Postman** o **curl** | S7 | [postman.com](https://www.postman.com/downloads/) / ja instal·lat (macOS) | Testejar APIs REST manualment |
-| **Compte PandaScore** | S3 (extractor) | [pandascore.co](https://pandascore.co) (gratuït) | API de tornejos i resultats d'eSports |
-| **Redis** | S13 (cache LLM) | Via Docker (`docker run redis:7`) | Cache de respostes, sessions, queries |
-| **RabbitMQ** | S16 (message queues) | Via Docker (`docker run rabbitmq:3-management`) | Events asíncrons entre serveis |
-| **Claude Code CLI** | S17+ (agents) | [claude.ai/claude-code](https://claude.ai/claude-code) | Agent de codi per terminal |
+| **Docker Desktop** | S8 (Docker, Qdrant, PostgreSQL) | [docker.com](https://www.docker.com/products/docker-desktop/) | Contenidors per BD, serveis, deploy |
+| **Postman** o **curl** | S3 / S9 | [postman.com](https://www.postman.com/downloads/) / ja instal·lat (macOS) | Testejar APIs REST manualment |
+| **Streamlit** | S13 | `pip install streamlit` | Dashboard / spec-driven UI |
+| **Qdrant** | S14 | Via Docker (`docker run qdrant/qdrant`) | Base vectorial per knowledge retrieval |
+| **Redis** | S12 (sessions), S15 (cache LLM) | Via Docker (`docker run redis:7`) | Cache de respostes, sessions, queries |
+| **PostgreSQL** | S18 | Via Docker (`docker run postgres:16`) | BD de producció (reemplaça H2) |
+| **RabbitMQ** | S19 (message queues) | Via Docker (`docker run rabbitmq:3-management`) | Events asíncrons entre serveis |
+| **Claude Code CLI** | S16+ (agents) | [claude.ai/claude-code](https://claude.ai/claude-code) | Agent de codi per terminal |
+| **Compte PandaScore** | S4 (extractor) | [pandascore.co](https://pandascore.co) (gratuït) | API de tornejos i resultats d'eSports |
 
 ### Configuració Python recomanada
 
 ```bash
-# Crear entorn virtual (S5 formalment, però recomanat des de S1)
+# Crear entorn virtual (S6 formalment, però recomanat des de S1)
 python3 -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 
 # Dependències base (creixen al llarg del curs)
-pip install pytest ruff requests           # S1-S6
-pip install fastapi uvicorn pydantic       # S7-S9
-pip install structlog tenacity             # S9
-pip install streamlit plotly               # S10
-pip install aiohttp qdrant-client          # S12-S13
-pip install redis                          # S13
-pip install python-jose bcrypt             # S14
-pip install pika                           # S16
-pip install langfuse openai anthropic      # S17
+pip install pytest ruff requests           # S1-S7
+pip install fastapi uvicorn pydantic       # S10-S11
+pip install structlog tenacity             # S11
+pip install streamlit plotly               # S13
+pip install aiohttp qdrant-client          # S14-S15
+pip install python-jose bcrypt             # S12
+pip install redis                          # S12, S15
+pip install pika                           # S19
+pip install langfuse openai anthropic      # S16
 ```
 
 ### Configuració Java recomanada
@@ -92,11 +92,11 @@ mvn --version    # Ha de ser 3.9+
 
 # El projecte usa Spring Boot 3 amb Maven
 # Les dependències s'afegeixen al pom.xml progressivament:
-# S1-S4: spring-boot-starter, junit-jupiter
-# S5:    spring-boot-starter-data-jpa, h2
-# S7:    spring-boot-starter-web, springdoc-openapi
-# S14:   spring-boot-starter-security
-# S15:   postgresql, flyway-core
+# S1-S5: spring-boot-starter, junit-jupiter
+# S6:    spring-boot-starter-data-jpa, h2
+# S9:    spring-boot-starter-web, springdoc-openapi
+# S12:   spring-boot-starter-security
+# S18:   postgresql, flyway-core
 ```
 
 ### Claus API (fitxer `.env` a l'arrel, exclòs de Git)
@@ -105,109 +105,117 @@ mvn --version    # Ha de ser 3.9+
 # .env — MAI pujar a Git (afegir a .gitignore)
 RIOT_API_KEY=your_riot_key_here        # developer.riotgames.com
 PANDASCORE_API_KEY=your_key_here       # pandascore.co (tornejos)
-OPENAI_API_KEY=your_key_here      # S8+
-ANTHROPIC_API_KEY=your_key_here   # S8+ (alternativa)
+OPENAI_API_KEY=your_key_here      # S10+
+ANTHROPIC_API_KEY=your_key_here   # S10+ (alternativa)
 ```
 
 ## Estructura del Curs
 
 | Bloc | Setmanes | Focus | Ratio mà/assistit |
 |------|----------|-------|-------------------|
-| **1. Fundaments** | S1–S6 | Algorítmica, POO, concurrència, testing, CI | 80% / 20% |
-| **2. APIs i Integració** | S7–S10 | REST, Pydantic, LLMs, Streamlit, MCP basics | 50% / 50% |
-| **3. Infraestructura, Knowledge i Integració** | S11–S16 | Docker, knowledge, auth (JWT), SQL, Redis, message queues | 30% / 70% |
-| **4. Agents i Spec-Driven** | S17–S19 | Agents, tool use, eval-driven, spec-driven dev | 20% / 80% |
-| **5. Producció, Portfolio i Entrevista** | S20–S24 | CI/CD, deploy cloud, C4, demo, entrevista tècnica | 10% / 90% |
+| **1. Fundaments** | S1–S8 | Algorítmica, POO, Linux/terminal, concurrència, testing, CI, Docker | 80% / 20% |
+| **2. APIs, Integració i Seguretat** | S9–S13 | REST, Pydantic, LLMs, error handling, auth (JWT), Streamlit, MCP | 50% / 50% |
+| **3. Knowledge, Agents i Spec-Driven** | S14–S17 | Knowledge engineering, retrieval, agents amb tool use, spec-driven dev | 30% / 70% |
+| **4. Infraestructura Avançada** | S18–S20 | SQL avançat, PostgreSQL, Redis, message queues, CI/CD, monitoring | 20% / 80% |
+| **5. Producció i Portfolio** | S21–S24 | Specs finals, deploy cloud, E2E, hardening, GitHub Pages, demo | 10% / 90% |
 
 ## Competències Transversals
 
 El curs té 5 fils que es treballen de forma progressiva cada setmana (no en blocs aïllats):
 
-- **Prompt Engineering** — De prompts bàsics (S1) a specs per agents (S18).
-- **Python com a Segon Llenguatge** — Exercicis mirall Java↔Python des de S1. A S8+ Python és co-protagonista.
-- **Escriptura de Specs** — `.cursorrules` (S2) → API specs (S7) → specs d'agent (S17) → spec-driven development (S18).
-- **Ecosistema d'Eines IA** — Hooks (S4) → MCP servers (S8-S9) → skills i plugins (S12, S18) → consolidació (S19).
-- **Mindset de Codi Productiu** — Observabilitat, mantenibilitat, escalabilitat, resiliència i operabilitat. Des de S1 (benchmarks + logging bàsic) fins a S22 (troubleshooting amb logs i mètriques). L'objectiu no és formar un developer que escriu codi que funciona, sinó un enginyer de SW que escriu codi que es pot operar en producció.
+- **Prompt Engineering** — De prompts bàsics (S1) a specs per agents (S17).
+- **Python com a Segon Llenguatge** — Exercicis mirall Java↔Python des de S1. A S10+ Python és co-protagonista.
+- **Escriptura de Specs** — `.cursorrules` (S2) → API specs (S9) → specs d'agent (S16) → spec-driven development (S17).
+- **Ecosistema d'Eines IA** — Hooks (S5) → MCP servers (S10-S11) → skills i plugins (S14, S17) → consolidació (S21).
+- **Mindset de Codi Productiu** — Observabilitat, mantenibilitat, escalabilitat, resiliència i operabilitat. Des de S1 (benchmarks + logging bàsic) fins a S23 (troubleshooting amb logs i mètriques). L'objectiu no és formar un developer que escriu codi que funciona, sinó un enginyer de SW que escriu codi que es pot operar en producció.
 
 ## Contingut per Setmana
 
-### Bloc 1: Fundaments
+### Bloc 1: Fundaments (S1–S8)
 
-| Setmana | Tema | Material |
-|---------|------|----------|
-| **S1** | Rendiment i Big-O | [Pla](temari-setmanal/setmana01/setmana_01.md) · [Teoria](temari-setmanal/setmana01/teoria_setmana_01.md) · [Exercicis](temari-setmanal/setmana01/exercicis_consolidacio_01.md) · [.cursorrules template](temari-setmanal/setmana01/cursorrules-template-week1.md) |
-| **S2** | POO, SOLID i Immutabilitat | [Pla](temari-setmanal/setmana02/setmana_02.md) · [Teoria](temari-setmanal/setmana02/teoria_setmana_02.md) · [Exercicis](temari-setmanal/setmana02/exercicis_consolidacio_02.md) |
-| **S3** | Concurrència Pràctica Web (Race Conditions, CompletableFuture, asyncio) | [Pla](temari-setmanal/setmana03/setmana_03.md) · [Teoria](temari-setmanal/setmana03/teoria_setmana_03.md) · [Exercicis](temari-setmanal/setmana03/exercicis_consolidacio_03.md) |
-| **S4** | Clean Code, Code Review, Git, CI | [Pla](temari-setmanal/setmana04/setmana_04.md) · [Teoria](temari-setmanal/setmana04/teoria_setmana_04.md) · [Exercicis](temari-setmanal/setmana04/exercicis_consolidacio_04.md) |
-| **S5** | Factory, Repository, JPA | [Pla](temari-setmanal/setmana05/setmana_05.md) · [Teoria](temari-setmanal/setmana05/teoria_setmana_05.md) · [Exercicis](temari-setmanal/setmana05/exercicis_consolidacio_05.md) |
-| **S6** | Testing, Mocks, Qualitat | [Pla](temari-setmanal/setmana06/setmana_06.md) · [Teoria](temari-setmanal/setmana06/teoria_setmana_06.md) · [Exercicis](temari-setmanal/setmana06/exercicis_consolidacio_06.md) |
+| Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
+|---------|------|---------|---------|----------|--------|-----------|
+| **S1** | Rendiment i Big-O | [Entorn i Git](temari-setmanal/setmana01/prova/setmana01_01_dilluns.md) | [Domini i Col·leccions](temari-setmanal/setmana01/prova/setmana01_02_dimarts.md) | [Benchmark 100K](temari-setmanal/setmana01/prova/setmana01_03_dimecres.md) | [Python Mirror](temari-setmanal/setmana01/prova/setmana01_04_dijous.md) | [Tests i PR](temari-setmanal/setmana01/prova/setmana01_05_divendres.md) |
+| **S2** | POO, SOLID i Immutabilitat | [SOLID i Records](temari-setmanal/setmana02/prova/setmana02_01_dilluns.md) | [Interfaces i Repository](temari-setmanal/setmana02/prova/setmana02_02_dimarts.md) | [Dependency Inversion](temari-setmanal/setmana02/prova/setmana02_03_dimecres.md) | [Python Dataclasses](temari-setmanal/setmana02/prova/setmana02_04_dijous.md) | [Integració i PR](temari-setmanal/setmana02/prova/setmana02_05_divendres.md) |
+| **S3** | Linux, Terminal i Sistema | [SO i Terminal](temari-setmanal/setmana03/prova/setmana03_01_dilluns.md) | [Permisos i PATH](temari-setmanal/setmana03/prova/setmana03_02_dimarts.md) | [Pipes i Redirecció](temari-setmanal/setmana03/prova/setmana03_03_dimecres.md) | [Bash Scripting](temari-setmanal/setmana03/prova/setmana03_04_dijous.md) | [Xarxes, SSH i curl](temari-setmanal/setmana03/prova/setmana03_05_divendres.md) |
+| **S4** | Concurrència Pràctica | [Threads i Race Conditions](temari-setmanal/setmana04/prova/setmana04_01_dilluns.md) | [CompletableFuture](temari-setmanal/setmana04/prova/setmana04_02_dimarts.md) | [Python asyncio](temari-setmanal/setmana04/prova/setmana04_03_dimecres.md) | [Correlation IDs](temari-setmanal/setmana04/prova/setmana04_04_dijous.md) | [Extractor Paral·lel](temari-setmanal/setmana04/prova/setmana04_05_divendres.md) |
+| **S5** | Clean Code, Git, CI | [Anti-patrons IA](temari-setmanal/setmana05/prova/setmana05_01_dilluns.md) | [Git Rebase](temari-setmanal/setmana05/prova/setmana05_02_dimarts.md) | [GitHub Actions](temari-setmanal/setmana05/prova/setmana05_03_dimecres.md) | [Specs i Hooks](temari-setmanal/setmana05/prova/setmana05_04_dijous.md) | [Tag v0.1 i PR](temari-setmanal/setmana05/prova/setmana05_05_divendres.md) |
+| **S6** | Patrons, Repository, JPA | [Repository Pattern](temari-setmanal/setmana06/prova/setmana06_01_dilluns.md) | [Spring Data JPA](temari-setmanal/setmana06/prova/setmana06_02_dimarts.md) | [SQL Fonamental](temari-setmanal/setmana06/prova/setmana06_03_dimecres.md) | [Python SQLite](temari-setmanal/setmana06/prova/setmana06_04_dijous.md) | [Entorn Python i PR](temari-setmanal/setmana06/prova/setmana06_05_divendres.md) |
+| **S7** | Testing, Mocks, Qualitat | [JUnit 5 Avançat](temari-setmanal/setmana07/prova/setmana07_01_dilluns.md) | [Mockito](temari-setmanal/setmana07/prova/setmana07_02_dimarts.md) | [pytest i mock](temari-setmanal/setmana07/prova/setmana07_03_dimecres.md) | [Cobertura i CI](temari-setmanal/setmana07/prova/setmana07_04_dijous.md) | [Filosofia de Testing](temari-setmanal/setmana07/prova/setmana07_05_divendres.md) |
+| **S8** | Docker i Docker Compose | [Què és Docker](temari-setmanal/setmana08/prova/setmana08_01_dilluns.md) | [Dockerfile](temari-setmanal/setmana08/prova/setmana08_02_dimarts.md) | [Docker Compose](temari-setmanal/setmana08/prova/setmana08_03_dimecres.md) | [Volums i Health](temari-setmanal/setmana08/prova/setmana08_04_dijous.md) | [Observabilitat](temari-setmanal/setmana08/prova/setmana08_05_divendres.md) |
 
-### Bloc 2: APIs i Integració
+### Bloc 2: APIs, Integració i Seguretat (S9–S13)
 
-| Setmana | Tema | Material |
-|---------|------|----------|
-| **S7** | APIs REST amb Spring Boot 3 | [Pla](temari-setmanal/setmana07/setmana_07.md) · [Teoria](temari-setmanal/setmana07/teoria_setmana_07.md) · [Exercicis](temari-setmanal/setmana07/exercicis_consolidacio_07.md) |
-| **S8** | Python, Pydantic, LLMs, MCP basics | [Pla](temari-setmanal/setmana08/setmana_08.md) · [Teoria](temari-setmanal/setmana08/teoria_setmana_08.md) · [Exercicis](temari-setmanal/setmana08/exercicis_consolidacio_08.md) |
-| **S9** | Error Handling, Logging, MCP pràctic | [Pla](temari-setmanal/setmana09/setmana_09.md) · [Teoria](temari-setmanal/setmana09/teoria_setmana_09.md) · [Exercicis](temari-setmanal/setmana09/exercicis_consolidacio_09.md) |
-| **S10** | Streamlit, Spec-Driven UI, Testing E2E | [Pla](temari-setmanal/setmana10/setmana_10.md) · [Teoria](temari-setmanal/setmana10/teoria_setmana_10.md) · [Exercicis](temari-setmanal/setmana10/exercicis_consolidacio_10.md) |
+| Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
+|---------|------|---------|---------|----------|--------|-----------|
+| **S9** | APIs REST, Spring Boot 3 | [Disseny REST](temari-setmanal/setmana09/prova/setmana09_01_dilluns.md) | [CRUD i Validació](temari-setmanal/setmana09/prova/setmana09_02_dimarts.md) | [Virtual Threads](temari-setmanal/setmana09/prova/setmana09_03_dimecres.md) | [Request Logging](temari-setmanal/setmana09/prova/setmana09_04_dijous.md) | [CLI Python i PR](temari-setmanal/setmana09/prova/setmana09_05_divendres.md) |
+| **S10** | Pydantic, LLMs, MCP | [Pydantic Models](temari-setmanal/setmana10/prova/setmana10_01_dilluns.md) | [API Claude/OpenAI](temari-setmanal/setmana10/prova/setmana10_02_dimarts.md) | [FastAPI](temari-setmanal/setmana10/prova/setmana10_03_dimecres.md) | [MCP Basics](temari-setmanal/setmana10/prova/setmana10_04_dijous.md) | [Integració i PR](temari-setmanal/setmana10/prova/setmana10_05_divendres.md) |
+| **S11** | Error Handling, Logging | [Excepcions](temari-setmanal/setmana11/prova/setmana11_01_dilluns.md) | [Logging Estructurat](temari-setmanal/setmana11/prova/setmana11_02_dimarts.md) | [Correlation IDs](temari-setmanal/setmana11/prova/setmana11_03_dimecres.md) | [MCP Server Propi](temari-setmanal/setmana11/prova/setmana11_04_dijous.md) | [Resiliència i PR](temari-setmanal/setmana11/prova/setmana11_05_divendres.md) |
+| **S12** | Autenticació i Seguretat | [Auth i JWT](temari-setmanal/setmana12/prova/setmana12_01_dilluns.md) | [Spring Security](temari-setmanal/setmana12/prova/setmana12_02_dimarts.md) | [JWT Filter i Roles](temari-setmanal/setmana12/prova/setmana12_03_dimecres.md) | [FastAPI JWT + Redis](temari-setmanal/setmana12/prova/setmana12_04_dijous.md) | [Headers i OWASP](temari-setmanal/setmana12/prova/setmana12_05_divendres.md) |
+| **S13** | Streamlit i Testing E2E | [Intro Streamlit](temari-setmanal/setmana13/prova/setmana13_01_dilluns.md) | [Dashboard i Login](temari-setmanal/setmana13/prova/setmana13_02_dimarts.md) | [Wireframe-Driven](temari-setmanal/setmana13/prova/setmana13_03_dimecres.md) | [Testing E2E](temari-setmanal/setmana13/prova/setmana13_04_dijous.md) | [Consolidació i PR](temari-setmanal/setmana13/prova/setmana13_05_divendres.md) |
 
-### Bloc 3: Infraestructura, Knowledge i Integració
+### Bloc 3: Knowledge, Agents i Spec-Driven (S14–S17)
 
-| Setmana | Tema | Material |
-|---------|------|----------|
-| **S11** | Docker i Docker Compose | *pendent* |
-| **S12** | Knowledge Engineering, Qdrant | *pendent* |
-| **S13** | Knowledge Retrieval, Anti-al·lucinació, Cache LLM (Redis) | *pendent* |
-| **S14** | Autenticació (JWT), Seguretat Web | *pendent* |
-| **S15** | SQL Avançat, PostgreSQL, Flyway | *pendent* |
-| **S16** | Integració de Sistemes: Redis, Message Queues (RabbitMQ) | *pendent* |
+| Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
+|---------|------|---------|---------|----------|--------|-----------|
+| **S14** | Knowledge Engineering | [Per Què la IA Falla](temari-setmanal/setmana14/prova/setmana14_01_dilluns.md) | [Chunking i Metadades](temari-setmanal/setmana14/prova/setmana14_02_dimarts.md) | [Embeddings i Qdrant](temari-setmanal/setmana14/prova/setmana14_03_dimecres.md) | [Skills i MCP](temari-setmanal/setmana14/prova/setmana14_04_dijous.md) | [@docs i Consolidació](temari-setmanal/setmana14/prova/setmana14_05_divendres.md) |
+| **S15** | Retrieval i Anti-al·lucinació | [Retrieval Semàntic](temari-setmanal/setmana15/prova/setmana15_01_dilluns.md) | [Anti-al·lucinació](temari-setmanal/setmana15/prova/setmana15_02_dimarts.md) | [Evals amb pytest](temari-setmanal/setmana15/prova/setmana15_03_dimecres.md) | [Cache Redis i Cost](temari-setmanal/setmana15/prova/setmana15_04_dijous.md) | [Spec i Consolidació](temari-setmanal/setmana15/prova/setmana15_05_divendres.md) |
+| **S16** | Agents: Tool Use i Evals | [Patró Agent](temari-setmanal/setmana16/prova/setmana16_01_dilluns.md) | [Agent Quantitatiu](temari-setmanal/setmana16/prova/setmana16_02_dimarts.md) | [Agent Knowledge](temari-setmanal/setmana16/prova/setmana16_03_dimecres.md) | [Evals i LangFuse](temari-setmanal/setmana16/prova/setmana16_04_dijous.md) | [OpenSpec](temari-setmanal/setmana16/prova/setmana16_05_divendres.md) |
+| **S17** | Spec-Driven Development | [Anatomia d'una Spec](temari-setmanal/setmana17/prova/setmana17_01_dilluns.md) | [Escriure la Spec](temari-setmanal/setmana17/prova/setmana17_02_dimarts.md) | [Generació i Review](temari-setmanal/setmana17/prova/setmana17_03_dimecres.md) | [Skills i Hooks](temari-setmanal/setmana17/prova/setmana17_04_dijous.md) | [Mètriques i Retro](temari-setmanal/setmana17/prova/setmana17_05_divendres.md) |
 
-### Bloc 4: Agents i Spec-Driven
+### Bloc 4: Infraestructura Avançada (S18–S20)
 
-| Setmana | Tema | Material |
-|---------|------|----------|
-| **S17** | Agents (API directa + tool use), Evals, LangFuse | *pendent* |
-| **S18** | Spec-Driven Development, Skills, Hooks | *pendent* |
-| **S19** | Consolidació: Dashboard Avançat, Specs Finals | *pendent* |
+| Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
+|---------|------|---------|---------|----------|--------|-----------|
+| **S18** | SQL Avançat, PostgreSQL | [Migració i Flyway](temari-setmanal/setmana18/prova/setmana18_01_dilluns.md) | [Normalització i FK](temari-setmanal/setmana18/prova/setmana18_02_dimarts.md) | [JOINs i Window](temari-setmanal/setmana18/prova/setmana18_03_dimecres.md) | [EXPLAIN ANALYZE](temari-setmanal/setmana18/prova/setmana18_04_dijous.md) | [Cache-Aside Redis](temari-setmanal/setmana18/prova/setmana18_05_divendres.md) |
+| **S19** | Redis i Message Queues | [Sync vs Async](temari-setmanal/setmana19/prova/setmana19_01_dilluns.md) | [RabbitMQ Productor](temari-setmanal/setmana19/prova/setmana19_02_dimarts.md) | [Consumidor Python](temari-setmanal/setmana19/prova/setmana19_03_dimecres.md) | [Retry i Idempotència](temari-setmanal/setmana19/prova/setmana19_04_dijous.md) | [Tests Integració](temari-setmanal/setmana19/prova/setmana19_05_divendres.md) |
+| **S20** | CI/CD i Monitoring | [Audit CI Workflows](temari-setmanal/setmana20/prova/setmana20_01_dilluns.md) | [docker-compose Complet](temari-setmanal/setmana20/prova/setmana20_02_dimarts.md) | [Health Endpoints](temari-setmanal/setmana20/prova/setmana20_03_dimecres.md) | [Dashboard Mètriques](temari-setmanal/setmana20/prova/setmana20_04_dijous.md) | [Consolidació Bloc 4](temari-setmanal/setmana20/prova/setmana20_05_divendres.md) |
 
-### Bloc 5: Producció, Portfolio i Entrevista
+### Bloc 5: Producció i Portfolio (S21–S24)
 
-| Setmana | Tema | Material |
-|---------|------|----------|
-| **S20** | CI/CD Consolidació, Logging, Monitoring | *pendent* |
-| **S21** | Desplegament Cloud (Render/Fly.io) | *pendent* |
-| **S22** | Testing E2E, Hardening, Seguretat OWASP | *pendent* |
-| **S23** | Arquitectura C4, Documentació, Portfolio | *pendent* |
-| **S24** | Preparació Entrevista Tècnica, Demo Final | *pendent* |
+| Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
+|---------|------|---------|---------|----------|--------|-----------|
+| **S21** | Specs Finals i Dashboard | [CLAUDE.md Definitiu](temari-setmanal/setmana21/prova/setmana21_01_dilluns.md) | [.cursorrules Finals](temari-setmanal/setmana21/prova/setmana21_02_dimarts.md) | [Dashboard Avançat](temari-setmanal/setmana21/prova/setmana21_03_dimecres.md) | [Test Agent Nou](temari-setmanal/setmana21/prova/setmana21_04_dijous.md) | [Consolidació i PR](temari-setmanal/setmana21/prova/setmana21_05_divendres.md) |
+| **S22** | Desplegament al Núvol | [Auditoria Seguretat](temari-setmanal/setmana22/prova/setmana22_01_dilluns.md) | [Deploy Backend](temari-setmanal/setmana22/prova/setmana22_02_dimarts.md) | [Deploy Serveis](temari-setmanal/setmana22/prova/setmana22_03_dimecres.md) | [Domini i HTTPS](temari-setmanal/setmana22/prova/setmana22_04_dijous.md) | [Verificació Producció](temari-setmanal/setmana22/prova/setmana22_05_divendres.md) |
+| **S23** | E2E, Hardening, Arquitectura | [Tests E2E](temari-setmanal/setmana23/prova/setmana23_01_dilluns.md) | [Load Test i OWASP](temari-setmanal/setmana23/prova/setmana23_02_dimarts.md) | [Diagrames C4](temari-setmanal/setmana23/prova/setmana23_03_dimecres.md) | [Troubleshooting](temari-setmanal/setmana23/prova/setmana23_04_dijous.md) | [Documentació Final](temari-setmanal/setmana23/prova/setmana23_05_divendres.md) |
+| **S24** | GitHub Pages i Portfolio | [GitHub Pages](temari-setmanal/setmana24/prova/setmana24_01_dilluns.md) | [Integrar Projecte](temari-setmanal/setmana24/prova/setmana24_02_dimarts.md) | [Polir Repositori](temari-setmanal/setmana24/prova/setmana24_03_dimecres.md) | [Demo 5 Minuts](temari-setmanal/setmana24/prova/setmana24_04_dijous.md) | [Presentació Final](temari-setmanal/setmana24/prova/setmana24_05_divendres.md) |
 
 ## Estructura de Fitxers per Setmana
 
-Cada setmana té fins a 4 fitxers:
+Cada setmana té 5 fitxers diaris que combinen teoria i pràctica:
 
 ```
 temari-setmanal/setmanaXX/
-├── setmana_XX.md                    # Pla dia a dia (dilluns-divendres)
-├── teoria_setmana_XX.md             # Teoria amb exemples i diagrames
-├── exercicis_consolidacio_XX.md     # 3 bàsics + 2 avançats (sense guia)
-└── [recursos addicionals]           # Templates, snippets, etc.
+└── prova/
+    ├── setmanaXX_01_dilluns.md      # Dilluns — Teoria + Activitat
+    ├── setmanaXX_02_dimarts.md      # Dimarts — Teoria + Activitat
+    ├── setmanaXX_03_dimecres.md     # Dimecres — Teoria + Activitat
+    ├── setmanaXX_04_dijous.md       # Dijous — Teoria + Activitat
+    └── setmanaXX_05_divendres.md    # Divendres — Integració + PR
 ```
 
-- **Pla setmanal:** Activitats guiades pas a pas per cada dia, amb material de lectura i lliuraments.
-- **Teoria:** Explicacions amb exemples aplicats a EsportsPulse, diagrames ASCII, codi Java + Python.
-- **Exercicis de consolidació:** Reptes sense instruccions pas a pas. Bàsics (imprescindibles) i Avançats (opcionals). Cada exercici connecta amb setmanes anteriors.
+Cada fitxer diari segueix el format:
+- **Objectiu del Dia** — Què sabrà fer l'estudiant al final del dia.
+- **Teoria** — Conceptes amb exemples de codi comentats (Java + Python).
+- **Activitat** — Exercicis guiats pas a pas amb temps estimats.
+- **Checklist de Lliurament** — Verificació que tot funciona.
+
+Tots els code snippets inclouen comentaris que expliquen **què fa** cada línia i **per què**.
 
 ## Documents Generals
 
 - [Pla Global de 24 Setmanes](temari-global-24.md) — Visió completa amb competències transversals.
 - [EsportsPulse Project Brief](esportspulse-project-brief.md) — Descripció del projecte vehicle, stack, roadmap.
+- [Proposta de Reestructuració](proposta-reestructuracio.md) — Detall dels canvis aplicats respecte la versió original.
 
 ## Principis del Curs
 
 1. **Primer el dolor, després l'eina.** Les eines IA s'introdueixen quan l'estudiant ha viscut el problema que resolen.
 2. **Empleabilitat sobre acadèmia.** Cada tema es justifica per "això ho faràs al primer mes de feina" o "això et preguntaran a l'entrevista", no per completesa teòrica.
-3. **L'algorítmica necessària, no més.** Big-O i HashMap (S1) són suficients com a base. La resta d'algorítmica s'integra quan el context ho demana (indexes a S5, concurrència a S3).
+3. **L'algorítmica necessària, no més.** Big-O i HashMap (S1) són suficients com a base. La resta s'integra quan el context ho demana (indexes a S6, concurrència a S4).
 4. **La IA és copilot, tu ets responsable.** L'estudiant aprèn a generar codi amb IA i a auditar-lo amb criteri: seguretat, rendiment, tests, mantenibilitat.
-5. **Java + Python des del dia 1.** Exercicis mirall en Python cada setmana per demostrar que els conceptes són universals i per preparar la transició al Bloc 2.
+5. **Java + Python des del dia 1.** Exercicis mirall en Python cada setmana per demostrar que els conceptes són universals.
+6. **Entendre la màquina.** L'estudiant aprèn Linux, terminal i conceptes de sistema (S3) perquè saber on corre el teu codi és el primer pas per operar-lo.
 
 ## Llicència i Recursos Externs
 

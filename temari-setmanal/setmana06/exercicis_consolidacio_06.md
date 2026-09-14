@@ -1,42 +1,45 @@
-# Setmana 6 — Exercicis de Consolidació
+# Setmana 5 — Exercicis de Consolidació
 
 ---
 
 ## Bàsics (has de saber fer-ho)
 
-### 1. Suite de tests per ChampionManagementService
-Escriu una suite de tests completa per a `ChampionManagementService`. Com a mínim 3 unit tests amb Mockito (`@Mock` per `ChampionJpaRepository`, `@InjectMocks` pel servei) i 2 integration tests amb `@SpringBootTest` i H2. Els tests han de cobrir: registrar un champion nou, buscar per ID inexistent (verificar que llança excepció), i llistar meta champions amb un mix de champions que compleixen i no compleixen el criteri. Usa `@Nested` per organitzar i `@DisplayName` per fer l'output llegible.
+### 1. SQL a mà: 5 queries sense JPA
+Obre la consola H2 i escriu 5 queries SQL a mà (sense tocar Java):
+1. Els 5 jocs més populars ordenats per jugadors actius (DESC).
+2. El preu mitjà dels jocs de pagament (price > 0).
+3. Quants jocs hi ha per rang de preu (free / <20€ / >=20€) — usa `CASE`.
+4. Insereix 3 jocs nous amb `INSERT INTO`.
+5. Actualitza el preu d'un joc amb `UPDATE` i verifica amb `SELECT`.
 
-**Connexió S2-S5:** El servei és el de S2, el repository és el JPA de S5, i l'organització de tests segueix les bones pràctiques de clean code de S4.
+**Connexió S1:** Executa `EXPLAIN` sobre la query 1 amb i sense index a `active_player_count`. Quina diferència veus?
 
-**Fet quan:** `mvn verify` passa, JaCoCo reporta >70% de line coverage a `ChampionManagementService`, i l'output de Maven es llegeix com una documentació del servei.
+**Fet quan:** Les 5 queries copiades a un fitxer `queries.sql` dins el projecte. L'EXPLAIN mostra la diferència entre table scan i index scan.
 
-### 2. Mirror Python amb pytest
-Escriu els tests equivalents per al mòdul Python d'EsportsPulse. Usa `@pytest.fixture` (a `conftest.py`) per crear el `SqliteChampionRepository` amb BD `:memory:` i dades de prova. Usa `@pytest.mark.parametrize` per testejar validació de winRate amb múltiples inputs (positiu, zero, negatiu). Usa `monkeypatch` per simular un error de base de dades i verificar que el codi el gestiona correctament.
+### 2. Swap verification: els tests de S2 passen amb JPA
+Executa tots els tests de S2 (`ChampionRepositoryTests`, `ChampionManagementServiceTests`) sense modificar-los. Han de passar ara que el repository és JPA en lloc d'InMemory. Si algun falla, identifica per què i corregeix **sense canviar el test** — el problema és a la implementació, no al test.
 
-**Connexió S5:** El `SqliteChampionRepository` és el que vas crear a S5. Ara li poses tests de veritat.
+**Connexió S2 + SOLID:** Això demostra el poder del patró Repository i DIP. Si els tests no passen, és que l'abstracció té un forat.
 
-**Fet quan:** `pytest --cov=esportspulse --cov-fail-under=70` passa. L'informe HTML mostra quines línies estan cobertes.
+**Fet quan:** `mvn test` passa al 100% incloent tots els tests de setmanes anteriors.
 
-### 3. Coverage gate al CI
-Afegeix el plugin JaCoCo al `pom.xml` amb la regla de 70% mínim de line coverage (goal `check`). Afegeix `pytest-cov` al job de Python del CI. Actualitza el `ci.yml` de GitHub Actions (S4) perquè el job Java executi `mvn verify` (en lloc de `mvn test`) i el job Python executi `pytest --cov-fail-under=70`. El CI ha de fallar si el coverage baixa del llindar.
+### 3. Python: SQLite repository
+Implementa `SqlitePlayerRepository` en Python (per al `PlayerRecord` de l'exercici de consolidació S2). Mètodes: `save()`, `find_by_id()`, `find_all()`, `find_by_level_greater_than()`. Tests amb `pytest` usant una BD `:memory:`.
 
-**Connexió S4:** El workflow de GitHub Actions és el que vas crear a S4. Ara li afegeixes quality gates.
-
-**Fet quan:** CI completament verd amb coverage gates actius. Si elimines un test i el coverage baixa del 70%, el CI ha de fallar.
+**Fet quan:** 4 tests que passen, usant `sqlite3` amb paràmetres vinculats (mai concatenació de strings).
 
 ---
 
 ## Avançats (si vas sobrat)
 
-### 4. Test de la race condition de S3
-Reprodueix la race condition del comptador concurrent de S3 dins d'un test JUnit 5. Crea un test que llança 100 threads (o Virtual Threads) que incrementen un comptador compartit. Sense protecció (`int` normal), el resultat ha de ser inconsistent. Amb protecció (`AtomicInteger` o `synchronized`), el resultat ha de ser exactament 100. El test ha de fallar SENSE la solució i passar AMB ella.
+### 4. Query derivada custom
+Afegeix a `ChampionJpaRepository` una query derivada que Spring Data no pot generar automàticament: "champions amb winRate entre X i Y, ordenats per partides jugades, limitant a N resultats". Usa `@Query` amb JPQL. Escriu el test corresponent.
 
-**Connexió S3:** Demostrar dins d'un test el que vas aprendre sobre concurrència. Això és un test que serveix com a prova de concepte.
+**Connexió S7:** Aquesta mateixa query serà l'endpoint `GET /games?minPrice=X&maxPrice=Y&limit=N` a la setmana 7.
 
-**Fet quan:** Un test que demostra el bug (falla amb `int`) i un test que demostra la solució (passa amb `AtomicInteger`). Bonus: usa `@RepeatedTest(10)` per augmentar la probabilitat de detectar la race condition.
+**Fet quan:** Query funcional amb `@Query`, test que verifica el filtratge i l'ordre.
 
-### 5. Mutation testing manual
-Modifica 5 línies del codi de EsportsPulse (una per una, executant tests entre cada canvi): canvia un `>` per `<` a `getMetaChampions()`, elimina un null check a `findByIdOrThrow()`, canvia un return value a `calculateAdjustedWinRate()`, inverteix una condició a la validació de winRate, i elimina un `@Transactional`. Per cada mutació, executa `mvn test`. Si els tests segueixen passant, aquell és un forat a la suite: escriu el test que detectaria la mutació.
+### 5. Migrar un repository extern
+Busca un projecte open source petit a GitHub que tingui un `InMemoryRepository` (o equivalent). Fes un fork, crea una branca, i migra'l a JPA + H2. Verifica que els tests originals passen. No cal fer PR — l'objectiu és practicar el swap en codi que no has escrit.
 
-**Fet quan:** 5 mutacions documentades (en un comentari o fitxer). Totes detectades pels tests originals, o tests nous escrits per les que no ho eren. El codi torna a l'estat original al final.
+**Fet quan:** Fork amb branca on el repository és JPA i els tests originals passen.

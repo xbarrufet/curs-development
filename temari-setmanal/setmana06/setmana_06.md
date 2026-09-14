@@ -1,228 +1,133 @@
-**Setmana 6: Testing, Mocks i Qualitat — Tancament de Bloc 1**
+**Setmana 5: Factory, Repository Patterns i Spring Data JPA amb H2**
 
 ---
 
-### **Dilluns: JUnit 5 en Profunditat**
+### **Dilluns: Spring Data JPA i H2 Basics**
 
 * **Cursos i Material de Lectura:**
-* **Article:** Baeldung — [*A Guide to JUnit 5*](https://www.baeldung.com/junit-5).
-* **Documentació:** JUnit — [*JUnit 5 User Guide*](https://junit.org/junit5/docs/current/user-guide/).
-* **Article:** Baeldung — [*JUnit 5 Parameterized Tests*](https://www.baeldung.com/parameterized-tests-junit-5).
+* **Article:** Baeldung — [*Spring Data JPA Tutorial*](https://www.baeldung.com/the-persistence-layer-with-spring-data-jpa).
+* **Article:** Baeldung — [*H2 Database*](https://www.baeldung.com/h2-database).
+* **Documentació:** Spring — [*Spring Data JPA Reference*](https://spring.io/projects/spring-data-jpa).
+* **Vídeo:** [*JPA & Hibernate Basics*](https://www.youtube.com/results?search_query=spring+data+jpa+tutorial).
 
 
 * **Activitat i Què s'espera programar:**
-* **Més enllà de @Test — Organització i cicle de vida:**
-  * `@BeforeEach`: preparar dades de test (crear un `ChampionManagementService` fresh amb dependències).
-  * `@AfterEach`: netejar si cal (normalment no amb tests unitaris, però sí amb recursos externs).
-  * `@BeforeAll` / `@AfterAll` (static): per a setup costós que es comparteix entre tests (ex: carregar un fitxer de configuració).
-* **@Nested per organitzar tests per context:**
-  ```java
-  class ChampionManagementServiceTest {
-      @Nested
-      class WhenRegisteringAChampion {
-          @Test void shouldSaveToRepository() { ... }
-          @Test void shouldRejectNullName() { ... }
-      }
-      @Nested
-      class WhenSearchingChampions {
-          @Test void shouldReturnMatchingChampions() { ... }
-          @Test void shouldReturnEmptyForUnknownName() { ... }
-      }
-  }
-  ```
-* **@ParameterizedTest per testejar múltiples inputs:**
-  * `@CsvSource` per inputs simples: testejar validació de winRate amb valors límit.
-    ```java
-    @ParameterizedTest
-    @CsvSource({
-        "0.00, true",    // WinRate zero (sense dades)
-        "52.30, true",   // WinRate normal
-        "-1.00, false",  // WinRate negatiu no és vàlid
-        "101.00, false"  // WinRate > 100 no és vàlid
-    })
-    void shouldValidateWinRate(BigDecimal winRate, boolean expected) { ... }
-    ```
-  * `@MethodSource` per inputs complexos: testejar amb objectes `ChampionRecord` complets.
-* **@DisplayName per output llegible:** `@DisplayName("Hauria de rebutjar un champion amb nom buit")` transforma l'output de Maven en documentació viva.
-* **Lliçó clau:** "Un test ha de ser una documentació viva del teu codi. Si algú llegeix els noms dels tests, ha d'entendre què fa el servei."
+* Afegir dependències Maven: `spring-boot-starter-data-jpa`, `com.h2database:h2`.
+* Configurar `application.properties`: `spring.datasource.url=jdbc:h2:mem:esportspulse`, `spring.h2.console.enabled=true`.
+* Entendre la diferència entre In-Memory (S2) i BD relacional: transaccions, ACID, queries SQL.
+* **Exercici de Prompt Engineering:** Pregunta a Cursor: *"Explica quan és millor JPA que In-Memory i quins são els overhead"*. Reflexiona sobre trade-offs.
 
 
 ---
 
-### **Dimarts: Mocks amb Mockito — Quan i Per Què**
+### **Dimarts: ChampionRecord com a Entity i JpaRepository**
 
 * **Cursos i Material de Lectura:**
-* **Article:** Baeldung — [*Mockito Tutorial*](https://www.baeldung.com/mockito-series).
-* **Article:** Martin Fowler — [*Mocks Aren't Stubs*](https://martinfowler.com/articles/mocksArentStubs.html).
-* **Article:** Baeldung — [*Mockito ArgumentCaptor*](https://www.baeldung.com/mockito-argumentcaptor).
+* **Article:** Baeldung — [*JPA Entities*](https://www.baeldung.com/jpa-entities).
+* **Article:** Baeldung — [*Spring Data JPA Repository*](https://www.baeldung.com/spring-data-jpa-query).
 
 
 * **Activitat i Què s'espera programar:**
-* **Setup de Mockito amb JUnit 5:**
-  ```java
-  @ExtendWith(MockitoExtension.class)
-  class ChampionManagementServiceTest {
-      @Mock ChampionJpaRepository repository;
-      @InjectMocks ChampionManagementService service;
-  }
-  ```
-* **when/thenReturn — Simular comportament:**
-  * Quan el repository rep `findById("jinx")`, retorna un `ChampionRecord` predefinit.
-  * Quan el repository rep `findAll()`, retorna una llista de 3 champions.
-  * Testejar que `getMetaChampions()` filtra correctament (la lògica del servei, no del repository).
-* **verify — Confirmar que es va cridar el que tocava:**
-  * `verify(repository).save(any(ChampionRecord.class))` — el servei ha guardat al repo?
-  * `verify(repository, never()).delete(any())` — el servei NO ha esborrat res?
-* **ArgumentCaptor per verificacions complexes:**
-  ```java
-  ArgumentCaptor<ChampionRecord> captor = ArgumentCaptor.forClass(ChampionRecord.class);
-  verify(repository).save(captor.capture());
-  ChampionRecord saved = captor.getValue();
-  assertThat(saved.getName()).isEqualTo("Jinx");
-  ```
-* **Anti-patró de S4 (Snippet 4): el test que testeja el mock.** Recorda: si el teu test fa `when(repo.findAll()).thenReturn(list)` i després asserta `assertEquals(list, service.getAll())`, no estàs testejant res. Estàs verificant que Mockito funciona.
-* **Regla d'or:** "Mock les dependències externes, no la lògica que vols testejar."
+* **Convertir `ChampionRecord` en `@Entity`:**
+  * Afegir anotacions: `@Entity`, `@Table(name = "champions")`.
+  * `@Id` a `championId` (String, primary key).
+  * `@Column` annotations si necessari (ex: `@Column(nullable = false)` a `name`).
+  * Mantenir el constructor (per a JPA cal un no-arg constructor; usar Lombok `@NoArgsConstructor` si es necessita).
+  * **Important:** Discussió sobre mutabilitat: entities de JPA són mutables per defecte. Alternativi: usar `@Immutable` si vols mantenir immutabilitat.
+* **Crear `ChampionJpaRepository` extends `JpaRepository<ChampionRecord, String>`:**
+  * Hereda `save()`, `findById()`, `findAll()`, `delete()`.
+  * Afegir query derivada: `List<ChampionRecord> findByNameContaining(String title)`.
+  * Afegir query derivada: `List<ChampionRecord> findByGamesPlayedGreaterThan(Long count)`.
+* **Prova manualment amb H2 Console:** Accedeix a `http://localhost:8080/h2-console`, verifica que la taula `champions` es va crear.
 
 
 ---
 
-### **Dimecres: pytest Mirall — Fixtures, Parametrize, Monkeypatch**
+### **Dimecres: Service Layer i Queries Bàsiques**
 
 * **Cursos i Material de Lectura:**
-* **Documentació:** pytest — [*How to use fixtures*](https://docs.pytest.org/en/stable/how-to/fixtures.html).
-* **Article:** Real Python — [*Effective Python Testing With pytest*](https://realpython.com/pytest-python-testing/).
-* **Documentació:** pytest — [*Parametrize*](https://docs.pytest.org/en/stable/how-to/parametrize.html).
+* **Article:** Baeldung — [*@Query Annotation*](https://www.baeldung.com/spring-data-jpa-query).
+* **Documentació:** Oracle — [*SQL Basics*](https://docs.oracle.com/cd/B19306_01/server.102/b14200/sqlyntax.htm) (opcional).
 
 
 * **Activitat i Què s'espera programar:**
-* **Mirall Python del que s'ha fet dilluns i dimarts en Java:**
-* **`@pytest.fixture` per setup:**
-  ```python
-  @pytest.fixture
-  def repo():
-      return SqliteChampionRepository(":memory:")
-
-  @pytest.fixture
-  def sample_champions(repo):
-      champions = [
-          ChampionRecord("jinx", "Jinx", 51.5, 5_000_000),
-          ChampionRecord("yasuo", "Thresh", 49.8, 90_000),
-      ]
-      for c in champions:
-          repo.save(c)
-      return champions
-  ```
-* **`@pytest.mark.parametrize` per múltiples inputs:**
-  ```python
-  @pytest.mark.parametrize("win_rate,valid", [
-      (0.0, True), (52.30, True), (-1.0, False),
-  ])
-  def test_validate_win_rate(win_rate, valid):
-      assert validate_win_rate(win_rate) == valid
-  ```
-* **`monkeypatch` per simular errors externs:**
-  * Substituir `sqlite3.connect` per llançar un error i verificar que el servei gestiona l'error correctament.
-  * Equivalent conceptual de `@Mock` en Mockito: aïllar dependències.
-* **`conftest.py` per fixtures compartides:** Col·loca les fixtures comunes (repo, sample_champions) a `conftest.py` perquè tots els fitxers de test les puguin usar.
-* **Comparativa d'estructures:**
-
-  | Concepte | JUnit 5 | pytest |
-  |----------|---------|--------|
-  | Setup per test | `@BeforeEach` | `@pytest.fixture` |
-  | Múltiples inputs | `@ParameterizedTest` + `@CsvSource` | `@pytest.mark.parametrize` |
-  | Mock extern | `@Mock` + Mockito | `monkeypatch` |
-  | Organitzar per context | `@Nested` | Classes dins el fitxer |
-  | Fixtures globals | `@BeforeAll` | `conftest.py` |
+* **Ampliar `ChampionManagementService` (de S4):**
+  * Injecta `ChampionJpaRepository` en lloc de `ChampionRepository` in-memory.
+  * Mètode `registerChampion()`: persisten al `@Entity`.
+  * Mètode `searchByName(String keyword)`: usa `findByNameContaining()`.
+  * Mètode `getMetaChampions()`: usa `findByGamesPlayedGreaterThan(100_000)`.
+  * Mètode `getAllChampions()`: retorna `findAll()`.
+* **Consultes JPQL opcionals:**
+  * Afegir a `ChampionJpaRepository`: `@Query("SELECT c FROM ChampionRecord c WHERE c.winRate > :minWinRate")` per a queries més complexes.
+* **Transaccions:**
+  * Afegir `@Transactional` a mètodes que escriben (per seguretat ACID).
+  * Discutió: Rollback automàtic en excepcions.
 
 
 ---
 
-### **Dijous: Coverage, CI i Qualitat**
+### **Dijous: Migració de In-Memory a JPA i Testing**
 
 * **Cursos i Material de Lectura:**
-* **Documentació:** JaCoCo — [*Maven Plugin*](https://www.jacoco.org/jacoco/trunk/doc/maven.html).
-* **Documentació:** pytest-cov — [*pytest-cov Documentation*](https://pytest-cov.readthedocs.io/).
-* **Article:** Martin Fowler — [*Test Coverage*](https://martinfowler.com/bliki/TestCoverage.html).
+* **Article:** Baeldung — [*Testing Spring Data JPA*](https://www.baeldung.com/spring-boot-testing-h2-database).
+* **Article:** Baeldung — [*@DataJpaTest*](https://www.baeldung.com/spring-boot-testing-h2-database).
 
 
 * **Activitat i Què s'espera programar:**
-* **Configurar JaCoCo al `pom.xml`:**
-  * Plugin `jacoco-maven-plugin` amb goals `prepare-agent` i `report`.
-  * Regla `check` amb mínim 70% de line coverage.
-  * Executar `mvn verify` i obrir `target/site/jacoco/index.html`.
-  * Si el coverage és <70%, escriure els tests que falten (no codi sense sentit per augmentar-lo).
-* **Configurar pytest-cov:**
-  * `pip install pytest-cov`
-  * Executar `pytest --cov=esportspulse --cov-report=html`
-  * Revisar l'informe: quines línies no estan cobertes? Són importants?
-* **Afegir coverage gates al CI de S4:**
-  * Al `ci.yml` de GitHub Actions: `mvn verify` (que inclou JaCoCo check) en lloc de `mvn test`.
-  * Afegir step per Python: `pytest --cov=esportspulse --cov-fail-under=70`.
-  * El CI ha de fallar si el coverage baixa del 70%.
-* **Mutation testing conceptual (sense eines):**
-  * Modifica manualment 3 línies del codi de `ChampionManagementService`:
-    1. Canvia un `>` per `>=` en `getMetaChampions()`.
-    2. Elimina un `null` check.
-    3. Canvia un return value.
-  * Executa els tests. Si tots passen, els tests son febles i cal millorar-los.
-* **Lliçó clau:** "100% coverage no vol dir zero bugs. 0% coverage sí vol dir molts bugs."
+* **Refactorització del codi S4:**
+  * Reemplaçar `InMemoryChampionRepository` per `ChampionJpaRepository` a `ChampionManagementService`.
+  * Assegurar que els tests S2/S4 segueixen passant (interfaces are key).
+* **Nous tests per a la capa JPA (`ChampionJpaRepositoryTests`):**
+  * Usar `@DataJpaTest` per testejar només la capa de dades.
+  * Test: `save()` i `findById()` retorna el mateix.
+  * Test: `findByNameContaining()` amb wildcards.
+  * Test: `findByGamesPlayedGreaterThan()` filtra correctament.
+  * Test: `findAll()` retorna tots els records.
+* **Tots els tests vell (S2/S4) han de passar sense canvis gràcies al pattern Repository.**
 
 
 ---
 
-### **Divendres: Consolidació, Suite Completa, Tag v0.1**
+### **Divendres: Integració End-to-End i PR**
 
 * **Cursos i Material de Lectura:**
-* **Especificació:** [*Semantic Versioning*](https://semver.org/).
-* **Article:** Google Testing Blog — [*What Makes a Good Test Suite*](https://testing.googleblog.com/).
+* **Article:** Baeldung — [*Spring Boot Integration Tests*](https://www.baeldung.com/spring-boot-testing-h2-database).
 
 
 * **Activitat i Què s'espera programar:**
-* **Assegurar que EsportsPulse té una suite de tests completa:**
-  * **Unit tests (servei amb mocks):** `ChampionManagementServiceTest` amb `@Mock` per `ChampionJpaRepository`. Tests: registrar champion, buscar per ID, buscar per nom, llistar meta champions, gestió d'errors.
-  * **Integration tests:** `ChampionManagementServiceIT` amb `@SpringBootTest` i H2. Tests: el flux complet registrar → buscar → verificar.
-  * **Repository tests:** `ChampionJpaRepositoryTest` amb `@DataJpaTest`. Tests: queries derivades, JPQL custom.
-* **Tots els tests passen, CI verd:**
-  * `mvn verify` passa (tests + JaCoCo check).
-  * `pytest --cov-fail-under=70` passa.
-  * GitHub Actions workflow completament verd.
-* **Tag v0.1 — Final de Bloc 1:**
-  * `git tag -a v0.1 -m "Bloc 1 complete: domain, patterns, concurrency, CI, JPA, testing"`.
-  * `git push origin v0.1`.
-* **Reflexió de Bloc 1 — "5 línies per a una entrevista":**
-  Escriu 5 frases que podries dir en una entrevista tècnica:
-  * "Sé per què HashMap és O(1) i quan ArrayList O(n) importa per rendiment." (S1)
-  * "Sé implementar Repository pattern per desacoblar persistència i testejar amb mocks." (S2, S5, S6)
-  * "Sé detectar race conditions i entenc @Transactional i Virtual Threads." (S3)
-  * "Sé fer code review, configurar CI amb GitHub Actions, i detectar anti-patrons en codi IA." (S4)
-  * "Sé escriure tests unitaris amb Mockito, tests d'integració amb Spring, i configurar coverage gates." (S6)
+* **Test d'integració (`ChampionManagementServiceIT`):**
+  * Inicia context Spring sencer (`@SpringBootTest`).
+  * Test: `registerChampion()` → `searchByName()` → verifica que apareix.
+  * Test: `getMetaChampions()` amb dades que cumplen/no cumplen criteris.
+* **Cobertura i CI:**
+  * Executar `mvn test` i verificar cobertura >= 80%.
+  * GitHub Actions workflow actualitzat: passa tots els tests (JPA + In-Memory legacy).
+  * Commit message: `feat(java): Spring Data JPA with H2, ChampionRecord @Entity, Repository pattern integration`
+* **Revisió d'arquitectura:**
+  * Dibuixa en comentaris: `InMemoryChampionRepository` → `ChampionJpaRepository` swap sense canviar `ChampionManagementService`. Això és la **força de patterns**.
+  * Afegir a `.cursorrules`: regles per a entities (immutability trade-offs, `@Transactional`, indices).
+
 
 * **Finalització del cicle Git:**
-* Commit final amb tests complets i coverage gates.
-* Puja branca `feature/week6-testing-quality`, crea PR.
-* Merge a `main`.
+* Puja la branca `feature/week5-jpa-h2` a GitHub.
+* Verifica que el workflow passa (tests + coverage).
+* Fes merge a `main`.
 
 ---
 
 ## Vídeos Recomanats
 
-- **JUnit 5:** Cerca "TodoCode JUnit 5 tutorial" o "MitoCode JUnit 5" (castellà). En anglès: "Java Brains JUnit 5" (sèrie completa).
-- **Mockito:** Cerca "TodoCode Mockito tutorial" o "Java Brains Mockito" (anglès). Mockito és la llibreria de mocking estàndard — entendre `when/thenReturn` i `verify` és essencial.
-- **pytest (Python):** Cerca "MoureDev pytest tutorial" o "ArjanCodes pytest" (anglès, molt pràctic).
-- **TDD:** Cerca "CodelyTV TDD" (castellà, expliquen el cicle red-green-refactor aplicat a projectes reals).
+- **Spring Data JPA:** Cerca "TodoCode Spring Data JPA" o "MitoCode JPA Hibernate" (castellà). En anglès: "Amigoscode Spring Data JPA tutorial" (complet, pas a pas).
+- **Repository Pattern:** Cerca "CodelyTV Repository Pattern" (castellà, explica bé la motivació darrere el patró).
+- **H2 Database:** Cerca "Spring Boot H2 database tutorial" — qualsevol vídeo curt que mostri la consola H2 i com inspeccionar dades.
+- **Factory Pattern:** Cerca "Refactoring Guru Factory Pattern" o "CodelyTV patrones de diseño Factory" (castellà).
 
 ---
 
-## Nota sobre Testing i Empliabilitat
+## Nota sobre Persistència
 
-Setmana 6 tanca el Bloc 1 amb la skill que defineix un desenvolupador professional: **saber testejar el propi codi**.
-
-| Skill | On es practica | Per què importa |
-|-------|---------------|-----------------|
-| Tests unitaris amb mocks | Dimarts | Cada empresa espera que un junior sàpiga escriure unit tests |
-| Organitzar tests per context | Dilluns | Un test suite llegible estalvia hores de debugging |
-| Coverage com a safety net | Dijous | El CI t'avisa quan deixes codi sense testejar |
-| Tests d'integració | Divendres | Verificar que les capes funcionen juntes, no només aïllades |
-| pytest mirror | Dimecres | Demostrar versatilitat Java + Python en entrevistes |
-
-Cap d'aquestes skills requereix coneixement avançat. Totes requereixen **disciplina** — que és el que diferencia un junior que "fa tests perquè li diuen" d'un que **entén per què els tests li estalvien temps**.
+Setmana 5 és **la darrera del Bloc 1**. Després (S7+), els endpoints REST consultaran aquesta BD. Per tant:
+- **S2-4:** Patterns + In-Memory
+- **S5:** JPA real
+- **S6:** Tests de qualitat (cobertura gates)
+- **S7:** REST endpoints que usen la BD

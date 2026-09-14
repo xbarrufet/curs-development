@@ -1,44 +1,79 @@
-# Setmana 9 — Exercicis de Consolidació
-
----
+# Setmana 7 — Exercicis de Consolidació
 
 ## Bàsics (has de saber fer-ho)
 
-### 1. Error handling al bridge Java-Python
-Implementar timeout (5s) + retry (3 intents, backoff exponencial) al servei Python quan crida l'API Java. Usar la llibreria `tenacity` per al retry. Quan tots els intents fallen, retornar un error HTTP 502 amb format RFC 7807 Problem Details (`type`, `title`, `status`, `detail`, `instance`). Testejar: atura el servei Java, crida Python, verifica que el retry funciona (veuràs 3 intents als logs) i finalment retorna l'error 502 correctament formatat.
+### 1. Construir una API CRUD de champions
+Crea una API REST per `Champion` amb els endpoints:
+- `GET /champions/{championId}`
+- `GET /champions`
+- `POST /champions`
+- `PUT /champions/{championId}`
+- `DELETE /champions/{championId}`
 
-**Connexió S7, S8:** Reutilitzes el bridge HTTP de S8 i el `@ControllerAdvice` de S7, ara amb resiliència.
+Requisits:
+- DTOs separats del model de persistència
+- validació d’input (`name` no buit, `winRate` entre 0 i 100)
+- `404` si el champion no existeix
+- `201` en creació
+- `204` en eliminació
 
-**Fet quan:** Retry funciona amb 3 intents i backoff visible als logs. Error response en format Problem Details (Content-Type: `application/problem+json`). Test amb Java aturat que verifica el 502 i el format de l'error.
+**Fet quan:** els endpoints funcionen amb curl/Postman i retornin errors consistents.
 
-### 2. Logging estructurat amb correlation_id
-Afegir `structlog` a Python i `logstash-logback-encoder` a Java per emetre logs en JSON. Implementar middleware (FastAPI) i filter (Spring) que generen un `X-Correlation-ID` (UUID) si no ve al header, o el propaguen si ja existeix. Cada log entry ha de tenir com a mínim: `timestamp`, `level`, `service_name`, `correlation_id`, `message`. Fer una request completa (curl -> Python -> Java -> H2) i verificar que el mateix `correlation_id` apareix als logs dels dos serveis.
+### 2. Spec d’API en markdown i validació contra codi
+Escriu una `api-spec.md` amb:
+- ruta,
+- mètode,
+- request body,
+- response body,
+- codis d’error
 
-**Connexió S4 (CI), S7, S8:** El logging s'integra amb el pipeline CI de S4 i els serveis de S7-S8.
+Després genera el controller i els DTOs a partir d’aquesta spec i valida:
+- un GET existent retorna JSON correcte
+- un GET no existent retorna 404
+- un POST invàlid retorna 400
 
-**Fet quan:** Logs JSON als dos serveis amb camps consistents. El `correlation_id` es propaga correctament via header. Es pot traçar una request completa de principi a fi amb una sola cerca per `correlation_id`.
+**Fet quan:** el codi generat coincideix amb la spec i els exemples de resposta són correctes.
 
-### 3. MCP server amb 3+ tools
-Crear un MCP server Python amb `FastMCP` que exposa: `get_champion(champion_id)`, `search_champions(query)`, `get_champion_stats()`. El server consulta l'API REST d'EsportsPulse (S7) internament. Connectar-lo a Cursor (`.cursor/mcp.json`) i verificar que les tools apareixen i funcionen: fer preguntes en llenguatge natural i confirmar que les respostes venen de les dades reals de la BD, no de l'entrenament del model.
+### 3. Global exception handler
+Configura un `@ControllerAdvice` que converteix excepcions com:
+- `EntityNotFoundException`
+- `ValidationException`
+- errors de serialització
 
-**Connexió S8:** A S8 vas connectar MCP servers d'altri. Ara en crees un de propi amb el mateix protocol.
+en una resposta JSON estructurada amb `status` i `error`.
 
-**Fet quan:** MCP server funciona amb `mcp.run()`. Cursor mostra les 3+ tools al panell MCP. Es poden fer preguntes sobre champions d'EsportsPulse via chat i les respostes són dades reals de la BD.
+**Fet quan:** totes les respostes d’error tenen format coherent i el client no rep stack traces cruels.
 
 ---
 
 ## Avançats (si vas sobrat)
 
-### 4. Circuit breaker manual
-Implementar un circuit breaker simple en Python: si l'API Java falla 5 cops seguits, el circuit s'obre i retorna dades cached (últim resultat exitós guardat en memòria) durant 60 segons, sense intentar la crida HTTP. Passat el temps, prova una sola request (HALF-OPEN): si funciona, torna a CLOSED; si falla, torna a OPEN. Escriu un test que simula la seqüència CLOSED -> OPEN -> HALF-OPEN -> CLOSED amb mocks de fallades i èxits.
+### 4. Virtual Threads i benchmark simple
+Crea una versió de prova de `ChampionDataExtractor` que executi 20 crides concurrentes a la Riot API o un endpoint local simulant espera.
 
-**Connexió S3:** Apliques conceptes de concurrència (accés thread-safe al comptador de fallades i a la cache).
+Compara:
+- `Executors.newFixedThreadPool(10)`
+- `Executors.newVirtualThreadPerTaskExecutor()`
 
-**Fet quan:** Circuit breaker funciona amb els 3 estats. Test que simula 5 fallades consecutives, verifica que les crides es responen des de cache, espera el timeout, i verifica la transició HALF-OPEN -> CLOSED.
+Mesura temps i anota la diferència.
 
-### 5. MCP server amb resource i prompt
-Ampliar el MCP server amb: un resource `esportspulse://dashboard` que retorna un resum en text de tots els champions (total, top 5, estadístiques) i un prompt template `analyze-champion` que guia el model pas a pas per analitzar un champion concret. Connectar a Cursor i comparar l'experiència d'usar el MCP server amb i sense el prompt template — documenta en quin cas el model fa millors anàlisis i per què.
+**Fet quan:** pots explicar en què millora Virtual Threads i quan no és la solució adequada.
 
-**Connexió S8:** Apliques els conceptes de tool_use i prompt engineering de S8 al disseny del MCP server.
+### 5. CLI Python que consumeix l’API REST
+Crea una mini CLI en Python amb `requests` que permeti:
+- llistar champions,
+- consultar un champion per ID,
+- crear un champion nou,
+- i mostrar resultats en format legible.
 
-**Fet quan:** Resource i prompt funcionen a Cursor. Document breu (5-10 línies) amb la comparativa: quan el prompt template millora la resposta i quan no fa diferència.
+**Fet quan:** la CLI pot interactuar amb l’API Java i la sortida és clara per a un usuari de terminal.
+
+---
+
+## Connexió amb les setmanes anteriors
+
+- **S5**: persistència JPA i repositories
+- **S6**: tests de controller i validació
+- **S3**: concurrència i async
+
+La setmanes 7 és on la teoria de domini i arquitectura es transforma en un sistema de producció amb contractes reals.

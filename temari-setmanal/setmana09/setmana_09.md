@@ -1,316 +1,177 @@
-**Setmana 9: Error Handling Inter-Serveis, Logging Estructurat i MCP Server Personalitzat**
+**Setmana 7: APIs REST amb Spring Boot 3 i Consultes a BD**
 
 ---
 
-### **Dilluns: Error Handling Inter-Serveis**
+### **Dilluns: DTOs, Contractes REST i Exceptions**
 
 * **Cursos i Material de Lectura:**
-* **Article:** Microsoft Azure Architecture — [*Retry Pattern*](https://learn.microsoft.com/en-us/azure/architecture/patterns/retry).
-* **Especificació:** IETF — [*RFC 7807: Problem Details for HTTP APIs*](https://www.rfc-editor.org/rfc/rfc7807).
-* **Article:** Baeldung — [*Exception Handling in Spring Boot*](https://www.baeldung.com/exception-handling-for-rest-with-spring).
-* **Article:** Baeldung — [*Spring RestTemplate Error Handling*](https://www.baeldung.com/spring-rest-template-error-handling).
+* **Article:** Baeldung — [*Spring Boot REST Controllers*](https://www.baeldung.com/spring-boot-rest-controller).
+* **Article:** Baeldung — [*DTO Pattern in Spring*](https://www.baeldung.com/entity-to-dto).
+* **Article:** Baeldung — [*Spring Exception Handling*](https://www.baeldung.com/exception-handling-for-rest-with-spring).
+* **Documentació:** Spring — [*Building REST Services*](https://spring.io/guides/gs/rest-service/).
 
 
 * **Activitat i Què s'espera programar:**
-* **Experiment: Què passa quan Python crida Java i falla?**
-  * Atura el servei Java (`Ctrl+C` al Spring Boot).
-  * Des de Python, crida `requests.get("http://localhost:8080/champions/ahri")` — obtens `ConnectionError`.
-  * Ara arrenca Java però afegeix un `Thread.sleep(30000)` al controller — obtens `ReadTimeout` (si tens timeout) o un thread bloquejat per sempre (si no en tens).
-  * Lliço: sense timeout, un servei lent pot matar el teu servei.
-* **Afegir timeout a totes les crides HTTP:**
-  ```python
-  # Python — SEMPRE timeout
-  response = requests.get(
-      f"{JAVA_API_URL}/champions/{champion_id}",
-      timeout=5  # 5 segons màxim
-  )
-  ```
-  ```java
-  // Java — RestTemplate amb timeout
-  @Bean
-  public RestTemplate restTemplate() {
-      var factory = new SimpleClientHttpRequestFactory();
-      factory.setConnectTimeout(Duration.ofSeconds(3));
-      factory.setReadTimeout(Duration.ofSeconds(5));
-      return new RestTemplate(factory);
-  }
-  ```
-* **Implementar retry amb backoff exponencial:**
-  * Primer a mà (loop amb `time.sleep`), per entendre el patró.
-  * Després amb la llibreria `tenacity`:
-  ```python
-  from tenacity import retry, stop_after_attempt, wait_exponential
+* Entendre la separació: `@Entity` (BD) vs `DTO` (API contract).
+* **Exercici d'Escriptura de Specs: API Spec en Markdown.**
+  * Abans de programar res, escriu la spec de l'API en un fitxer `api-spec.md`:
+    ```markdown
+    ## GET /champions/{championId}
+    Retorna les dades d'un champion per ID.
+    - **Response 200:**
+      ```json
+      { "championId": "CHAMP-1", "name": "Jinx", "winRate": 52.3, "gamesPlayed": 150000 }
+      ```
+    - **Response 404:** `{ "error": "Champion CHAMP-999 not found", "status": 404 }`
 
-  @retry(
-      stop=stop_after_attempt(3),
-      wait=wait_exponential(multiplier=1, min=1, max=8)
-  )
-  def call_java_api(champion_id: str) -> dict:
-      response = requests.get(
-          f"{JAVA_API_URL}/champions/{champion_id}",
-          timeout=5
-      )
-      response.raise_for_status()
-      return response.json()
-  ```
-* **Definir format d'error estàndard (RFC 7807 Problem Details):**
-  * Java: ampliar el `@ControllerAdvice` de S7 per retornar Problem Details.
-  * Python: crear exception handlers a FastAPI.
-  * Custom exceptions: `ChampionNotFoundException`, `ExternalServiceUnavailableException`.
-* **HTTP status codes — quan usar cada un:**
-  * 400: request malformada (JSON invàlid, camp obligatori absent).
-  * 404: recurs no trobat (`/champions/unknown`).
-  * 422: validació de negoci fallida (preu negatiu, nom duplicat).
-  * 500: bug intern del teu servei.
-  * 502: l'upstream (Java) ha retornat un error.
-  * 503: el teu servei està sobrecarregat o en manteniment.
-  * 504: l'upstream (Java) no ha respost a temps.
-* **Clau del dia:** "El teu servei no pot crashar perque un altre servei ha caigut."
+    ## POST /champions
+    Crea un champion nou.
+    - **Request body:**
+      ```json
+      { "name": "Yasuo", "winRate": 49.5 }
+      ```
+    - **Validació:** `name` obligatori (no buit), `winRate` entre 0 i 100.
+    - **Response 201:** Retorna el `ChampionDTO` creat amb `championId` generat.
+    - **Response 400:** Si validació falla, retorna errors per camp.
+
+    ## GET /champions?name=X&minGames=Y
+    Cerca amb filtres opcionals. Retorna llista de `ChampionDTO`.
+
+    ## PUT /champions/{championId}
+    Actualitza camps d'un champion. Response 200 o 404.
+
+    ## DELETE /champions/{championId}
+    Elimina un champion. Response 204 o 404.
+    ```
+  * Dona la spec a Cursor i demana: *"Genera els DTOs, Mapper, Exception Handler i Controller seguint exactament aquesta API spec."*
+  * Verifica que el codi generat compleix la spec: fes requests amb curl/Postman i compara input/output amb els exemples de la spec.
+  * Si el codi no compleix la spec, **itera la spec** (afegir detalls que faltaven) i regenera.
+  * **Lliçó:** Definir el contracte ABANS de programar és el workflow professional. A una empresa, l'API spec (OpenAPI/Swagger) es pacta entre frontend i backend abans d'escriure una línia.
+* **Crear DTOs (a mà o validant el generat):**
+  * `ChampionDTO` (public response): `championId`, `name`, `winRate`, `gamesPlayed`.
+  * `CreateChampionRequest` (POST payload): `name`, `winRate`.
+  * `UpdateChampionRequest` (PUT payload): camps opcionals.
+* **Mapper (manual o usar MapStruct):**
+  * Mètode `toDTO(ChampionRecord entity)`: converte entity en DTO.
+  * Mètode `toEntity(CreateChampionRequest request)`: crea entity de request.
+* **Global Exception Handler:**
+  * `@ControllerAdvice` que captura `EntityNotFoundException`, `ValidationException`.
+  * Retorna `ErrorResponse` amb HTTP status apropiat (404, 400, 500).
 
 
 ---
 
-### **Dimarts: Logging Estructurat — JSON, No Text**
+### **Dimarts: Controllers REST - CRUD Bàsic**
 
 * **Cursos i Material de Lectura:**
-* **Documentació:** structlog — [*Getting Started*](https://www.structlog.org/en/stable/getting-started.html).
-* **Article:** Baeldung — [*SLF4J Best Practices*](https://www.baeldung.com/slf4j-with-log4j2-logback).
-* **Article:** [*Structured Logging: Why and How*](https://www.honeycomb.io/blog/structured-logging-and-your-team).
+* **Article:** Baeldung — [*Spring @RequestMapping*](https://www.baeldung.com/spring-requestmapping).
+* **Article:** Baeldung — [*HTTP Status Codes*](https://www.baeldung.com/spring-boot-http-responses).
 
 
 * **Activitat i Què s'espera programar:**
-* **Substituir tots els `print()` per structlog (Python):**
-  ```python
-  import structlog
-
-  logger = structlog.get_logger()
-
-  # Abans (S7-S8):
-  print(f"Error fetching game {game_id}: {e}")
-
-  # Ara:
-  logger.error("game_fetch_failed", game_id=game_id, error=str(e))
-  ```
-* **Configurar SLF4J/Logback amb JSON output (Java):**
-  * Afegir dependència `logstash-logback-encoder` al `pom.xml`.
-  * Configurar `logback-spring.xml` per emetre JSON en lloc de text pla.
-* **Camps obligatoris a cada log entry:**
-  * `timestamp`, `level`, `service_name`, `correlation_id`, `message` + camps de context.
-* **Implementar correlation_id:**
-  * Generar UUID a l'entry point (middleware FastAPI / filter Spring).
-  * Propagar via header `X-Correlation-ID` entre serveis.
-  * Python: FastAPI middleware que genera o llegeix el header.
-  * Java: `OncePerRequestFilter` que fa el mateix.
-  ```python
-  # FastAPI middleware
-  @app.middleware("http")
-  async def correlation_id_middleware(request: Request, call_next):
-      correlation_id = request.headers.get(
-          "X-Correlation-ID", str(uuid.uuid4())
-      )
-      structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
-      response = await call_next(request)
-      response.headers["X-Correlation-ID"] = correlation_id
-      return response
-  ```
-* **Comparació: text vs JSON logs:**
-
-  | Aspecte            | Text pla                        | JSON estructurat                  |
-  |--------------------|----------------------------------|-----------------------------------|
-  | Llegibilitat humana | Fàcil per un log                | Menys intuïtiu                    |
-  | Cerca automatitzada | grep amb regex fràgils          | `jq '.correlation_id == "abc"'`   |
-  | Agregació          | Molt difícil                     | Trivial (ELK, Datadog, etc.)     |
-  | Context addicional | Calen convencions manuals        | Camps tipats i estructurats       |
-
-* **Exercici:** fer una request completa (curl -> Python -> Java -> H2) i buscar el correlation_id als logs dels dos serveis.
-* **Clau del dia:** "print() és per debugging local. Logging estructurat és per diagnosticar bugs en producció a les 3 de la matinada."
+* **Crear `ChampionController`:**
+  * Injecta `ChampionManagementService` (que a la seva vegada injecta `ChampionJpaRepository` de S5).
+  * `@GetMapping("/champions/{championId}")`: retorna `ChampionDTO` o 404 si no existeix.
+  * `@GetMapping("/champions")`: retorna `List<ChampionDTO>` amb paginació opcional (`?page=0&size=10`).
+  * `@PostMapping("/champions")`: accepta `CreateChampionRequest`, persisten via service, retorna `ChampionDTO` + 201 Created.
+  * `@PutMapping("/champions/{championId}")`: actualitza i retorna `ChampionDTO` o 404.
+  * `@DeleteMapping("/champions/{championId}")`: elimina i retorna 204 No Content.
+* **Query Parameters:**
+  * `GET /champions?name=Yasuo`: filtra per nom.
+  * `GET /champions?minGames=100000`: filtra per partides mínimes.
+* **Validació:**
+  * `@Valid` a DTOs amb `@NotBlank`, `@Min`, etc.
+  * Retorna 400 si validation fails.
 
 
 ---
 
-### **Dimecres: MCP Server Personalitzat — EsportsPulse com a Tool**
+### **Dimecres: Integració amb la BD i Testing**
 
 * **Cursos i Material de Lectura:**
-* **Documentació:** MCP Python SDK — [*GitHub: modelcontextprotocol/python-sdk*](https://github.com/modelcontextprotocol/python-sdk).
-* **Especificació:** MCP — [*Tools*](https://spec.modelcontextprotocol.io/specification/server/tools/).
-* **Tutorial:** Anthropic — [*Build MCP Servers*](https://docs.anthropic.com/en/docs/agents-and-tools/mcp).
+* **Article:** Baeldung — [*Testing Spring Boot REST*](https://www.baeldung.com/integration-testing-in-spring).
+* **Article:** Baeldung — [*MockMvc vs WebTestClient*](https://www.baeldung.com/spring-boot-webflux-webclient).
 
 
 * **Activitat i Què s'espera programar:**
-* **Crear un MCP server que exposa EsportsPulse com a tools.**
-  * A S8 vas connectar MCP servers existents. Ara en crees un de propi.
-  ```python
-  from mcp.server.fastmcp import FastMCP
-
-  mcp = FastMCP("esportspulse")
-
-  @mcp.tool()
-  async def get_champion(champion_id: str) -> dict:
-      """Obté les dades d'un champion per ID.
-      Retorna nom, winRate i role."""
-      response = requests.get(
-          f"{JAVA_API_URL}/champions/{champion_id}", timeout=5
-      )
-      response.raise_for_status()
-      return response.json()
-
-  @mcp.tool()
-  async def search_champions(query: str, limit: int = 10) -> list[dict]:
-      """Cerca champions per nom. Retorna fins a `limit` resultats."""
-      response = requests.get(
-          f"{JAVA_API_URL}/champions",
-          params={"title": query, "size": limit},
-          timeout=5
-      )
-      response.raise_for_status()
-      return response.json()
-
-  @mcp.tool()
-  async def get_champion_analysis(champion_id: str) -> dict:
-      """Analitza el rendiment d'un champion usant un LLM (crida el servei Python de S8)."""
-      # Crida al endpoint d'anàlisi de FastAPI
-      response = requests.post(
-          f"{PYTHON_API_URL}/analyze/{champion_id}", timeout=30
-      )
-      response.raise_for_status()
-      return response.json()
-
-  @mcp.tool()
-  async def get_champion_stats() -> dict:
-      """Retorna estadístiques agregades de tots els champions:
-      total champions, mitjana winRate, champion més popular."""
-      response = requests.get(
-          f"{JAVA_API_URL}/champions", timeout=5
-      )
-      champions = response.json()
-      total = len(champions)
-      avg_winrate = sum(c["winRate"] for c in champions) / total if total else 0
-      top_champion = max(champions, key=lambda c: c["gamesPlayed"], default=None)
-      return {
-          "totalChampions": total,
-          "averageWinRate": round(avg_winrate, 2),
-          "mostPopular": top_champion["name"] if top_champion else None,
-      }
-  ```
-* **Testejar localment:**
-  * Arrencar: `python esportspulse_mcp_server.py` (mode stdio).
-  * Connectar a Cursor: afegir el server a `.cursor/mcp.json`.
-  * Verificar que les 4 tools apareixen al panell MCP.
-  * Fer una pregunta: "Quin winRate té el champion Ahri?" — Cursor ha de cridar `get_champion`.
-* **Clau del dia:** "Ara Cursor pot parlar directament amb EsportsPulse sense que tu facis de pont."
+* **Verificar que els endpoints consulten la BD (S5):**
+  * El `@GetMapping("/champions")` executa `championRepository.findAll()` i retorna DTOs.
+  * El `@PostMapping("/champions")` executa `championRepository.save()`.
+  * Prova manualment amb Postman o curl.
+* **Crear tests (`ChampionControllerTests`):**
+  * Usar `@WebMvcTest` per testejar controladors isolats.
+  * Mock `ChampionManagementService`.
+  * Test: `GET /champions/CHAMP-123` retorna 200 + DTO.
+  * Test: `GET /champions/NONEXISTENT` retorna 404 + ErrorResponse.
+  * Test: `POST /champions` amb dades vàlides retorna 201.
+  * Test: `POST /champions` amb dades invàlides retorna 400.
+* **Integració Tests (`ChampionControllerIT`):**
+  * Usar `@SpringBootTest` + `MockMvc` o `TestRestTemplate`.
+  * Test end-to-end: POST champion → GET per championId → verifica que apareix.
+  * Test: DELETE → GET retorna 404.
 
 
 ---
 
-### **Dijous: MCP al Workflow de Desenvolupament**
+### **Dijous: CLI Consumidor (Python) i Documentació**
 
 * **Cursos i Material de Lectura:**
-* **Documentació:** Cursor — [*MCP Configuration*](https://docs.cursor.com/context/model-context-protocol).
-* **Article:** Anthropic — [*Model Context Protocol*](https://www.anthropic.com/news/model-context-protocol).
+* **Documentació:** [*Python Requests Library*](https://docs.python-requests.org/).
+* **Article:** Baeldung — [*Building a CLI with Spring Boot*](https://www.baeldung.com/spring-boot-cli).
 
 
 * **Activitat i Què s'espera programar:**
-* **Usar el MCP server creat ahir en un workflow real:**
-  * Pregunta a Cursor (amb MCP connectat):
-    * "Quin és el champion més popular?" — espera que cridi `get_champion_stats`.
-    * "Analitza el rendiment de Ahri" — espera que cridi `get_champion_analysis`.
-    * "Mostra'm tots els champions amb winRate superior al 52%" — espera que cridi `search_champions`.
-  * Les respostes han de venir del MCP server (dades reals de la BD), no de les dades d'entrenament de Cursor.
-* **Iterar l'spec del MCP server:**
-  * Afegir un **resource** (dades que el model pot llegir sense cridar un tool):
-  ```python
-  @mcp.resource("esportspulse://champions/top10")
-  async def top10_champions() -> str:
-      """Retorna els 10 champions més populars en format text."""
-      response = requests.get(
-          f"{JAVA_API_URL}/champions?sort=gamesPlayed,desc&size=10",
-          timeout=5
-      )
-      champions = response.json()
-      lines = [f"- {c['name']}: {c['winRate']}% winRate, {c['gamesPlayed']} games" for c in champions]
-      return "\n".join(lines)
-  ```
-  * Afegir un **prompt template** (prompt pre-definit que el model pot usar):
-  ```python
-  @mcp.prompt()
-  async def analyze_champion(champion_id: str) -> str:
-      """Prompt per analitzar el rendiment d'un champion."""
-      return f"""Analitza el rendiment del champion amb ID {champion_id}.
-  Usa el tool get_champion per obtenir les dades del champion.
-  Després usa get_champion_analysis per obtenir l'anàlisi del LLM.
-  Presenta els resultats de forma clara amb punts forts i febles."""
-  ```
-* **Reflexió:** Què ha funcionat? Què no? Quan el model no crida el tool correcte, és culpa del prompt o de la descripció del tool?
-* **Clau del dia:** "El MCP server és una spec executable — si les respostes no són bones, millora el server, no el prompt."
+* **Ampliar CLI `esportspulse` (Python) per consumir l'API REST:**
+  * Setup base de la CLI (basic `typer` setup).
+  * Comandos: `esportspulse list-champions`, `esportspulse get-champion CHAMP-123`, `esportspulse create-champion --name "Jinx" --winRate 52.3`.
+  * Client HTTP: usar `requests` library en Python per fer requests a `http://localhost:8080/champions/...`.
+  * Formatar output: taules, colors amb `rich` (optional).
+* **Documentació:**
+  * Afegir a README: "API Reference" amb exemples curl.
+  * Afegir a README: "CLI Quickstart" amb exemples.
 
 
 ---
 
-### **Divendres: Integració i Testing**
+### **Divendres: Swagger/OpenAPI i PR Final**
 
 * **Cursos i Material de Lectura:**
-* Repàs del material de la setmana.
-* **Article:** Baeldung — [*Spring Boot Integration Testing*](https://www.baeldung.com/spring-boot-testing).
+* **Article:** Baeldung — [*Swagger 2 with Spring Boot*](https://www.baeldung.com/swagger-2-documentation-for-spring-rest-api).
+* **Documentació:** [*SpringDoc OpenAPI*](https://springdoc.org/).
 
 
 * **Activitat i Què s'espera programar:**
-* **Tests per escenaris d'error:**
-  * Python amb Java caigut: mock HTTP errors amb `responses` o `httpx_mock`.
-  ```python
-  @responses.activate
-  def test_java_unavailable_returns_502():
-      responses.add(
-          responses.GET,
-          f"{JAVA_API_URL}/champions/ahri",
-          body=ConnectionError("Connection refused")
-      )
-      response = client.get("/champions/ahri")
-      assert response.status_code == 502
-      body = response.json()
-      assert body["type"] == "about:blank"
-      assert body["title"] == "External Service Unavailable"
-  ```
-  * Java amb requests malformades: verificar que retorna 400 amb Problem Details.
-  * Timeout scenarios: mock una resposta lenta, verificar que el timeout actua.
-* **Verificar correlation_ids als logs:**
-  * Fer una request end-to-end.
-  * Comprovar que el mateix `correlation_id` apareix als logs de Python i Java.
-* **Demo completa:**
-  ```
-  curl → Python FastAPI → Java Spring Boot → H2 DB → LLM (S8) → Response
-       ← correlation_id: "abc-123" apareix a TOTS els logs ←
-  ```
-* **CI update:**
-  * Afegir tests Python a GitHub Actions (S4).
-  * Verificar que `pytest` i `mvn test` passen al pipeline.
-* **Merge i reflexió:**
-  * Branca: `feature/week9-error-handling-mcp`.
-  * Commit: `feat: error handling, structured logging, custom MCP server`
-  * Reflexió sobre el progrés del Bloc 2:
-    * S7: Java REST API + Python CLI.
-    * S8: LLM integration, Pydantic, MCP basics.
-    * S9: Comunicació robusta + MCP server propi.
+* **Afegir Swagger (OpenAPI):**
+  * Dependència: `springdoc-openapi-starter-webmvc-ui`.
+  * Afegir `@Operation`, `@Schema` anotations als endpoints.
+  * Accedeix a `http://localhost:8080/swagger-ui.html` per veure API documentada automàticament.
+* **Consolidació CI/CD:**
+  * Tests REST passen (unit + integration).
+  * GitHub Actions: `mvn test` + cobertura gates.
+  * Commit message: `feat(java): REST API endpoints with database queries, DTOs, error handling, Swagger documentation`
+* **Demo i Merge:**
+  * Arranca l'app: `mvn spring-boot:run`.
+  * Prova manualment: POST champion, GET, DELETE.
+  * Prova CLI: `python -m esportspulse list-champions`.
+  * Puja la branca `feature/week7-rest-api` a GitHub.
+  * Verifica que tot és verd.
+  * Fes merge a `main`.
 
 ---
 
 ## Vídeos Recomanats
 
-- **Error handling en APIs:** Cerca "CodelyTV error handling API" (castellà) o "Hussein Nasser API error handling" (anglès, explica bé els patrons de retry i circuit breaker).
-- **Logging estructurat:** Cerca "structured logging Python tutorial" o "structlog Python" (anglès). En castellà hi ha poc contingut específic — els articles de la teoria cobreixen bé el tema.
-- **Retry i resiliència:** Cerca "Tenacity Python retry" o "resilience patterns microservices" (anglès, conceptes transferibles a qualsevol stack).
-- **MCP Server:** Cerca "build MCP server tutorial" o "Anthropic MCP server Python" — contingut recent, prioritza vídeos de 2024-2025.
+- **REST amb Spring Boot:** Cerca "TodoCode Spring Boot REST API" o "MitoCode Spring Boot CRUD" (castellà). En anglès: "Amigoscode Spring Boot REST API" (curs complet, molt clar).
+- **DTOs i Mappers:** Cerca "CodelyTV DTO pattern" (castellà) o "Bouali Ali Spring Boot DTO tutorial" (anglès).
+- **Swagger/OpenAPI:** Cerca "Spring Boot Swagger tutorial" o "Daily Code Buffer Spring Boot OpenAPI" (anglès, curt i directe).
+- **Testing REST:** Cerca "Java Brains Spring Boot MockMvc" o "Amigoscode Spring Boot testing" (anglès).
 
 ---
 
-## Nota sobre Robustesa i MCP
+## Nota sobre Progressió Persistència
 
-| Concepte               | Setmana | Estat                                     |
-|------------------------|---------|-------------------------------------------|
-| REST API               | S7      | Endpoints funcionals, @ControllerAdvice   |
-| Bridge Java-Python     | S8      | Comunicació bàsica, sense error handling  |
-| Error handling          | S9      | Timeout, retry, Problem Details (RFC 7807)|
-| Logging                | S9      | Estructurat, JSON, correlation_id         |
-| MCP (consumidor)       | S8      | Connectar servers existents               |
-| MCP (creador)          | S9      | Server propi amb tools, resources, prompts|
+- **S2/4:** Repository pattern abstracte (In-Memory).
+- **S5:** JPA real amb H2 (swap implementation, no changes to `ChampionManagementService`).
+- **S7:** REST endpoints que consulten la BD via `ChampionManagementService`.
 
-La comunicació entre serveis ara és robusta: si Java cau, Python no crasha — retorna un error net, loggeja el problema amb context suficient, i el correlation_id et permet trobar exactament què ha passat.
+Gràcies al pattern, el developer va de "conceptual" a "real DB" sense esforç de refactorització major.

@@ -1,639 +1,607 @@
-# Setmana 5 - Teoria: Persistència, JPA i SQL Real
+# Setmana 4 - Teoria: Clean Code, Code Review i Git Professional
 
-## 1. Introducció: De la RAM a la Base de Dades
+## 1. Introducció: El 80% del Teu Temps és Llegir Codi
 
-Fins ara, EsportsPulse guarda els champions en un `ConcurrentHashMap` dins de `InMemoryChampionRepository`:
-
-```
-Aplicació s'inicia → HashMap buit
-Afegeixes 50 champions → HashMap amb 50 entries
-Aplicació es para → TOT DESAPAREIX
-```
-
-A producció, les dades han de sobreviure reinicis, desplegaments, i crashes. Necessitem una **base de dades**.
+Un developer junior espera escriure codi tot el dia. La realitat:
 
 ```
-Sense BD (S2-S4):                    Amb BD (S5+):
-┌───────────────┐                    ┌───────────────┐
-│  Java App     │                    │  Java App     │
-│  ┌─────────┐  │                    │  ┌─────────┐  │
-│  │ HashMap │  │                    │  │   JPA   │──│──→ Base de Dades (H2)
-│  │ (RAM)   │  │                    │  └─────────┘  │     ┌──────────────────┐
-│  └─────────┘  │                    └───────────────┘     │ Taula: champions │
-└───────────────┘                                          │  championId (PK) │
-   Dades en RAM                                            │  name            │
-   → es perden                                             │  winRate         │
-                                                           │  gamesPlayed     │
-                                                           └──────────────────┘
-                                                           Dades a disc
-                                                           → sobreviuen
+Distribució real del temps d'un developer:
+┌────────────────────────────────────────────────────┐
+│ ████████████████████████████████████████  80% Llegir│  Entendre codi existent, reviews, debugging
+│ ████████  20% Escriure                             │  Codi nou, refactoring
+└────────────────────────────────────────────────────┘
 ```
+
+El teu primer dia a una empresa:
+1. Et donen accés a un repositori de 200.000 línies.
+2. Et donen un ticket Jira: "Bug: el winRate es mostra amb decimals incorrectes".
+3. Has de trobar on es calcula el winRate, entendre la lògica, i corregir-ho.
+
+Ningú t'explicarà el codi línia per línia. Has de saber llegir-lo sol.
 
 ---
 
-## 2. SQL: El Llenguatge de les Bases de Dades
+## 2. Clean Code: Principis que Importen
 
-### Què és SQL?
-
-SQL (Structured Query Language) és el llenguatge per parlar amb bases de dades relacionals. Porta 50 anys funcionant i no té substitut.
-
-### Les 4 Operacions Bàsiques (CRUD)
-
-```sql
--- CREATE: Inserir dades
-INSERT INTO champions (champion_id, name, role, win_rate, games_played)
-VALUES ('jinx', 'Jinx', 'marksman', 52.30, 500000);
-
--- READ: Consultar dades
-SELECT * FROM champions WHERE champion_id = 'jinx';
-SELECT name, win_rate FROM champions WHERE win_rate > 52.00 ORDER BY win_rate;
-
--- UPDATE: Modificar dades
-UPDATE champions SET win_rate = 51.50 WHERE champion_id = 'yasuo';
-
--- DELETE: Eliminar dades
-DELETE FROM champions WHERE champion_id = 'yasuo';
-```
-
-### Crear la Taula
-
-```sql
-CREATE TABLE champions (
-    champion_id VARCHAR(50) PRIMARY KEY,  -- Clau única, no es repeteix
-    name VARCHAR(255) NOT NULL,           -- Obligatori
-    role VARCHAR(50) NOT NULL,            -- Rol del champion
-    win_rate DECIMAL(5, 2) NOT NULL,      -- 2 decimals
-    games_played BIGINT DEFAULT 0
-);
-```
-
-**PRIMARY KEY:** Com el `championId` del HashMap — identifica cada fila de forma única. La BD crea automàticament un **index** per buscar ràpidament per `champion_id` (equivalent al hash del HashMap).
-
-### Filtrar i Ordenar
-
-```sql
--- Champions marksman ordenats per partides jugades
-SELECT name, games_played 
-FROM champions 
-WHERE role = 'marksman' 
-ORDER BY games_played DESC;
-
--- Els 10 champions amb més partides
-SELECT name, games_played 
-FROM champions 
-ORDER BY games_played DESC 
-LIMIT 10;
-
--- Champions que contenen "Jinx" al nom
-SELECT * FROM champions 
-WHERE name LIKE '%Jinx%';
-```
-
-### Funcions d'Agregació
-
-```sql
--- Quants champions tenim?
-SELECT COUNT(*) FROM champions;
-
--- WinRate mitjà dels champions amb winRate positiu
-SELECT AVG(win_rate) FROM champions WHERE win_rate > 0;
-
--- Total de partides jugades per rang de winRate
-SELECT 
-    CASE 
-        WHEN win_rate < 48 THEN 'Low'
-        WHEN win_rate <= 52 THEN 'Average'
-        ELSE 'High'
-    END AS tier,
-    COUNT(*) AS champion_count,
-    SUM(games_played) AS total_games
-FROM champions
-GROUP BY tier;
-```
-
-### JOINs: Relacionar Taules
-
-Quan la BD creixi (S15 amb PostgreSQL), tindrem múltiples taules:
-
-```sql
--- Taules
-CREATE TABLE champions (
-    champion_id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL
-);
-
-CREATE TABLE patches (
-    id SERIAL PRIMARY KEY,
-    champion_id VARCHAR(50) REFERENCES champions(champion_id),  -- Foreign key
-    patch_version VARCHAR(20),
-    release_date DATE,
-    description TEXT
-);
-
--- JOIN: Obtenir champions amb els seus patches de balance
-SELECT g.name, p.patch_version, p.release_date
-FROM champions g
-JOIN patches p ON g.champion_id = p.champion_id
-WHERE g.name = 'Jinx'
-ORDER BY p.release_date DESC;
-```
-
-```
-Resultat:
-┌──────┬───────────────┬────────────┐
-│ name │ patch_version │ release_date│
-├──────┼───────────────┼────────────┤
-│ Jinx │ 14.5          │ 2024-03-06 │
-│ Jinx │ 14.4          │ 2024-02-22 │
-│ Jinx │ 14.3          │ 2024-02-07 │
-└──────┴───────────────┴────────────┘
-```
-
-**Per què importa:** A les entrevistes de backend, et demanaran escriure JOINs. JPA els amaga, però has de saber què passa per sota.
-
----
-
-## 3. Indexes: Per Què les Queries Són Ràpides (o Lentes)
-
-### Sense Index
-
-```sql
-SELECT * FROM champions WHERE name = 'Jinx';
-```
-
-Sense index, la BD recorre **tota la taula** fila per fila:
-
-```
-Taula champions (100.000 files):
-Fila 1: ahri, "Ahri"                  ← No
-Fila 2: yasuo, "Yasuo"                ← No
-Fila 3: thresh, "Thresh"              ← No
-...
-Fila 42857: jinx, "Jinx"              ← TROBAT! (però ha mirat 42.857 files)
-...continua fins al final per si n'hi ha més...
-Fila 100000: sona, "Sona"
-
-→ Full Table Scan: O(n) — exactament el problema de S1 amb ArrayList!
-```
-
-### Amb Index
-
-```sql
-CREATE INDEX idx_champions_name ON champions(name);
-```
-
-La BD crea una estructura auxiliar (B-Tree) que permet trobar files per `name` en O(log n):
-
-```
-Index B-Tree per name:
-                    ┌─────────────────┐
-                    │  "J" < "Jinx"   │
-                    │  → branca dreta  │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ "Jinx"         │
-                    │ → Fila 42857   │
-                    └─────────────────┘
-
-→ Index Scan: O(log n) — 17 passos per a 100.000 files (en lloc de 100.000)
-```
-
-### EXPLAIN: Veure Què Fa la BD
-
-```sql
-EXPLAIN SELECT * FROM champions WHERE name = 'Jinx';
-```
-
-```
-Sense index:
-Seq Scan on champions  (cost=0.00..1850.00 rows=1 width=120)
-  Filter: (name = 'Jinx')
-→ "Seq Scan" = recorregut seqüencial = LENT
-
-Amb index:
-Index Scan using idx_champions_name on champions  (cost=0.00..8.27 rows=1 width=120)
-  Index Cond: (name = 'Jinx')
-→ "Index Scan" = usa l'index = RÀPID
-```
-
-**Connexió amb S1:** Un index de BD és l'equivalent d'un HashMap per a dades a disc. La PRIMARY KEY ja crea un index automàticament — per això `findById` sempre és ràpid.
-
-### Quan Crear Indexes
-
-| Cas | Index? | Per què |
-|-----|--------|---------|
-| `WHERE champion_id = ?` | Ja existeix (PK) | Primary Key és index automàtic |
-| `WHERE name = ?` | ✅ Crear | Cerques freqüents per nom |
-| `WHERE win_rate > 52` | Depèn | Només si la query és freqüent |
-| `ORDER BY games_played DESC` | ✅ Crear | Rankings/top lists |
-| `WHERE name LIKE '%Jinx%'` | ❌ No serveix | LIKE amb % al principi no pot usar index B-Tree |
-
-### Trade-off dels Indexes
-
-```
-Sense index:
-- SELECT: Lent (full scan)
-- INSERT/UPDATE: Ràpid (no cal actualitzar index)
-- Espai: Mínim
-
-Amb index:
-- SELECT: Ràpid (index scan)
-- INSERT/UPDATE: Una mica més lent (cal actualitzar index)
-- Espai: Index ocupa disc extra
-```
-
-**Regla pràctica:** Crea indexes per a columnes que apareixen en `WHERE`, `JOIN ON`, i `ORDER BY` en queries freqüents. No indexis tot.
-
----
-
-## 4. ACID: Les Garanties d'una Base de Dades
-
-### Què és ACID?
-
-```
-A - Atomicitat:    Tot o res (si falla a mig camí, es desfà tot)
-C - Consistència:  La BD sempre queda en estat vàlid
-I - Isolament:     Transaccions concurrents no es trepitgen
-D - Durabilitat:   Un cop fet COMMIT, les dades sobreviuen un crash
-```
-
-### Atomicitat en Pràctica
+### Noms Significatius
 
 ```java
-@Transactional
-public void transferGamesPlayed(String fromChampionId, String toChampionId, long count) {
-    ChampionRecord from = repository.findById(fromChampionId).orElseThrow();
-    ChampionRecord to = repository.findById(toChampionId).orElseThrow();
-    
-    from.setGamesPlayed(from.getGamesPlayed() - count);
-    to.setGamesPlayed(to.getGamesPlayed() + count);
-    
-    repository.save(from);
-    // Si aquí falla (excepció, crash, timeout)...
-    repository.save(to);  
+// ❌ Què fa això?
+public List<ChampionRecord> get(String s, int n) {
+    return repo.findAll().stream()
+        .filter(g -> g.name().contains(s))
+        .limit(n)
+        .toList();
+}
+
+// ✅ Ara s'entén sense llegir la implementació
+public List<ChampionRecord> searchByName(String keyword, int maxResults) {
+    return championRepository.findAll().stream()
+        .filter(champion -> champion.name().contains(keyword))
+        .limit(maxResults)
+        .toList();
 }
 ```
 
-**Sense @Transactional:** Si falla entre els dos `save()`, `from` ha perdut partides però `to` no les ha guanyat. Partides desaparegudes.
+**Regla:** Si has de llegir el cos d'un mètode per entendre què fa, el nom és dolent.
 
-**Amb @Transactional:** Si falla, Spring fa ROLLBACK → ambdós canvis es desfan. Les dades queden com estaven.
-
-```
-Sense @Transactional:          Amb @Transactional:
-BEGIN                          BEGIN
-UPDATE from: -1000 ✅          UPDATE from: -1000 ✅
-💥 Error!                      💥 Error!
-UPDATE to: +1000 ❌            ROLLBACK → from torna a l'original
-→ 1000 partides perdudes       → Tot queda com estava
-```
-
-### Isolament: Concurrent DB Access (Connexió amb S3)
-
-A S3 vam veure el "Lost Update":
-
-```
-Thread A: READ champion.winRate = 51.20
-Thread B: READ champion.winRate = 51.20
-Thread A: WRITE champion.winRate = 49.80  ✅
-Thread B: WRITE champion.winRate = 53.10  ✅  ← Sobreescriu el canvi de A!
-```
-
-`@Transactional` amb isolation level controla això:
-
-| Isolation Level | Permet Lost Update? | Rendiment |
-|----------------|-------------------|-----------|
-| READ_UNCOMMITTED | Sí ❌ | Molt ràpid |
-| READ_COMMITTED (defecte) | Possible ⚠️ | Bo |
-| REPEATABLE_READ | No ✅ | Acceptable |
-| SERIALIZABLE | No ✅ | Lent (serialitza tot) |
-
-**En pràctica:** `READ_COMMITTED` + Optimistic Locking (`@Version`) és la combinació més comuna.
-
----
-
-## 5. JPA: L'Abstracció sobre SQL
-
-### Què és JPA?
-
-JPA (Java Persistence API) mapeja classes Java a taules SQL:
-
-```
-Java                           SQL
-────                           ───
-@Entity                   →    CREATE TABLE
-class ChampionRecord      →    champions
-@Id String championId     →    champion_id VARCHAR PRIMARY KEY
-String name               →    name VARCHAR
-BigDecimal winRate        →    win_rate DECIMAL
-
-repository.save(champion) →    INSERT INTO champions VALUES (...)
-repository.findById(id)   →    SELECT * FROM champions WHERE champion_id = ?
-repository.findAll()      →    SELECT * FROM champions
-repository.delete(champion)→   DELETE FROM champions WHERE champion_id = ?
-```
-
-### @Entity: Convertir una Classe en Taula
-
-```java
-@Entity
-@Table(name = "champions")
-public class ChampionRecord {
-    
-    @Id
-    private String championId;
-    
-    @Column(nullable = false)
-    private String name;
-    
-    @Column(nullable = false, length = 50)
-    private String role;
-    
-    @Column(precision = 5, scale = 2)
-    private BigDecimal winRate;
-    
-    @Column(name = "games_played")
-    private Long gamesPlayed;
-    
-    @Version
-    private Long version;  // Per Optimistic Locking (S3)
-    
-    // JPA necessita constructor buit
-    protected ChampionRecord() {}
-    
-    public ChampionRecord(String championId, String name, String role, BigDecimal winRate, Long gamesPlayed) {
-        this.championId = championId;
-        this.name = name;
-        this.role = role;
-        this.winRate = winRate;
-        this.gamesPlayed = gamesPlayed;
-    }
-    
-    // Getters (i setters si necessaris per JPA)
-}
-```
-
-**Nota sobre immutabilitat:** A S2 vam usar `record` (immutable). JPA entities necessiten setters per actualitzar camps. El trade-off:
-- `record` → immutable, thread-safe, ideal per DTOs i transferir dades
-- `@Entity class` → mutable (JPA ho requereix), però protegit per `@Transactional`
-- Solució: Entity mutable a la capa de persistència, DTO immutable (`record`) a la capa d'API
-
-### JpaRepository: CRUD Automàtic
-
-```java
-public interface ChampionJpaRepository extends JpaRepository<ChampionRecord, String> {
-    
-    // Spring genera la implementació SQL automàticament!
-    // No has d'escriure cap línia de SQL ni d'implementació.
-    
-    // findAll()    → SELECT * FROM champions
-    // findById()   → SELECT * FROM champions WHERE champion_id = ?
-    // save()       → INSERT/UPDATE
-    // delete()     → DELETE FROM champions WHERE champion_id = ?
-    
-    // Queries derivades del nom del mètode:
-    List<ChampionRecord> findByNameContaining(String keyword);
-    // → SELECT * FROM champions WHERE name LIKE '%keyword%'
-    
-    List<ChampionRecord> findByGamesPlayedGreaterThan(Long count);
-    // → SELECT * FROM champions WHERE games_played > ?
-    
-    List<ChampionRecord> findByWinRateBetween(BigDecimal min, BigDecimal max);
-    // → SELECT * FROM champions WHERE win_rate BETWEEN ? AND ?
-}
-```
-
-**Com funciona?** Spring Data llegeix el nom del mètode i genera el SQL:
-
-```
-findByNameContaining
-  │   │     │
-  │   │     └── LIKE '%...%'
-  │   └──────── WHERE name
-  └──────────── SELECT * FROM champions
-```
-
-### @Query: SQL Explícit
-
-Quan el nom del mètode no és suficient:
-
-```java
-@Query("SELECT g FROM ChampionRecord g WHERE g.winRate > :minWinRate ORDER BY g.gamesPlayed DESC")
-List<ChampionRecord> findHighWinRateMetaChampions(@Param("minWinRate") BigDecimal minWinRate);
-
-// SQL natiu (per queries complexes)
-@Query(value = "SELECT * FROM champions WHERE name ILIKE %:keyword%", nativeQuery = true)
-List<ChampionRecord> searchIgnoreCase(@Param("keyword") String keyword);
-```
-
----
-
-## 6. H2: La Base de Dades de Desenvolupament
-
-### Què és H2?
-
-H2 és una BD relacional que corre **dins de la JVM** (in-memory o a fitxer):
-
-```
-Producció:                          Desenvolupament:
-┌─────────────┐    xarxa    ┌───────────┐    ┌─────────────┐   dins la JVM   ┌────┐
-│ Java App    │ ──────────→ │ PostgreSQL│    │ Java App    │ ─────────────→ │ H2 │
-└─────────────┘             └───────────┘    │ ┌────┐      │               └────┘
-                                             │ │ H2 │      │
-                                             │ └────┘      │
-                                             └─────────────┘
-```
-
-**Avantatges per desenvolupament:**
-- Zero configuració: només una dependència Maven
-- Ràpida: tot a RAM
-- Consola web: `http://localhost:8080/h2-console`
-- Compatible amb SQL estàndard
-
-### Configuració
-
-```properties
-# application.properties
-spring.datasource.url=jdbc:h2:mem:esportspulse
-spring.datasource.driver-class-name=org.h2.Driver
-spring.jpa.hibernate.ddl-auto=create-drop
-spring.h2.console.enabled=true
-```
-
-`ddl-auto=create-drop`: JPA crea les taules automàticament a partir de les `@Entity`. Pràctic per desenvolupament; **mai en producció** (per això a S15 introduirem Flyway per migracions controlades).
-
----
-
-## 7. El Poder del Pattern Repository: El Swap
-
-El moment clau de S5: reemplaçar `InMemoryChampionRepository` per `ChampionJpaRepository` **sense canviar cap línia de `ChampionManagementService`**:
-
-```
-Setmanes 2-4:                        Setmana 5:
-
-ChampionManagementService                 ChampionManagementService
-    │                                     │
-    ▼                                     ▼
-ChampionRepository (interfície)           ChampionRepository (interfície)
-    │                                     │
-    ▼                                     ▼
-InMemoryChampionRepository               ChampionJpaRepository
-    │                                     │
-    ▼                                     ▼
-ConcurrentHashMap (RAM)               H2 Database (SQL)
-```
-
-El codi de `ChampionManagementService` és **exactament el mateix**:
-
-```java
-@Service
-public class ChampionManagementService {
-    private final ChampionRepository repository;  // No sap si és In-Memory o SQL!
-    
-    public ChampionManagementService(ChampionRepository repository) {
-        this.repository = repository;
-    }
-    
-    public void registerChampion(String championId, String name, String role, BigDecimal winRate) {
-        ChampionRecord champion = new ChampionRecord(championId, name, role, winRate, 0L);
-        repository.save(champion);  // Funciona amb HashMap o SQL
-    }
-    
-    public List<ChampionRecord> getMetaChampions() {
-        return repository.findAll().stream()
-            .filter(g -> g.getGamesPlayed() > 100_000)
-            .toList();
-    }
-}
-```
-
-**Això és SOLID en acció:**
-- **D (Dependency Inversion):** Depèn de l'abstracció (`ChampionRepository`), no de la implementació
-- **O (Open/Closed):** Canviem la persistència sense modificar la lògica de negoci
-- **L (Liskov):** `ChampionJpaRepository` és substituïble per `InMemoryChampionRepository`
-
-**I tots els tests de S2-S4 segueixen passant** perquè testejaven contra la interfície.
-
----
-
-## 8. Python: Persistència amb SQLite
-
-### L'Equivalent a H2 en Python
+**En Python és igual:**
 
 ```python
-import sqlite3
-from dataclasses import dataclass
+# ❌
+def get(s, n):
+    return [g for g in champions if s in g.name][:n]
 
-@dataclass(frozen=True)
-class ChampionRecord:
-    champion_id: str
-    name: str
-    role: str
-    win_rate: float
-    games_played: int
-
-class SqliteChampionRepository:
-    def __init__(self, db_path: str = ":memory:"):
-        self.conn = sqlite3.connect(db_path)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS champions (
-                champion_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                role TEXT NOT NULL,
-                win_rate REAL NOT NULL,
-                games_played INTEGER DEFAULT 0
-            )
-        """)
-    
-    def save(self, champion: ChampionRecord) -> None:
-        self.conn.execute(
-            "INSERT OR REPLACE INTO champions VALUES (?, ?, ?, ?, ?)",
-            (champion.champion_id, champion.name, champion.role, champion.win_rate, champion.games_played)
-        )
-        self.conn.commit()
-    
-    def find_by_id(self, champion_id: str) -> ChampionRecord | None:
-        row = self.conn.execute(
-            "SELECT * FROM champions WHERE champion_id = ?", (champion_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        return ChampionRecord(*row)
-    
-    def find_all(self) -> list[ChampionRecord]:
-        rows = self.conn.execute("SELECT * FROM champions").fetchall()
-        return [ChampionRecord(*row) for row in rows]
+# ✅
+def search_by_name(keyword: str, max_results: int) -> list[ChampionRecord]:
+    return [champion for champion in champions if keyword in champion.name][:max_results]
 ```
 
-**Comparativa:**
+### Funcions Petites amb Una Sola Responsabilitat
 
-| Concepte | Java (JPA + H2) | Python (sqlite3) |
-|----------|-----------------|-------------------|
-| BD lleugera | H2 | SQLite |
-| ORM | JPA (`@Entity`, `JpaRepository`) | Manual (o SQLAlchemy a S8+) |
-| Queries | Derivades del nom del mètode | SQL explícit |
-| Paràmetres | `@Param("name")` | `?` o `:name` |
-| Transaccions | `@Transactional` | `conn.commit()` / `conn.rollback()` |
+```java
+// ❌ Fa massa coses: valida, busca, transforma, i gestiona errors
+public ChampionDTO getChampionWithAdjustedStats(String championId, double patchModifier) {
+    if (championId == null || championId.isBlank()) {
+        throw new IllegalArgumentException("championId is required");
+    }
+    if (patchModifier < -1 || patchModifier > 1) {
+        throw new IllegalArgumentException("patchModifier must be between -1 and 1");
+    }
+    ChampionRecord champion = repository.findById(championId).orElse(null);
+    if (champion == null) {
+        throw new EntityNotFoundException("Champion " + championId + " not found");
+    }
+    BigDecimal adjustedWinRate = champion.winRate().multiply(
+        BigDecimal.valueOf(1 + patchModifier)
+    ).setScale(2, RoundingMode.HALF_UP);
+    return new ChampionDTO(champion.championId(), champion.name(), adjustedWinRate, champion.gamesPlayed());
+}
 
-### Tests amb pytest
+// ✅ Cada cosa al seu lloc
+public ChampionDTO getChampionWithAdjustedStats(String championId, double patchModifier) {
+    ChampionRecord champion = findChampionOrThrow(championId);
+    BigDecimal adjustedWinRate = calculateAdjustedWinRate(champion.winRate(), patchModifier);
+    return ChampionDTO.from(champion, adjustedWinRate);
+}
 
-```python
-import pytest
+private ChampionRecord findChampionOrThrow(String championId) {
+    return repository.findById(championId)
+        .orElseThrow(() -> new EntityNotFoundException("Champion " + championId + " not found"));
+}
 
-@pytest.fixture
-def repo():
-    return SqliteChampionRepository(":memory:")
+private BigDecimal calculateAdjustedWinRate(BigDecimal winRate, double patchModifier) {
+    return winRate.multiply(BigDecimal.valueOf(1 + patchModifier))
+        .setScale(2, RoundingMode.HALF_UP);
+}
+```
 
-@pytest.fixture
-def sample_champion():
-    return ChampionRecord("jinx", "Jinx", "marksman", 52.3, 500_000)
+### Early Return (Evitar Nesting)
 
-def test_save_and_find(repo, sample_champion):
-    repo.save(sample_champion)
-    found = repo.find_by_id("jinx")
-    assert found == sample_champion
+```java
+// ❌ Piràmide de la mort
+public void processChampion(ChampionRecord champion) {
+    if (champion != null) {
+        if (champion.winRate().compareTo(BigDecimal.ZERO) > 0) {
+            if (champion.gamesPlayed() > 0) {
+                // La lògica real està enterrada a 3 nivells
+                repository.save(champion);
+            }
+        }
+    }
+}
 
-def test_find_nonexistent(repo):
-    assert repo.find_by_id("NOPE") is None
-
-def test_find_all(repo, sample_champion):
-    repo.save(sample_champion)
-    repo.save(ChampionRecord("yasuo", "Yasuo", "fighter", 49.5, 400_000))
-    assert len(repo.find_all()) == 2
+// ✅ Guard clauses: surt aviat si les precondicions fallen
+public void processChampion(ChampionRecord champion) {
+    if (champion == null) return;
+    if (champion.winRate().compareTo(BigDecimal.ZERO) <= 0) return;
+    if (champion.gamesPlayed() <= 0) return;
+    
+    repository.save(champion);
+}
 ```
 
 ---
 
-## 9. Exercici SQL a la Consola H2
+## 3. Anti-Patrons en Codi Generat per IA
 
-Un dels exercicis de la setmana és obrir la consola H2 (`http://localhost:8080/h2-console`) i escriure queries SQL a mà. Exemples:
+La IA (Claude, Copilot, ChatGPT) genera codi que **compila i funciona al happy path**. Però el happy path no és producció. Aquests són els anti-patrons que has de saber detectar:
 
-```sql
--- 1. Inserir dades de prova
-INSERT INTO champions VALUES ('jinx', 'Jinx', 'marksman', 52.30, 500000);
-INSERT INTO champions VALUES ('yasuo', 'Yasuo', 'fighter', 49.50, 400000);
-INSERT INTO champions VALUES ('ahri', 'Ahri', 'mage', 51.80, 350000);
-INSERT INTO champions VALUES ('lux', 'Lux', 'mage', 50.20, 300000);
-INSERT INTO champions VALUES ('thresh', 'Thresh', 'support', 48.90, 250000);
+### Anti-Patró 1: SQL Injection
 
--- 2. Consultes bàsiques
-SELECT * FROM champions ORDER BY games_played DESC;
-SELECT name, win_rate FROM champions WHERE role = 'marksman';
-SELECT COUNT(*) AS total, AVG(win_rate) AS avg_win_rate FROM champions;
-
--- 3. Verificar que JPA ha creat el que esperem
-SHOW TABLES;
-SHOW COLUMNS FROM champions;
-
--- 4. Veure el pla d'execució
-EXPLAIN SELECT * FROM champions WHERE name = 'Lux';
--- Sense index: TABLE SCAN
-CREATE INDEX idx_champions_name ON champions(name);
-EXPLAIN SELECT * FROM champions WHERE name = 'Lux';
--- Amb index: INDEX SCAN
+```java
+// La IA sovint genera queries concatenant strings
+@Query("SELECT g FROM Champion g WHERE g.name = '" + name + "'")
+List<ChampionRecord> findByName(String name);
 ```
 
-**Per què fer-ho a mà?** JPA genera SQL automàticament. Però quan una query és lenta o retorna dades incorrectes, necessites saber SQL per diagnosticar. "L'abstracció no substitueix el coneixement."
+**Per què és perillós:**
+
+```
+Input normal:    name = "Jinx"
+Query:           SELECT g FROM Champion g WHERE g.name = 'Jinx'  ✅
+
+Input maliciós:  name = "'; DROP TABLE champions; --"
+Query:           SELECT g FROM Champion g WHERE g.name = ''; DROP TABLE champions; --'
+                 → ELIMINA TOTA LA TAULA
+```
+
+**Solució:**
+
+```java
+@Query("SELECT g FROM Champion g WHERE g.name = :name")
+List<ChampionRecord> findByName(@Param("name") String name);
+// El paràmetre s'escapa automàticament → impossible injectar SQL
+```
+
+**En Python:**
+
+```python
+# ❌ SQL injection
+cursor.execute(f"SELECT * FROM champions WHERE name = '{name}'")
+
+# ✅ Paràmetres vinculats
+cursor.execute("SELECT * FROM champions WHERE name = ?", (name,))
+```
+
+### Anti-Patró 2: Secrets al Codi Font
+
+```java
+// La IA genera secrets inline perquè no coneix el teu entorn
+private static final String RIOT_API_KEY = "RGAPI-abc123def456ghi789";
+private static final String DB_PASSWORD = "admin123";
+```
+
+**Per què és perillós:** El secret acaba a Git. Qualsevol que tingui accés al repo (inclòs si es fa públic per accident) té les teves claus.
+
+**Solució:**
+
+```java
+// application.properties (exclòs de Git via .gitignore)
+riot.api.key=${RIOT_API_KEY}
+
+// Codi
+@Value("${riot.api.key}")
+private String riotApiKey;
+```
+
+```python
+# .env (exclòs de Git)
+RIOT_API_KEY=RGAPI-abc123def456ghi789
+
+# Codi
+import os
+riot_api_key = os.environ["RIOT_API_KEY"]
+```
+
+### Anti-Patró 3: NullPointerException Amagat
+
+```java
+// La IA assumeix que tot existeix
+ChampionRecord champion = repository.findById(championId);
+return champion.name();  // ← Si el campió no existeix: NullPointerException
+```
+
+**Solució:**
+
+```java
+return repository.findById(championId)
+    .orElseThrow(() -> new EntityNotFoundException("Champion " + championId + " not found"))
+    .name();
+```
+
+**En Python:**
+
+```python
+# ❌
+champion = repository.find_by_id(champion_id)
+return champion.name  # AttributeError si champion és None
+
+# ✅
+champion = repository.find_by_id(champion_id)
+if champion is None:
+    raise ChampionNotFoundError(f"Champion {champion_id} not found")
+return champion.name
+```
+
+### Anti-Patró 4: Tests que No Testegen Res
+
+```java
+@Test
+void testGetChampion() {
+    // Setup: diem al mock què ha de retornar
+    when(mockService.findById("Jinx")).thenReturn(testChampion);
+    
+    // Act: cridem el mock directament
+    ChampionRecord result = mockService.findById("Jinx");
+    
+    // Assert: verifiquem que el mock retorna el que li hem dit
+    assertNotNull(result);  // Sempre serà no-null perquè ho hem configurat!
+    assertEquals("Jinx", result.championId());  // Verifica el mock, no el codi!
+}
+```
+
+**Per què és dolent:** No testeja el teu codi. Testeja que Mockito funciona. Si el teu `ChampionController` té un bug, aquest test seguirà passant.
+
+**Solució: Testejar el codi real, mockejar les dependències**
+
+```java
+@Test
+void testGetChampion() {
+    // Mock de la dependència (repository)
+    when(mockRepository.findById("Jinx")).thenReturn(Optional.of(testChampion));
+    
+    // Crida al codi REAL (controller o service)
+    ChampionDTO result = championService.getChampion("Jinx");
+    
+    // Verifica que el codi real transforma correctament
+    assertEquals("Jinx", result.championId());
+    assertEquals("Jinx", result.name());
+}
+```
+
+### Anti-Patró 5: Excepció Silenciada
+
+```java
+try {
+    riotApiClient.fetchChampionData(championId);
+} catch (Exception e) {
+    // TODO: handle later
+}
+// El codi continua com si no hagués passat res
+// En producció: dades incompletes sense cap error visible
+```
+
+**Solució mínima:**
+
+```java
+try {
+    riotApiClient.fetchChampionData(championId);
+} catch (RiotApiException e) {
+    log.error("Failed to fetch champion data for {}: {}", championId, e.getMessage());
+    throw new ChampionEnrichmentException("Could not enrich champion " + championId, e);
+}
+```
+
+**En Python:**
+
+```python
+# ❌
+try:
+    riot_client.fetch_champion_data(champion_id)
+except:  # Catch-all sense logging
+    pass
+
+# ✅
+try:
+    riot_client.fetch_champion_data(champion_id)
+except RiotApiError as e:
+    logger.error("Failed to fetch champion %s: %s", champion_id, e)
+    raise ChampionEnrichmentError(f"Could not enrich {champion_id}") from e
+```
+
+---
+
+## 4. Code Review: La Skill Professional Invisible
+
+### Per Què Code Review?
+
+A una empresa, **cap línia de codi arriba a producció sense review**. El procés:
+
+```
+Developer escriu codi
+    │
+    ▼
+Crea Pull Request (PR) a GitHub
+    │
+    ▼
+Reviewer(s) llegeixen el codi
+    │
+    ├── Comentaris: preguntes, suggeriments, problemes
+    │
+    ▼
+Developer adreça els comentaris
+    │
+    ▼
+Reviewer aprova ("LGTM" — Looks Good To Me)
+    │
+    ▼
+Merge a main
+```
+
+### Què Buscar en una Code Review
+
+```
+1. CORRECCIÓ         Fa el que hauria de fer? Edge cases?
+2. SEGURETAT         SQL injection? Secrets? Input no validat?
+3. TESTS             Els canvis estan testejats? Tests edge cases?
+4. MANTENIBILITAT    Ho entendrà algú dins 6 mesos?
+5. RENDIMENT         Hi ha loops innecessaris? N+1 queries?
+```
+
+### Com Escriure Comentaris de Review
+
+```
+❌ MAL:
+"Això està malament."
+"No m'agrada."
+"Per què has fet això?"
+
+✅ BÉ:
+"Això podria llançar NullPointerException si findById retorna empty. 
+ Suggereixo usar orElseThrow() amb un missatge descriptiu."
+
+"Veig que concatenes el name al query SQL. Això obre un vector 
+ d'SQL injection — caldria usar paràmetres vinculats (:name)."
+
+"Bon refactoring separant la validació! Una cosa: el test 
+ testGetChampion() verifica el mock en lloc del controller — 
+ mockeja el repository i crida el controller real."
+```
+
+**Format d'un bon comentari:**
+1. **Observació:** Què veus (objectiu, no subjectiu)
+2. **Impacte:** Per què és un problema (o per què és bo)
+3. **Suggeriment:** Com millorar-ho (si és un problema)
+
+### Saber Dir "LGTM"
+
+No tot és un problema. Si un fitxer està bé, diga-ho:
+
+```
+✅ "LGTM — la separació entre DTO i Entity és neta."
+✅ "Bon ús d'Optional aquí, consistent amb la resta del codebase."
+```
+
+Trobar problemes és important. Reconèixer codi bo també ho és.
+
+---
+
+## 5. Git Professional: Més Enllà de Commit i Push
+
+### El Workflow de PR
+
+```
+main ──●──●──●──●──●──●──●──●──●──●──
+              │                    ▲
+              │  git checkout -b   │ merge PR
+              ▼                    │
+feature/xxx ──●──●──●─────────────●
+              (commits de la feature)
+```
+
+### Rebase: Historial Net
+
+Quan treballes en una branca, `main` pot avançar:
+
+```
+Abans del rebase:
+
+main     ──A──B──C──D──E      (altres han mergejat coses)
+                │
+feature  ──────F──G──H         (el teu treball)
+
+Després de git rebase main:
+
+main     ──A──B──C──D──E
+                         │
+feature  ────────────────F'──G'──H'   (els teus commits "rereplicats" sobre main actual)
+```
+
+**Per què rebase i no merge?**
+
+```
+Merge crea un historial confús:
+──A──B──C──D──E──────────M──   (M = merge commit)
+        │               /
+        └──F──G──H─────┘
+
+Rebase crea un historial lineal:
+──A──B──C──D──E──F'──G'──H'──  (net, fàcil de llegir)
+```
+
+### Resolució de Conflictes
+
+Quan fas `git rebase main` i dos fitxers han canviat al mateix lloc:
+
+```
+<<<<<<< HEAD
+    BigDecimal price;
+=======
+    BigDecimal price;
+    String currency;
+>>>>>>> feature/price-format
+```
+
+**Passos per resoldre:**
+1. Obre el fitxer amb conflicte
+2. Entén què vol cada costat (HEAD = main, feature = el teu)
+3. Decideix el resultat final (potser vols els dos canvis!)
+4. Elimina els marcadors `<<<<`, `====`, `>>>>`
+5. `git add <fitxer>` → `git rebase --continue`
+6. Executa els tests per verificar que no has trencat res
+
+### Comandes Git Essencials
+
+| Comanda | Quan usar-la |
+|---------|-------------|
+| `git rebase main` | Posar la teva branca al dia amb main |
+| `git rebase -i HEAD~3` | Combinar 3 commits en 1 (squash) abans de PR |
+| `git stash` / `git stash pop` | Guardar treball temporal quan has de canviar de branca |
+| `git log --oneline --graph` | Visualitzar l'historial amb branques |
+| `git bisect start` / `git bisect bad` / `git bisect good` | Trobar quin commit va introduir un bug |
+| `git cherry-pick <sha>` | Portar un commit específic d'una altra branca |
+| `git reflog` | Recuperar treball "perdut" (commits orfes, resets accidentals) |
+
+### git bisect: Trobar un Bug en 10 Segons
+
+Tens 100 commits i un test que falla. Quin commit va trencar-ho?
+
+```bash
+git bisect start
+git bisect bad            # El commit actual és dolent
+git bisect good v0.1      # El tag v0.1 era bo
+
+# Git fa binary search! Salta a un commit del mig:
+# "Bisecting: 50 revisions left to test"
+# Executes el test:
+mvn test -pl :module -Dtest=ChampionSearchTest
+
+# Si falla:
+git bisect bad
+# Si passa:
+git bisect good
+
+# Després de ~7 passos (log2(100)):
+# "abc123 is the first bad commit"
+# Trobat! En 7 passos en lloc de 100.
+```
+
+**Per què és útil:** A la feina, algú diu "Ahir funcionava, avui no". `git bisect` troba el commit culpable en minuts.
+
+---
+
+## 6. GitHub Actions: CI Bàsic
+
+### Què és CI (Continuous Integration)?
+
+Cada cop que fas push, un servidor executa els teus tests automàticament:
+
+```
+Developer fa push
+    │
+    ▼
+GitHub detecta el push
+    │
+    ▼
+GitHub Actions arrenca una màquina Ubuntu
+    │
+    ├── Instal·la Java 21
+    ├── Executa mvn test
+    ├── Executa mvn checkstyle:check
+    │
+    ▼
+Resultat: ✅ Pass o ❌ Fail
+    │
+    ▼
+Badge al PR: "All checks passed" o "Checks failed"
+```
+
+### Anatomia d'un Workflow
+
+```yaml
+# .github/workflows/ci.yml
+
+name: CI                          # Nom visible a GitHub
+
+on: [push, pull_request]          # Quan s'executa
+
+jobs:
+  build-and-test:                 # Nom del job
+    runs-on: ubuntu-latest        # Màquina on corre
+    
+    steps:
+      - uses: actions/checkout@v4           # 1. Descarrega el codi
+      
+      - uses: actions/setup-java@v4         # 2. Instal·la Java
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      
+      - run: mvn test                       # 3. Executa tests
+      
+      - run: mvn checkstyle:check           # 4. Verifica format
+```
+
+**Cada `run` és una comanda de terminal.** Si qualsevol retorna un codi d'error (exit code != 0), el workflow falla i el PR es marca amb ❌.
+
+### Per Què Importa?
+
+Sense CI:
+```
+Developer: "A mi em funciona" (en el seu portàtil)
+Reviewer: "A mi no" (diferent versió de Java)
+Producció: 💥 (diferent sistema operatiu)
+```
+
+Amb CI:
+```
+GitHub Actions: "El test testGetChampion falla a Ubuntu amb Java 21"
+Developer: "Ah, tenia un path hardcodejat amb \\ en lloc de /"
+→ Fix before merge
+```
+
+---
+
+## 7. Checkstyle: Format Automàtic
+
+### Per Què Formatatge Automàtic?
+
+Sense estàndard:
+```java
+// Developer A
+public void save(ChampionRecord champion){
+    repo.save( champion );
+}
+
+// Developer B
+public void save( ChampionRecord champion )
+{
+    repo.save(champion);
+}
+```
+
+En una code review, acabes discutint espais en lloc de lògica.
+
+Amb Checkstyle:
+```java
+// Tothom
+public void save(ChampionRecord champion) {
+    repo.save(champion);
+}
+// Checkstyle falla si no segueixes el format → no es pot mergejar
+```
+
+### Configuració Bàsica
+
+```xml
+<!-- pom.xml -->
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-checkstyle-plugin</artifactId>
+    <version>3.3.1</version>
+    <configuration>
+        <configLocation>google_checks.xml</configLocation>
+        <failOnViolation>true</failOnViolation>
+    </configuration>
+</plugin>
+```
+
+`google_checks.xml` és un estàndard raonable. Regles principals:
+- Indentació de 2 espais (o 4, configurable)
+- Imports ordenats
+- Noms de variables en camelCase
+- Llargada de línia màxima
 
 ---
 
@@ -641,16 +609,16 @@ EXPLAIN SELECT * FROM champions WHERE name = 'Lux';
 
 | Concepte | Key Takeaway |
 |----------|--------------|
-| **SQL** | El llenguatge universal de BD; 50 anys i comptant |
-| **CRUD** | INSERT, SELECT, UPDATE, DELETE — les 4 operacions bàsiques |
-| **INDEX** | Equivalent al HashMap per a BD; O(log n) en lloc de O(n) |
-| **EXPLAIN** | Eina per veure si una query usa index o fa full scan |
-| **ACID** | Atomicitat, Consistència, Isolament, Durabilitat — les garanties |
-| **@Transactional** | Tot o res; si falla, ROLLBACK automàtic |
-| **JPA** | Mapeja classes Java a taules SQL; genera queries automàticament |
-| **JpaRepository** | CRUD automàtic + queries derivades del nom del mètode |
-| **H2** | BD in-memory per desenvolupament; zero configuració |
-| **Repository Pattern** | Swap de In-Memory a SQL sense canviar la lògica de negoci |
-| **SQLite (Python)** | L'equivalent a H2; BD lleugera integrada al llenguatge |
+| **Llegir codi** | El 80% del temps; la skill que ningú ensenya |
+| **Noms significatius** | Si has de llegir el cos per entendre el nom, el nom és dolent |
+| **Early return** | Evita nesting amb guard clauses |
+| **SQL injection** | Mai concatenar strings en queries; usar paràmetres vinculats |
+| **Secrets** | Mai al codi; variables d'entorn o fitxers exclosos de Git |
+| **NPE / None** | Usar `Optional` (Java) o comprovació explícita (Python) |
+| **Tests reals** | Mockeja les dependències, testeja el teu codi |
+| **Code review** | Observació + Impacte + Suggeriment; saber dir LGTM |
+| **git rebase** | Historial net; sempre rebase sobre main abans de PR |
+| **git bisect** | Binary search per trobar el commit que va trencar algo |
+| **GitHub Actions** | Tests automàtics a cada push; mai mergejar sense CI |
 
-**Objectiu setmana:** Entendre SQL, persistir dades reals, i veure la força del pattern Repository quan canviem d'implementació sense tocar el negoci.
+**Objectiu setmana:** Saber llegir, criticar, i millorar codi d'altri (inclòs generat per IA). Dominar el workflow Git professional. Tenir CI funcional des del dia 1.
