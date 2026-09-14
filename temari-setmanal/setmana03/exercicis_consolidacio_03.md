@@ -32,7 +32,7 @@ Implementa optimistic locking a mà al `InMemoryGameRepository`: afegeix un camp
 
 **Fet quan:** Test on un thread actualitza correctament i l'altre rep `OptimisticLockException`.
 
-### 5. Benchmark: threads clàssics vs Virtual Threads vs asyncio
-Crea un benchmark que compari els 3 enfocaments (Java threads, Java Virtual Threads, Python asyncio) per a 200 crides I/O simulades de 200ms cadascuna. Mesura temps total i memòria usada. Presenta els resultats en una taula.
+### 5. Comparativa Java CompletableFuture vs Python asyncio
+Implementa el mateix extractor de 50 jocs (amb crides simulades de 300ms) en Java (`CompletableFuture`) i en Python (`asyncio`). Compara: temps total, línies de codi, i gestió d'errors parcials. Quin codi és més llegible? Quin és més fàcil de depurar?
 
-**Fet quan:** Taula amb 3 files (enfocament, temps, memòria). El temps hauria de ser similar (~200ms) per als tres; la memòria molt diferent per als threads clàssics.
+**Fet quan:** Ambdós extractors funcionen, una taula comparativa amb les mètriques, i un paràgraf d'opinió sobre els trade-offs de cada enfocament.

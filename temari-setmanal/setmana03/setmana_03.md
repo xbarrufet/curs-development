@@ -80,27 +80,27 @@
 
 ---
 
-### **Dijous: Virtual Threads (Java 21) i l'Extractor de Dades**
+### **Dijous: Python Mirall — Concurrència i I/O Paral·lel**
 
 * **Cursos i Material de Lectura:**
-* **Article:** Baeldung — [*Virtual Threads in Java 21*](https://www.baeldung.com/java-virtual-thread-vs-thread).
-* **Article:** Inside Java — [*JEP 444: Virtual Threads*](https://openjdk.org/jeps/444).
-* **Vídeo:** [*Project Loom Explained*](https://www.youtube.com/results?search_query=java+virtual+threads+explained) — qualsevol vídeo curt i clar.
+* **Article:** Real Python — [*An Intro to Threading in Python*](https://realpython.com/intro-to-python-threading/).
+* **Article:** Real Python — [*Async IO in Python*](https://realpython.com/async-io-python/).
+* **Documentació:** Python — [*asyncio — Asynchronous I/O*](https://docs.python.org/3/library/asyncio.html).
 
 
 * **Activitat i Què s'espera programar:**
-* **Teoria: Per què existeixen els Virtual Threads?**
-  * Problema: el thread pool de Tomcat té ~200 threads. Si cada request tarda 500ms esperant una API externa, només pots gestionar 400 requests/segon.
-  * Amb Virtual Threads: pots tenir milions de threads "barats" (sense overhead de memòria). El thread que espera una resposta HTTP no bloqueja un thread real del sistema operatiu.
-  * Reescriu l'exercici de dimecres amb `Thread.ofVirtual().start()` i compara la simplicitat del codi.
-* **Exercici: Extractor de GamePulse.**
-  * Crea `GameDataExtractor` que rep una llista de 50 `appId`s.
-  * **Versió 1 — Seqüencial:** Crida `SteamApiClient.fetchGameData()` per cada appId un per un. Mesura temps.
-  * **Versió 2 — Thread pool clàssic:** Usa `Executors.newFixedThreadPool(10)` per paral·lelitzar. Mesura temps.
-  * **Versió 3 — Virtual Threads:** Usa `Executors.newVirtualThreadPerTaskExecutor()`. Mesura temps.
-  * Compara els 3 resultats en una taula: temps total, simplicitat del codi, memòria usada.
-* **Reflexió:** Virtual Threads simplifica el codi concurrent, però els problemes de race conditions i transaccions (dilluns-dimarts) **segueixen existint**. No és una bala de plata.
-* **Connexió amb l'empresa:** Spring Boot 3.2+ ja suporta Virtual Threads amb un sol flag (`spring.threads.virtual.enabled=true`). A la feina, probablement només hauràs d'activar-lo — però has d'entendre *per què* existeix.
+* **Race condition en Python:**
+  * Replica l'exercici de dilluns (`UnsafeCounter`) en Python amb `threading`: 10 threads fent `count += 1` 100.000 vegades. Verifica que el resultat NO és 1.000.000.
+  * Discussió del GIL: "El GIL no protegeix contra race conditions en operacions compostes." `count += 1` és LOAD + ADD + STORE, i el GIL pot canviar de thread entre ells.
+  * Solució amb `threading.Lock()` — l'equivalent de `synchronized`.
+* **I/O paral·lel amb `asyncio`:**
+  * Replicar l'exercici de dimecres (crides a Steam + IGDB) en Python amb `asyncio` + `aiohttp`.
+  * Comparar patrons: `CompletableFuture.supplyAsync()` ↔ `asyncio.create_task()`, `.allOf()` ↔ `asyncio.gather()`, `.thenCombine()` ↔ `await`.
+* **Exercici: Extractor concurrent en Python.**
+  * Implementar `GameDataExtractor` amb `asyncio`: 50 crides simulades (`asyncio.sleep(0.3)`) en paral·lel.
+  * Mesura: ha de trigar ~0.3s, no ~15s.
+  * Gestió d'errors parcials: si algunes crides fallen, l'extractor retorna resultats vàlids + llista d'errors.
+* **Connexió amb S2:** Les `dataclass(frozen=True)` de Python també són thread-safe per immutabilitat — el mateix principi que els `record` de Java.
 
 
 ---
@@ -116,17 +116,18 @@
 * **Tests de concurrència (`ConcurrencyTests`):**
   * Test que demostra que `UnsafeCounter` falla amb múltiples threads (el test ha de fallar si el comptador no és atòmic).
   * Test que `AtomicInteger` versió passa amb múltiples threads.
-  * Test que l'extractor amb Virtual Threads retorna exactament el mateix nombre de resultats que la versió seqüencial (consistència).
+  * Test que `CompletableFuture` paral·lel retorna els mateixos resultats que la versió seqüencial (consistència).
 * **Tests d'integració de l'extractor (`GameDataExtractorTests`):**
   * Mock de `SteamApiClient` amb delays simulats.
   * Test que la versió paral·lela és almenys 3x més ràpida que la seqüencial per a 20 jocs.
   * Test que gestiona errors parcials: si 2 de 20 crides fallen, l'extractor retorna 18 resultats + 2 errors (no es perd tot).
-* **Test d'Optimistic Locking (`GameTransactionTests`):**
-  * Test que dos threads intentant actualitzar el mateix `GameRecord` simultàniament resulta en un `OptimisticLockException` per a un d'ells.
+* **Tests Python (`test_concurrency.py`):**
+  * Test que l'extractor `asyncio` retorna 50 resultats en <1s.
+  * Test que la race condition amb `threading` efectivament perd increments (sense Lock).
 
 * **Finalització del cicle Git:**
 * Executa `mvn test` i verifica que la suite sencera passa.
-* Commit: `feat(java): concurrent data extraction with CompletableFuture and Virtual Threads`
+* Commit: `feat: concurrent data extraction with CompletableFuture (Java) and asyncio (Python)`
 * Puja branca `feature/week3-concurrency` i crea PR.
 
 ---
@@ -135,7 +136,7 @@
 
 - **S1:** Big-O i estructures → *entens per què una query és lenta*
 - **S2:** SOLID i immutabilitat → *entens per què el codi ha de ser desacoblat i thread-safe*
-- **S3:** Concurrència pràctica → *entens per què dues requests simultànies poden corrompre dades, i com paral·lelitzar I/O*
+- **S3:** Concurrència pràctica → *entens per què dues requests simultànies poden corrompre dades, i com paral·lelitzar I/O (Java + Python)*
 - **S4:** Clean Code i CI → *entens com detectar problemes en codi d'altri (inclòs IA)*
 
 Cada setmana resol un problema real que el developer trobarà al primer mes de feina.

@@ -112,7 +112,7 @@ GROUP BY tier;
 
 ### JOINs: Relacionar Taules
 
-Quan la BD creixi (S17 amb PostgreSQL), tindrem múltiples taules:
+Quan la BD creixi (S15 amb PostgreSQL), tindrem múltiples taules:
 
 ```sql
 -- Taules
@@ -455,7 +455,7 @@ spring.jpa.hibernate.ddl-auto=create-drop
 spring.h2.console.enabled=true
 ```
 
-`ddl-auto=create-drop`: JPA crea les taules automàticament a partir de les `@Entity`. Pràctic per desenvolupament; **mai en producció** (per això a S17 introduirem Flyway per migracions controlades).
+`ddl-auto=create-drop`: JPA crea les taules automàticament a partir de les `@Entity`. Pràctic per desenvolupament; **mai en producció** (per això a S15 introduirem Flyway per migracions controlades).
 
 ---
 

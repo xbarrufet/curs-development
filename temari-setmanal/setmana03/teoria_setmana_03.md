@@ -421,97 +421,11 @@ Thread principal
     └── thenCombine(steam, igdb) → GameRecord
 ```
 
-### @Async de Spring (Alternativa)
-
-```java
-@Service
-public class SteamApiClient {
-    
-    @Async
-    public CompletableFuture<SteamData> fetchAsync(String appId) {
-        SteamData data = restTemplate.getForObject(STEAM_URL + appId, SteamData.class);
-        return CompletableFuture.completedFuture(data);
-    }
-}
-```
-
-`@Async` fa que Spring executi el mètode en un thread separat automàticament. Necessita `@EnableAsync` a la configuració.
+> **Nota:** Virtual Threads (Java 21, Project Loom) es treballen a la **Setmana 7**, quan l'estudiant té endpoints REST que criden APIs externes i el problema d'escalabilitat del thread pool es fa evident de forma natural.
 
 ---
 
-## 8. Virtual Threads (Java 21): La Simplificació
-
-### El Problema dels Threads Clàssics
-
-Cada thread del SO consumeix ~1MB de memòria (stack). Amb 200 threads: 200MB. Si vols 10.000 threads per servir 10.000 peticions lentes: 10GB només en stacks. **No escala.**
-
-### Virtual Threads: Threads "Barats"
-
-Java 21 introdueix Virtual Threads (Project Loom): threads gestionats per la JVM, no pel SO.
-
-```
-Threads del SO (Platform Threads):
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│ Thread-1 │ │ Thread-2 │ │ Thread-3 │ │ Thread-4 │  ← 4 threads reals (CPU cores)
-└──────────┘ └──────────┘ └──────────┘ └──────────┘
-
-Virtual Threads:
-┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐
-│VT1││VT2││VT3││VT4││VT5││VT6││VT7││VT8││VT9││...││...││VTN│  ← 10.000 virtual threads
-└───┘└───┘└───┘└───┘└───┘└───┘└───┘└───┘└───┘└───┘└───┘└───┘
-
-Quan VT1 espera I/O (API call), la JVM el "desmunta" del Thread-1
-i hi "munta" VT5, que sí que té feina. Zero temps perdut.
-```
-
-**Comparativa de memòria:**
-| | Threads clàssics | Virtual Threads |
-|---|---|---|
-| 200 threads | 200MB | ~200KB |
-| 10.000 threads | 10GB (impossible) | ~10MB |
-| 1.000.000 threads | No viable | ~1GB |
-
-### Codi amb Virtual Threads
-
-```java
-// Crear virtual threads directament
-Thread.ofVirtual().start(() -> {
-    SteamData data = steamClient.fetch(appId);  // Espera 300ms sense bloquejar thread real
-});
-
-// Executor per processar N tasques
-try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-    List<Future<GameRecord>> futures = appIds.stream()
-        .map(id -> executor.submit(() -> fetchAndEnrich(id)))
-        .toList();
-    
-    List<GameRecord> results = futures.stream()
-        .map(f -> f.get())  // Recull resultats
-        .toList();
-}
-```
-
-### Spring Boot amb Virtual Threads
-
-A `application.properties`:
-```properties
-spring.threads.virtual.enabled=true
-```
-
-**Una línia.** Ara cada petició HTTP s'executa en un Virtual Thread en lloc d'un platform thread. El pool de Tomcat ja no és el coll d'ampolla.
-
-### Quan Usar Cada Opció
-
-| Situació | Solució | Per què |
-|----------|---------|--------|
-| Cridar 2-3 APIs en paral·lel | `CompletableFuture` | Control explícit de la combinació |
-| Servir milers de peticions amb I/O lent | Virtual Threads | Escala sense canviar codi |
-| Processament CPU intensiu (càlculs) | Platform Threads (thread pool) | Virtual Threads no ajuden amb CPU |
-| Spring Boot en general | `spring.threads.virtual.enabled=true` | Millora automàtica per I/O |
-
----
-
-## 9. Python: El Mirall Concurrent
+## 8. Python: El Mirall Concurrent
 
 ### Race Condition en Python
 
@@ -562,38 +476,26 @@ results = asyncio.run(fetch_all(["APP-1", "APP-2", "APP-3"]))
 | Async I/O | `CompletableFuture.supplyAsync()` | `asyncio.create_task()` |
 | Esperar múltiples | `CompletableFuture.allOf()` | `asyncio.gather()` |
 | Combinar resultats | `.thenCombine()` | `await asyncio.gather()` retorna llista |
-| Virtual Threads | `Executors.newVirtualThreadPerTaskExecutor()` | No existeix (asyncio és l'alternativa) |
 
 ---
 
-## 10. Aplicació a GamePulse
+## 9. Aplicació a GamePulse
 
 ### S3: Extractor Concurrent
 
 ```
 50 jocs per extreure de Steam API (300ms cada crida)
 
-Seqüencial:     50 × 300ms = 15.000ms (15 segons!)
-Thread pool(10): 50/10 × 300ms = 1.500ms (1.5 segons)
-Virtual Threads: ~300ms (tots en paral·lel, un VT per joc)
-Python asyncio:  ~300ms (equivalent)
+Seqüencial:          50 × 300ms = 15.000ms (15 segons!)
+CompletableFuture:   ~300-600ms (paral·lel, limitat pel ForkJoinPool)
+Python asyncio:      ~300ms (equivalent, tot en paral·lel)
 ```
 
-### S7+: REST API sota càrrega
-
-```
-200 clients fan GET /games/APP-X (cadascun consulta BD: 20ms)
-
-Platform Threads (200 pool):  200 req simultànies → OK
-                              201 req simultànies → 1 espera
-                              
-Virtual Threads:              10.000 req simultànies → OK
-                              (la BD és ara el coll d'ampolla, no els threads)
-```
+> **A S7** veurem Virtual Threads, que permeten escalar a milers de crides I/O simultànies amb codi tan simple com la versió seqüencial.
 
 ---
 
-## 11. Errors Comuns de Concurrència (Que Veuràs a la Feina)
+## 10. Errors Comuns de Concurrència (Que Veuràs a la Feina)
 
 ### Deadlock
 
@@ -656,7 +558,6 @@ Els `@Service` de Spring són **singletons** — una sola instància compartida 
 | **@Transactional** | Protecció a nivell de BD; ACID garantit |
 | **Optimistic Locking** | `@Version` per detectar conflictes sense bloquejar |
 | **CompletableFuture** | Crides I/O en paral·lel; combinar resultats |
-| **Virtual Threads** | Milions de threads barats; ideal per I/O intensiu |
 | **asyncio (Python)** | Equivalent a CompletableFuture per I/O concurrent |
 
-**Objectiu setmana:** Entendre per què la concurrència és un problema real en aplicacions web, saber diagnosticar-lo, i conèixer les solucions que faràs servir cada dia a la feina.
+**Objectiu setmana:** Entendre per què la concurrència és un problema real en aplicacions web, saber diagnosticar-lo, i conèixer les solucions bàsiques (locks, atomics, `CompletableFuture`, `asyncio`) que faràs servir cada dia a la feina. Virtual Threads (Java 21) es treballen a S7, quan el context d'APIs REST fa el problema d'escalabilitat més evident.

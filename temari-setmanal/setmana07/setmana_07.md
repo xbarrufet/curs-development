@@ -113,15 +113,25 @@
 
 ---
 
-### **Dijous: CLI Consumidor i Documentació**
+### **Dijous: Virtual Threads, CLI Consumidor i Documentació**
 
 * **Cursos i Material de Lectura:**
+* **Article:** Baeldung — [*Virtual Threads in Java 21*](https://www.baeldung.com/java-virtual-thread-vs-thread).
+* **Article:** Inside Java — [*JEP 444: Virtual Threads*](https://openjdk.org/jeps/444).
 * **Article:** Baeldung — [*Building a CLI with Spring Boot*](https://www.baeldung.com/spring-boot-cli).
 * **Documentació:** [*Python Requests Library*](https://docs.python-requests.org/).
 
 
 * **Activitat i Què s'espera programar:**
-* **Ampliar CLI `gamepulse` (S10 Python) per consumir l'API REST:**
+* **Virtual Threads (Java 21) — Millorar el rendiment dels endpoints:**
+  * **El problema real:** L'endpoint `GET /games/{appId}` crida Steam API (300ms) i RAWG API (400ms). Amb `CompletableFuture` (S3) ho hem paral·lelitzat, però el thread pool de Tomcat (200 threads) limita la concurrència: 200 requests lentes → pool esgotat → les següents esperen.
+  * **Teoria: Virtual Threads.** Threads gestionats per la JVM, no pel SO. Cada un ocupa ~1KB (vs ~1MB d'un platform thread). Pots tenir milions de threads "barats".
+  * **Exercici pràctic — Extractor amb 3 versions:**
+    * **Versió 1 — Thread pool clàssic:** `Executors.newFixedThreadPool(10)` per extreure dades de 50 jocs. Mesura temps.
+    * **Versió 2 — Virtual Threads:** `Executors.newVirtualThreadPerTaskExecutor()`. Mesura temps.
+    * **Versió 3 — Spring Boot integrat:** Afegir `spring.threads.virtual.enabled=true` a `application.properties`. Ara cada petició HTTP al teu endpoint usa un Virtual Thread automàticament. Mesura el throughput amb múltiples requests simultànies.
+  * **Connexió amb S3:** Els problemes de race conditions i `@Transactional` **segueixen existint** amb Virtual Threads. No és una bala de plata — és una optimització d'I/O.
+* **Ampliar CLI `gamepulse` (Python) per consumir l'API REST:**
   * Setup base de la CLI (basic `typer` setup).
   * Comandos: `gamepulse list-games`, `gamepulse get-game APP-123`, `gamepulse create-game --title "X" --price 29.99`.
   * Client HTTP: usar `requests` library en Python per fer requests a `http://localhost:8080/games/...`.
