@@ -145,8 +145,10 @@ find . -name "*.java" | xargs grep -l "deprecated"
 Com a developer treballaràs amb APIs REST que retornen JSON constantment. `jq` et permet filtrar i transformar JSON sense obrir Python ni cap editor.
 
 ```bash
-# Instal·la jq si no el tens (macOS)
-brew install jq
+# Instal·la jq si no el tens:
+# macOS: brew install jq
+# Windows: descarrega de https://jqlang.github.io/jq/download/ i posa al PATH
+#          o amb choco: choco install jq
 
 # Descarrega dades d'una API pública i formata el JSON
 # curl -s: petició HTTP en mode silenciós / jq '.': formata amb colors

@@ -91,22 +91,31 @@ Cursor és un IDE basat en VS Code amb IA integrada. El faràs servir com a eina
 
 ### 1. Instal·lació de l'entorn (15 min)
 
-Verifica que tens les eines instal·lades:
+Verifica que tens les eines instal·lades. Obre **PowerShell** (o Terminal si uses macOS/Linux) i executa:
 
-```bash
+```powershell
 # Comprova la versió de Java (ha de ser 21 o superior)
 java --version
 # Comprova la versió de Maven (ha de ser 3.9 o superior)
 mvn --version
 # Comprova la versió de Python (ha de ser 3.11 o superior)
-python3 --version
+python --version
 # Comprova la versió de Git (ha de ser 2.40 o superior)
 git --version
 ```
 
+> **Nota Windows:** A Windows la comanda és `python` (no `python3`). Si `python --version` no funciona, comprova que Python està al PATH del sistema (durant la instal·lació de Python, marca l'opció "Add Python to PATH").
+
 Si falta alguna eina, instal·la-la:
+
+**Windows:**
+- **Java 21:** Descarrega l'instal·lador d'[Adoptium](https://adoptium.net/) (Eclipse Temurin 21). Marca "Add to PATH" durant la instal·lació.
+- **Maven:** Descarrega de [maven.apache.org](https://maven.apache.org/download.cgi), descomprimeix, i afegeix la carpeta `bin` al PATH.
+- **Python 3.12:** Descarrega de [python.org](https://www.python.org/downloads/). Marca "Add Python to PATH".
+- **Git:** Descarrega de [git-scm.com](https://git-scm.com/download/win). Inclou Git Bash, que et permet usar comandes Unix-like a Windows.
+
+**macOS:**
 ```bash
-# Instal·la totes les eines d'un cop amb Homebrew (macOS)
 brew install openjdk@21 maven python@3.12 git
 ```
 
@@ -167,17 +176,28 @@ Crea el fitxer `pom.xml` a l'arrel amb aquest contingut mínim:
 
 Crea l'estructura de directoris:
 
-```bash
+**Windows (PowerShell):**
+```powershell
 # Crea les carpetes del codi font Java (on escriuràs les classes)
-mkdir -p backend-java/src/main/java/com/esportspulse/engine
+New-Item -ItemType Directory -Force -Path backend-java\src\main\java\com\esportspulse\engine
 # Crea les carpetes dels tests Java (on escriuràs els tests JUnit)
-mkdir -p backend-java/src/test/java/com/esportspulse/engine
+New-Item -ItemType Directory -Force -Path backend-java\src\test\java\com\esportspulse\engine
 
 # Crea la carpeta del codi Python
-mkdir -p ai-python/src
+New-Item -ItemType Directory -Force -Path ai-python\src
 # Crea el fitxer de dependències Python (buit per ara, s'omplirà més endavant)
+New-Item -ItemType File -Force -Path ai-python\requirements.txt
+```
+
+**macOS/Linux (Terminal):**
+```bash
+mkdir -p backend-java/src/main/java/com/esportspulse/engine
+mkdir -p backend-java/src/test/java/com/esportspulse/engine
+mkdir -p ai-python/src
 touch ai-python/requirements.txt
 ```
+
+> **Consell:** Si instal·les Git a Windows, pots usar **Git Bash** com a terminal. Git Bash suporta comandes Unix-like (`mkdir -p`, `touch`, `ls`) a Windows, i les comandes del curs funcionaran tal qual.
 
 Verifica que Java compila:
 
@@ -192,29 +212,35 @@ Si surt `BUILD SUCCESS`, l'estructura Java és correcta.
 
 Java usa Maven per gestionar dependències i compilar. Python usa **`venv`** (entorn virtual) per aïllar les dependències del projecte — cada projecte té les seves pròpies llibreries, sense interferir amb altres projectes del sistema.
 
-```bash
-# Entra a la carpeta Python del projecte
+**Windows (PowerShell):**
+```powershell
 cd ai-python
 
-# Crea l'entorn virtual — .venv és el nom convencional
-# Això genera una carpeta .venv/ amb una còpia local de Python i pip
-python3 -m venv .venv
+# Crea l'entorn virtual
+python -m venv .venv
 
-# Activa l'entorn — a partir d'ara, "python" i "pip" apunten a .venv/
-source .venv/bin/activate
-# A Windows: .venv\Scripts\Activate.ps1
+# Activa l'entorn
+.venv\Scripts\Activate.ps1
 
 # Verificació: el prompt ha de mostrar (.venv) al principi
+# (.venv) PS> python --version
+# → Python 3.12.x
+
+cd ..
+```
+
+> **Si PowerShell bloqueja l'activació** amb un error de "execution policy": executa `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` una sola vegada i torna a provar.
+
+**macOS/Linux (Terminal):**
+```bash
+cd ai-python
+python3 -m venv .venv
+source .venv/bin/activate
 # (.venv) $ python --version
-# → Python 3.12.x (o la versió que tinguis)
+cd ..
 ```
 
 > **Per què `venv`?** Sense entorn virtual, `pip install` instal·la llibreries a tot el sistema. Si el projecte A necessita `pytest 7.4` i el projecte B necessita `pytest 8.1`, es trepitgen. Amb `venv`, cada projecte té el seu propi directori de llibreries aïllat.
-
-```bash
-# Torna a l'arrel del projecte
-cd ..
-```
 
 **Estructura final del projecte:**
 

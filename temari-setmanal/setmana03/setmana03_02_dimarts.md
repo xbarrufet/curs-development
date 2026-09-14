@@ -6,9 +6,11 @@ Entendre el model de permisos de fitxers Unix, dominar les variables d'entorn i 
 
 ---
 
+> **Nota Windows:** El model de permisos `rwx` és de Linux/Unix — no existeix a Windows. Però l'aprens avui perquè el necessitaràs quan: treballis amb Docker (els contenidors són Linux), configuris servidors al cloud (S22), o escriguis pipelines CI/CD (GitHub Actions corre en Linux). A Git Bash, `chmod` funciona parcialment (marca scripts com a executables), que és suficient per als exercicis d'avui. La secció de variables d'entorn i PATH sí que s'aplica directament a Windows.
+
 ## Teoria
 
-### Permisos de Fitxers: El Model rwx
+### Permisos de Fitxers: El Model rwx (Linux/Unix)
 
 Cada fitxer i directori a Unix te tres nivells de permisos per a tres grups d'usuaris:
 
@@ -274,25 +276,35 @@ info.sh
 echo $JAVA_HOME
 # Si esta buit o apunta a una versio incorrecta, configura'l:
 
-# macOS: java_home es una utilitat que detecta les versions instal·lades
+# --- macOS ---
+# java_home es una utilitat que detecta les versions instal·lades
 /usr/libexec/java_home -V          # Llista totes les versions de Java instal·lades
 /usr/libexec/java_home -v 21       # Mostra la ruta de Java 21 especificament
 
 # Configura JAVA_HOME per a la sessio actual:
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 
-# Verifica que funciona:
-echo $JAVA_HOME                    # Ha de mostrar la ruta al JDK 21
-$JAVA_HOME/bin/java --version      # Executa Java directament des del JDK configurat
-
 # Per fer-ho permanent, afegeix al teu .zshrc:
 echo '' >> ~/.zshrc
 echo '# Java 21 — configurat a la Setmana 3 del curs' >> ~/.zshrc
 echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 21)' >> ~/.zshrc
 echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ~/.zshrc
-
-# Aplica els canvis:
 source ~/.zshrc
+
+# --- Windows (Git Bash) ---
+# Busca on s'ha instal·lat Java 21 (tipicament a Program Files):
+# C:\Program Files\Java\jdk-21 o C:\Program Files\Eclipse Adoptium\jdk-21...
+# Configura JAVA_HOME per a la sessio actual:
+export JAVA_HOME="/c/Program Files/Java/jdk-21"   # Ajusta el path al teu JDK
+export PATH="$JAVA_HOME/bin:$PATH"
+
+# Per fer-ho permanent a Git Bash, afegeix al teu ~/.bashrc:
+echo '' >> ~/.bashrc
+echo 'export JAVA_HOME="/c/Program Files/Java/jdk-21"' >> ~/.bashrc
+echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# --- Verificacio (igual a tots els OS) ---
 
 # Verifica que Maven tambe detecta Java 21:
 mvn --version

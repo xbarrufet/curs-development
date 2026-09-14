@@ -411,12 +411,12 @@ check_dependencies() {
     local missing=0
 
     if ! command -v curl &>/dev/null; then
-        error "curl no està instal·lat. Instal·la'l amb: brew install curl (macOS) o apt install curl (Linux)"
+        error "curl no està instal·lat. Instal·la'l amb: brew install curl (macOS), apt install curl (Linux), o ve inclòs a Windows 10+"
         missing=1
     fi
 
     if ! command -v jq &>/dev/null; then
-        error "jq no està instal·lat. Instal·la'l amb: brew install jq (macOS) o apt install jq (Linux)"
+        error "jq no està instal·lat. Instal·la'l amb: brew install jq (macOS), apt install jq (Linux), o choco install jq (Windows)"
         error "jq és un processador de JSON per la línia de comandes — essencial per treballar amb APIs"
         missing=1
     fi

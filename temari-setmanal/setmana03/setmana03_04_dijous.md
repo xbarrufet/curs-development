@@ -301,7 +301,7 @@ function comprovar_java() {
         # 'command -v' retorna la ruta de l'executable si existeix
         # '!' nega la condicio: si NO existeix, entrem aqui
         # '> /dev/null 2>&1' descarta tot l'output (nomes volem el codi de sortida)
-        error "Java no esta instal·lat. Instal·la JDK 21: brew install openjdk@21"
+        error "Java no esta instal·lat. Instal·la JDK 21: brew install openjdk@21 (macOS) o descarrega d'adoptium.net (Windows)"
         return 1  # Retornem 1 (error) per indicar que ha fallat
     fi
 
@@ -324,7 +324,7 @@ function comprovar_java() {
         ESTAT_JAVA="OK"  # Actualitzem l'estat global
         return 0
     else
-        error "Java $versio_major detectat, pero necessitem 21+. Actualitza: brew install openjdk@21"
+        error "Java $versio_major detectat, pero necessitem 21+. Actualitza: brew install openjdk@21 (macOS) o descarrega d'adoptium.net (Windows)"
         return 1
     fi
 }
@@ -334,7 +334,7 @@ function comprovar_python() {
 
     # Comprovem si Python 3 existeix
     if ! command -v python3 > /dev/null 2>&1; then
-        error "Python 3 no esta instal·lat. Instal·la: brew install python@3.12"
+        error "Python 3 no esta instal·lat. Instal·la: brew install python@3.12 (macOS) o descarrega de python.org (Windows)"
         return 1
     fi
 
@@ -360,7 +360,7 @@ function comprovar_python() {
 function comprovar_maven() {
     # Maven es imprescindible per compilar Java — si no existeix, aturem
     if ! command -v mvn > /dev/null 2>&1; then
-        error "Maven no esta instal·lat. Instal·la: brew install maven"
+        error "Maven no esta instal·lat. Instal·la: brew install maven (macOS) o descarrega de maven.apache.org (Windows)"
         return 1
     fi
     ok "Maven detectat: $(mvn --version 2>&1 | head -n 1)"

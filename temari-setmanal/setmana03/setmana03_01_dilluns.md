@@ -6,6 +6,22 @@ Entendre com el teu codi realment s'executa: què fa el sistema operatiu quan es
 
 ---
 
+## Prerequisit: Instal·lar Git Bash (Windows)
+
+Aquesta setmana treballaràs intensivament amb el terminal. Les comandes que aprendràs (`grep`, `find`, `sort`, `ps`, pipes, bash scripting) són l'estàndard de la indústria — els servidors de producció, els pipelines de CI/CD (GitHub Actions), i els contenidors Docker que veuràs a la setmana 8 usen Linux. Per tant, és important que les aprenguis en el seu entorn natural.
+
+Si fas servir **Windows**, obre **Git Bash** (ve instal·lat amb Git for Windows) per a totes les activitats d'aquesta setmana. Git Bash et dona un terminal bash real a Windows amb totes les comandes Unix que necessites: `ls`, `grep`, `find`, `sort`, `awk`, `sed`, `curl`, `ssh`, i molt més.
+
+**Com obrir Git Bash:**
+- Clic dret a qualsevol carpeta → "Open Git Bash here"
+- O busca "Git Bash" al menú d'inici
+
+**Per què no PowerShell?** PowerShell és potent, però usa una sintaxi completament diferent. A la indústria, els scripts de build, CI/CD, i servidors usen bash. Aprendre bash ara et prepara per a Docker (S8), GitHub Actions (S5), i qualsevol feina amb servidors Linux.
+
+> **Nota sobre permisos Unix (dimarts):** A Windows, el model de permisos de fitxers (`rwx`, `chmod`) no existeix — Windows usa un sistema diferent (ACLs). Dimarts l'aprendràs com a teoria perquè és essencial per entendre servidors Linux i Docker, tot i que no el faràs servir directament al teu Windows del dia a dia.
+
+---
+
 ## Teoria
 
 ### Què Passa Quan Executes `java MyApp`?
@@ -43,7 +59,7 @@ El terminal que has fet servir per `mvn compile` o `git push` no és una eina de
 Tu (teclat) → Terminal (emulador) → Shell (bash/zsh) → Kernel del SO → Hardware
 ```
 
-- **Terminal:** la finestra on escrius (iTerm, Terminal.app, el terminal de Cursor)
+- **Terminal:** la finestra on escrius (Git Bash a Windows, Terminal.app a macOS, el terminal de Cursor)
 - **Shell:** el programa que interpreta les comandes (bash, zsh). Avui tens zsh per defecte a macOS
 - **Kernel:** el nucli del SO que realment parla amb el hardware
 
@@ -189,7 +205,7 @@ ps -ef | grep java
 top
 
 # "htop" és una versió millorada de top amb colors i navegació
-# Potser cal instal·lar-lo: brew install htop
+# macOS: brew install htop / Windows Git Bash: top funciona, htop no (usa el Gestor de Tasques)
 htop
 ```
 
@@ -217,7 +233,7 @@ ls /tmp                   # Mostra els fitxers temporals actuals
 cd ~/esportspulse-engine
 
 # Mostra l'estructura amb un ls recursiu
-# Si tens "tree" instal·lat (brew install tree), és més visual:
+# Si tens "tree" instal·lat (brew install tree a macOS; a Windows ja ve inclòs), és més visual:
 ls -R
 # o bé:
 tree -L 2                 # -L 2 = només 2 nivells de profunditat
