@@ -372,7 +372,46 @@ except Exception as e:
     print(f"Immutabilitat OK: {type(e).__name__}")
 ```
 
-### 6. Commit (5 min)
+### 6. Escriure `.cursorrules` (30 min)
+
+Ara que tens dues entitats (`PlayerRecord`, `ChampionRecord`), un repositori, un servei i codi en dos llenguatges, tens prou context per escriure regles útils per a l'assistent IA.
+
+Un `.cursorrules` no és un fitxer de configuració genèric — és una **especificació de comportament** per a l'LLM. Li dius exactament com vols que generi codi al teu projecte. Si les regles són vagues ("usa bons noms"), l'agent farà el que vulgui. Si són precises, el codi surt coherent.
+
+Crea el fitxer `.cursorrules` a l'arrel del projecte:
+
+```
+# EsportsPulse Engine — Especificació per a l'Assistent
+
+## Llenguatge i Convencions
+- Java 21: variables en camelCase (championRecord, pickRate)
+- Python 3.12: variables en snake_case (champion_record, pick_rate)
+- Classes en PascalCase en ambdós llenguatges
+
+## Models de Domini
+- Java: SEMPRE usar `record`. Mai generar classes amb setters.
+- Python: SEMPRE usar `@dataclass(frozen=True)`. Mai atributs mutables.
+- Cada record/dataclass ha de tenir compact constructor/`__post_init__` amb validació.
+
+## Arquitectura
+- Patrons: Repository (persistència), Factory (creació), Service (lògica)
+- Dependències: injectar per constructor. Mai crear dependències amb `new` dins un servei.
+- Interfícies: capa de dades sempre darrere d'una interfície.
+- Packages Java: model/, repository/, factory/, service/
+- Mòduls Python: model/, repository/, factory/, service/
+
+## Testing
+- Cada classe pública ha de tenir un test JUnit 5 / pytest corresponent.
+- Noms de test: `metode_comportament_condicio` (ex: `findById_returnsEmpty_whenNotFound`)
+
+## Git
+- Format: Conventional Commits (feat/fix/test/docs/refactor)
+- Branques: `feature/weekN-description`
+```
+
+**Verificació:** Demana a Cursor: "Genera un `MatchRecord` seguint les convencions del projecte". L'assistent ha de generar un `record` (no una classe amb setters), amb compact constructor i validació. Si no ho fa, ajusta les regles fins que ho faci.
+
+### 7. Commit (5 min)
 
 ```bash
 git add backend-java/src/main/java/com/esportspulse/engine/model/PlayerRecord.java
@@ -380,7 +419,8 @@ git add backend-java/src/main/java/com/esportspulse/engine/repository/PlayerRepo
 git add backend-java/src/main/java/com/esportspulse/engine/repository/InMemoryPlayerRepository.java
 git add ai-python/src/player_record.py
 git add ai-python/src/player_repository.py
-git commit -m "feat: bilingual PlayerRecord model + repository (Java records + Python dataclasses)"
+git add .cursorrules
+git commit -m "feat: bilingual PlayerRecord + repository + .cursorrules project spec"
 ```
 
 ---
@@ -394,4 +434,5 @@ git commit -m "feat: bilingual PlayerRecord model + repository (Java records + P
 - [ ] Benchmark: 50.000 jugadors en HashMap, cerca O(1) verificada
 - [ ] Demo bilinguee: Java i Python produeixen els mateixos resultats
 - [ ] Immutabilitat verificada en ambdos llenguatges (setter peta)
+- [ ] `.cursorrules` escrit amb regles precises; Cursor genera `MatchRecord` correctament
 - [ ] Commit amb format Conventional Commits

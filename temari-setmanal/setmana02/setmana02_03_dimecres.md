@@ -1,18 +1,103 @@
-# Setmana 2 — Dimecres: Dependency Inversion en Practica i .cursorrules com a Spec
+# Setmana 2 — Dimecres: Dependency Injection, Factory i Capa de Servei
 
 ## Objectiu del Dia
 
-Construir la capa de servei (`ChampionManagementService`) que aplica Dependency Inversion de forma real: rep el repositori per constructor, no crea res directament. Tambe escriure un `.cursorrules` que funcioni com a especificacio de comportament per a l'assistent IA, verificant que genera codi coherent amb el projecte. Al final del dia tens el servei funcionant amb el repositori d'ahir i un `.cursorrules` que produeix resultats consistents.
+Construir la capa de servei (`ChampionManagementService`) que aplica Dependency Injection de forma real: rep el repositori per constructor, no crea res directament. Usar el Factory Pattern per centralitzar la creació d'entitats. Al final del dia tens les 3 capes integrades (model → repository → servei) funcionant juntes amb injecció de dependències manual.
 
 ---
 
 ## Teoria
 
+### Principis SOLID: Per Què el Codi s'Organitza Així
+
+Dilluns vas crear `ChampionRecord` amb validació. Dimarts vas crear `ChampionRepository` i `InMemoryChampionRepository`. Avui afegirem un servei. Però **per què** separem el codi en tantes classes? Per què no ho posem tot en una sola?
+
+Imagina que trobes aquest codi a un projecte real:
+
+```java
+// Classe que fa MASSA coses
+public class ChampionService {
+    private List<ChampionRecord> champions;  // Emmagatzema campions
+    private Database db;                     // Connexio a base de dades
+    private EmailService emailService;       // Envia correus
+    private APIClient riotAPI;               // Crida a API externa
+
+    public void registerChampion(String championId, String name) {
+        if (championId == null) throw new Exception("Invalid");
+        ChampionRecord g = new ChampionRecord(championId, name, 0, 0);
+        champions.add(g);
+        db.save(g);
+        emailService.notifyAdmins("Nou campió: " + name);
+    }
+}
+```
+
+**Problemes concrets:**
+- Fa 4 coses: valida, crea, guarda, notifica
+- Si vols canviar com envies emails, toques una classe que tambe guarda a la BD
+- Per testejar `registerChampion` necessites mock de 4 serveis — un test senzill es converteix en 40 linies de setup
+
+**SOLID** son 5 principis que resolen exactament aquests problemes. No son teoria abstracta — son la diferencia entre codi que pots mantenir i codi que ningú vol tocar.
+
+| Principi | Regla | Aplicat avui |
+|----------|-------|-------------|
+| **S** — Single Responsibility | Cada classe fa una sola cosa | El servei orquestra, el factory crea, el repo guarda |
+| **O** — Open/Closed | Afegir funcionalitat sense modificar codi existent | Nova implementació de repo (SQL) sense tocar el servei |
+| **L** — Liskov Substitution | Tota implementació d'una interfície és intercanviable | InMemory i SQL compleixen el mateix contracte |
+| **I** — Interface Segregation | Interfícies petites, no gegants | `ChampionRepository` té 4 mètodes, no 20 |
+| **D** — Dependency Inversion | Dependre d'interfícies, no de classes concretes | El servei rep `ChampionRepository`, no `InMemoryChampionRepository` |
+
+Avui aplicaràs els 5 de forma pràctica: el servei que crearàs demostra SRP (només orquestra), OCP (funciona amb qualsevol repo), i DIP (rep dependències per constructor).
+
+> **Lectura i vídeos recomanats sobre SOLID (opcional, no bloquejant):**
+> - Vídeo — [Los principios SOLID, ¡explicados!](https://www.youtube.com/watch?v=2X50sKeBAcQ) — Explicació visual i clara dels 5 principis en castellà
+> - Baeldung — [A Solid Guide to SOLID Principles](https://www.baeldung.com/solid-principles) — Exemples en Java per a cada principi
+
+### Que es la Injecció de Dependències i Per Què Importa
+
+Quan una classe necessita una altra per funcionar, diem que en **depèn**. Per exemple, un servei que guarda campions depèn d'un repositori. La pregunta és: **qui decideix quin repositori s'utilitza?**
+
+```java
+// SENSE injecció: el servei decideix (i queda acoblat)
+public class ChampionManagementService {
+    private ChampionRepository repo = new InMemoryChampionRepository();  // Hardcodejat!
+}
+```
+
+Això crea tres problemes concrets:
+
+1. **No pots testejar fàcilment.** Si vols testejar el servei sense base de dades, no pots — sempre crea un `InMemoryChampionRepository`. Per usar un mock o un repositori de test, hauries de modificar el codi del servei.
+
+2. **No pots canviar la implementació sense tocar el servei.** Si demà vols guardar a PostgreSQL en comptes de memòria, has d'obrir el servei i canviar la línia. Cada canvi d'infraestructura toca la lògica de negoci.
+
+3. **No pots reutilitzar el servei en contextos diferents.** Si un endpoint REST vol un repositori SQL i un test vol un repositori en memòria, necessites dues versions del servei.
+
+La **injecció de dependències** resol això: el servei **no crea** les seves dependències, les **rep** pel constructor.
+
+```java
+// AMB injecció: qui crea el servei decideix (i el servei queda lliure)
+public class ChampionManagementService {
+    private final ChampionRepository repo;
+
+    public ChampionManagementService(ChampionRepository repo) {
+        this.repo = repo;  // Rep el que li passin — no sap ni li importa quina implementació és
+    }
+}
+
+// A producció:
+new ChampionManagementService(new SqlChampionRepository(dataSource));
+
+// Als tests:
+new ChampionManagementService(new InMemoryChampionRepository());
+```
+
+**El mateix servei, zero canvis, dos contextos diferents.** Això és DIP (Dependency Inversion Principle) aplicat — el principi que vas veure dilluns a la teoria de SOLID.
+
 ### Dependency Inversion en 3 Capes
 
 Fins ara tens dues peces:
-- `ChampionRecord` — el model immutable (dilluns)
-- `InMemoryChampionRepository` — la persistencia en memoria (dimarts)
+- `ChampionRecord` — el model immutable amb validació (dilluns)
+- `InMemoryChampionRepository` — la persistència en memòria (dimarts)
 
 Avui afegim la tercera: el servei de negoci. L'arquitectura queda aixi:
 
@@ -153,28 +238,6 @@ ChampionManagementService testService = new ChampionManagementService(testRepo, 
 
 **El benefici real:** als tests de demà podras crear un `InMemoryChampionRepository`, injectar-lo al servei, i testejar la logica de negoci sense cap base de dades. Si el servei creés les seves dependencies, no podries fer-ho.
 
-### `.cursorrules` com a Especificacio de Comportament
-
-Un `.cursorrules` no es un fitxer de configuracio generic — es la primera especificacio que escrius per a un agent IA. Si les regles son vagues, l'agent genera codi inconsistent. Si son precises, el codi surt coherent amb el projecte.
-
-**Diferencia entre vague i precis:**
-
-```
-# VAGUE — l'agent interpretara com vulgui
-"Usa bons noms de variable"
-"Segueix bones practiques"
-"Escriu codi net"
-
-# PRECIS — l'agent sap exactament que fer
-"Variables Java en camelCase: championRecord, pickRate"
-"Variables Python en snake_case: champion_record, pick_rate"
-"Models de domini: record (Java), @dataclass(frozen=True) (Python). Mai setters."
-"Cada classe publica necessita un test JUnit corresponent"
-"Commits: Conventional Commits (feat/fix/test/docs/refactor)"
-```
-
-**La llico:** Escriure specs per a una IA es escriure specs per a un dev junior molt rapid pero amb zero context. Si no li dius com vols les coses, les fara a la seva manera — i no sera la teva.
-
 ---
 
 ## Activitat
@@ -234,50 +297,12 @@ public class ServiceDemo {
 }
 ```
 
-### 4. Escriure `.cursorrules` com a Spec (30 min)
-
-Crea o reescriu el fitxer `.cursorrules` a l'arrel del projecte. Ha de ser una especificacio precisa:
-
-```
-# EsportsPulse Engine — Especificacio per a l'Assistent
-
-## Llenguatge i Convencions
-- Java 21: variables en camelCase (championRecord, pickRate)
-- Python 3.12: variables en snake_case (champion_record, pick_rate)
-- Classes en PascalCase en ambdos llenguatges
-
-## Models de Domini
-- Java: SEMPRE usar `record`. Mai generar classes amb setters.
-- Python: SEMPRE usar `@dataclass(frozen=True)`. Mai atributs mutables.
-- Cada record/dataclass ha de tenir compact constructor/`__post_init__` amb validacio.
-
-## Arquitectura
-- Patrons: Repository (persistencia), Factory (creacio), Service (logica)
-- Dependencies: injectar per constructor. Mai crear dependencies amb `new` dins un servei.
-- Interficies: capa de dades sempre darrera d'una interficie.
-- Packages Java: model/, repository/, factory/, service/
-- Moduls Python: model/, repository/, factory/, service/
-
-## Testing
-- Cada classe publica ha de tenir un test JUnit 5 / pytest corresponent.
-- Noms de test: `metode_comportament_condicio` (ex: `findById_returnsEmpty_whenNotFound`)
-- Assercions: `assertEquals`, `assertNotNull`, `assertThrows` (Java); `assert`, `pytest.raises` (Python)
-
-## Git
-- Format: Conventional Commits (feat/fix/test/docs/refactor)
-- Exemple: `feat(java): add ChampionManagementService with DI`
-- Branques: `feature/weekN-description`
-```
-
-**Verificacio:** Demana a Cursor: "Genera un `PlayerRecord` seguint les convencions del projecte". L'assistent ha de generar un `record` (no una classe amb setters), amb compact constructor i validacio. Si no ho fa, ajusta les regles.
-
-### 5. Commit (5 min)
+### 4. Commit (5 min)
 
 ```bash
 git add backend-java/src/main/java/com/esportspulse/engine/factory/
 git add backend-java/src/main/java/com/esportspulse/engine/service/
-git add .cursorrules
-git commit -m "feat(java): ChampionManagementService with DI + ChampionRecordFactory + .cursorrules spec"
+git commit -m "feat(java): ChampionManagementService with DI + ChampionRecordFactory"
 ```
 
 ---
@@ -289,6 +314,4 @@ git commit -m "feat(java): ChampionManagementService with DI + ChampionRecordFac
 - [ ] `registerChampion()` usa el factory per crear i el repo per guardar
 - [ ] `getMetaChampions()` filtra correctament amb streams
 - [ ] Demo de les 3 capes integrades funciona sense errors
-- [ ] `.cursorrules` escrit com a especificacio precisa (no generica)
-- [ ] Cursor genera `PlayerRecord` com a `record` (no POJO) quan li demanes
 - [ ] Commit amb format Conventional Commits

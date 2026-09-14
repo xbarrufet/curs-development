@@ -179,14 +179,58 @@ mkdir -p ai-python/src
 touch ai-python/requirements.txt
 ```
 
-Verifica que compila:
+Verifica que Java compila:
 
 ```bash
 # Compila el projecte Java — ha de sortir BUILD SUCCESS
 mvn compile
 ```
 
-Si surt `BUILD SUCCESS`, l'estructura és correcta.
+Si surt `BUILD SUCCESS`, l'estructura Java és correcta.
+
+**Configurar l'entorn Python:**
+
+Java usa Maven per gestionar dependències i compilar. Python usa **`venv`** (entorn virtual) per aïllar les dependències del projecte — cada projecte té les seves pròpies llibreries, sense interferir amb altres projectes del sistema.
+
+```bash
+# Entra a la carpeta Python del projecte
+cd ai-python
+
+# Crea l'entorn virtual — .venv és el nom convencional
+# Això genera una carpeta .venv/ amb una còpia local de Python i pip
+python3 -m venv .venv
+
+# Activa l'entorn — a partir d'ara, "python" i "pip" apunten a .venv/
+source .venv/bin/activate
+# A Windows: .venv\Scripts\Activate.ps1
+
+# Verificació: el prompt ha de mostrar (.venv) al principi
+# (.venv) $ python --version
+# → Python 3.12.x (o la versió que tinguis)
+```
+
+> **Per què `venv`?** Sense entorn virtual, `pip install` instal·la llibreries a tot el sistema. Si el projecte A necessita `pytest 7.4` i el projecte B necessita `pytest 8.1`, es trepitgen. Amb `venv`, cada projecte té el seu propi directori de llibreries aïllat.
+
+```bash
+# Torna a l'arrel del projecte
+cd ..
+```
+
+**Estructura final del projecte:**
+
+```
+esportspulse-engine/
+├── pom.xml
+├── .gitignore
+├── backend-java/
+│   └── src/
+│       ├── main/java/com/esportspulse/engine/
+│       └── test/java/com/esportspulse/engine/
+└── ai-python/
+    ├── requirements.txt
+    ├── .venv/                ← Entorn virtual (NO es versiona a Git)
+    └── src/
+```
 
 ### 3. Configurar `.gitignore` (10 min)
 

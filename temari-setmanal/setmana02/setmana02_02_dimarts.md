@@ -4,6 +4,8 @@
 
 Crear la capa de persistencia del projecte EsportsPulse usant el patro Repository amb interficies Java. Implementar una versio in-memory que mes endavant (Setmana 5) es podra canviar per SQL sense tocar el codi de negoci. Veure com Python fa el mateix amb `abc.ABC` i `@dataclass`. Al final del dia tens `ChampionRepository`, `InMemoryChampionRepository`, i l'equivalent Python funcionant.
 
+> **Nova entitat de domini: `ChampionRecord`.** A la setmana 1 vas crear `PlayerRecord` — un jugador de LoL amb el seu nivell i hores jugades. Ara introduïm una segona entitat: `ChampionRecord`, que representa un campió del joc (Ahri, Yasuo, Jinx...) amb les seves estadístiques competitives (win rate, pick rate). Són dues entitats diferents del mateix domini: un **jugador** selecciona un **campió** per jugar una partida. A partir d'ara treballarem amb ambdues entitats segons el context — el repository d'avui serà per a campions perquè connectarem amb l'API de Riot que retorna dades de campions.
+
 ---
 
 ## Teoria
@@ -243,6 +245,27 @@ class InMemoryChampionRepository(ChampionRepository):
 ---
 
 ## Activitat
+
+### 0. Crear l'entitat `ChampionRecord` (10 min)
+
+Abans de crear el repository, necessitem l'entitat que guardarà. Crea `ChampionRecord` de la mateixa manera que vas crear `PlayerRecord` a la setmana 1 — un `record` immutable dins el paquet `model`:
+
+```
+backend-java/src/main/java/com/esportspulse/engine/model/ChampionRecord.java
+```
+
+```java
+package com.esportspulse.engine.model;
+
+public record ChampionRecord(
+    String championId,   // Identificador únic (ex: "CHAMP-1")
+    String name,         // Nom del campió (ex: "Ahri", "Yasuo")
+    double winRate,      // Percentatge de victòries (0-100)
+    double pickRate      // Percentatge de selecció (0-100)
+) {}
+```
+
+Verifica que compila: `mvn compile`. Ara tens dues entitats de domini al projecte: `PlayerRecord` (jugador) i `ChampionRecord` (campió).
 
 ### 1. Crear la interficie `ChampionRepository` (15 min)
 
