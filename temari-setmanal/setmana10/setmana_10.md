@@ -187,6 +187,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Streamlit:** Cerca "Streamlit tutorial español" o "Data Professor Streamlit" (anglès, canal de referència per Streamlit amb molts exemples pràctics).
+- **Dashboards amb Streamlit:** Cerca "Coding Is Fun Streamlit dashboard" (anglès, projectes complets pas a pas amb gràfics i KPIs).
+- **Plotly:** Cerca "Plotly Python tutorial" o "Charming Data Plotly Dash" (anglès, molt visual).
+- **Spec-driven development:** Cerca "spec driven development AI" — tema emergent, pocs vídeos dedicats. La pràctica de dimarts (wireframe ASCII → agent → codi) és el millor recurs.
+
+---
+
 ## Nota sobre Spec-Driven UI
 
 Setmana 10 és la primera vegada que l'estudiant escriu una **spec visual** (wireframe ASCII) i la dona a un agent per generar UI. La progressió de specs fins ara:

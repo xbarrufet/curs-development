@@ -229,6 +229,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Clean Code:** Cerca "CodelyTV Clean Code" (castellà, equip de referència en bones pràctiques). En anglès: "Uncle Bob Clean Code" (la conferència original).
+- **Git workflow:** Cerca "MoureDev Git y GitHub" (castellà, molt complet) o "Midudev Git tutorial". En anglès: "Fireship Git explained in 100 seconds" (molt visual).
+- **Code review:** Cerca "Google Engineering code review best practices" o "CodelyTV code review".
+- **CI/CD bàsic:** Cerca "GitHub Actions tutorial español" o "Fireship GitHub Actions" (anglès, curt i directe).
+
+---
+
 ## Nota sobre Empliabilitat
 
 Setmana 4 tanca el Bloc 1 amb les skills que un junior utilitza des del **dia 1 a qualsevol empresa**:

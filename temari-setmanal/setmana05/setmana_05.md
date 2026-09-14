@@ -115,6 +115,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Spring Data JPA:** Cerca "TodoCode Spring Data JPA" o "MitoCode JPA Hibernate" (castellà). En anglès: "Amigoscode Spring Data JPA tutorial" (complet, pas a pas).
+- **Repository Pattern:** Cerca "CodelyTV Repository Pattern" (castellà, explica bé la motivació darrere el patró).
+- **H2 Database:** Cerca "Spring Boot H2 database tutorial" — qualsevol vídeo curt que mostri la consola H2 i com inspeccionar dades.
+- **Factory Pattern:** Cerca "Refactoring Guru Factory Pattern" o "CodelyTV patrones de diseño Factory" (castellà).
+
+---
+
 ## Nota sobre Persistència
 
 Setmana 5 és **la darrera del Bloc 1**. Després (S7+), els endpoints REST consultaran aquesta BD. Per tant:

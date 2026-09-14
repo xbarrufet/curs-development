@@ -185,6 +185,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Pydantic v2:** Cerca "ArjanCodes Pydantic v2" (anglès, el millor tutorial de Pydantic a YouTube). En castellà: "Pydantic tutorial español FastAPI".
+- **FastAPI:** Cerca "MoureDev FastAPI" (castellà) o "TechWithTim FastAPI tutorial" (anglès). FastAPI + Pydantic van de la mà.
+- **LLMs i structured output:** Cerca "Sam Witteveen structured output LLM" o "AI Jason function calling" (anglès). Temes nous — la majoria de contingut bo és en anglès.
+- **MCP (Model Context Protocol):** Cerca "Anthropic MCP tutorial" o "MCP server tutorial Claude" — contingut recent, prioritza vídeos de 2024-2025.
+
+---
+
 ## Nota sobre Python i Empliabilitat
 
 - **S1-S6:** Python com a mirall — exercicis paral·lels per aprendre la sintaxi.

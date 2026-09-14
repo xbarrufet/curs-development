@@ -204,6 +204,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **JUnit 5:** Cerca "TodoCode JUnit 5 tutorial" o "MitoCode JUnit 5" (castellà). En anglès: "Java Brains JUnit 5" (sèrie completa).
+- **Mockito:** Cerca "TodoCode Mockito tutorial" o "Java Brains Mockito" (anglès). Mockito és la llibreria de mocking estàndard — entendre `when/thenReturn` i `verify` és essencial.
+- **pytest (Python):** Cerca "MoureDev pytest tutorial" o "ArjanCodes pytest" (anglès, molt pràctic).
+- **TDD:** Cerca "CodelyTV TDD" (castellà, expliquen el cicle red-green-refactor aplicat a projectes reals).
+
+---
+
 ## Nota sobre Testing i Empliabilitat
 
 Setmana 6 tanca el Bloc 1 amb la skill que defineix un desenvolupador professional: **saber testejar el propi codi**.

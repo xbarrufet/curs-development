@@ -293,6 +293,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Error handling en APIs:** Cerca "CodelyTV error handling API" (castellà) o "Hussein Nasser API error handling" (anglès, explica bé els patrons de retry i circuit breaker).
+- **Logging estructurat:** Cerca "structured logging Python tutorial" o "structlog Python" (anglès). En castellà hi ha poc contingut específic — els articles de la teoria cobreixen bé el tema.
+- **Retry i resiliència:** Cerca "Tenacity Python retry" o "resilience patterns microservices" (anglès, conceptes transferibles a qualsevol stack).
+- **MCP Server:** Cerca "build MCP server tutorial" o "Anthropic MCP server Python" — contingut recent, prioritza vídeos de 2024-2025.
+
+---
+
 ## Nota sobre Robustesa i MCP
 
 | Concepte               | Setmana | Estat                                     |

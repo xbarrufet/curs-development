@@ -132,6 +132,15 @@
 
 ---
 
+## Vídeos Recomanats
+
+- **Concurrència Java:** Cerca "TodoCode Java concurrencia hilos" o "MitoCode Java threads" (castellà). En anglès: "Java Brains Java concurrency" o "Amigoscode Java multithreading".
+- **CompletableFuture:** Cerca "Java CompletableFuture tutorial" (Java Brains té una sèrie excel·lent).
+- **asyncio Python:** Cerca "MoureDev Python asyncio" o "ArjanCodes Python async" (anglès, molt clar).
+- **Race conditions:** Cerca "race condition explained programming" — qualsevol vídeo curt amb animacions ajuda a visualitzar el problema.
+
+---
+
 ## Nota sobre Progressió
 
 - **S1:** Big-O i estructures → *entens per què una query és lenta*

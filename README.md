@@ -119,32 +119,6 @@ ANTHROPIC_API_KEY=your_key_here   # S8+ (alternativa)
 | **4. Agents i Spec-Driven** | S17–S19 | Agents, tool use, eval-driven, spec-driven dev | 20% / 80% |
 | **5. Producció, Portfolio i Entrevista** | S20–S24 | CI/CD, deploy cloud, C4, demo, entrevista tècnica | 10% / 90% |
 
-## Versió Resumida del Pla (12 Setmanes)
-
-Aquesta és la versió compacta i prioritzada del curs, pensada per maximitzar la velocitat d’aprenentatge i la seva aplicabilitat laboral:
-
-| Setmana | Focus principal | Objectiu clau |
-|---------|----------------|---------------|
-| **S1** | Big-O, Java, benchmarks | Aprendre a mesurar rendiment i pensar en complexitat |
-| **S2** | POO, SOLID, immutabilitat | Escriure models clars i mantenibles |
-| **S3** | Concurrència i async | Entendre races, threads i paral·lelisme real |
-| **S4** | Clean code, Git, CI | Aprendre revisió, qualitat i flux de treball professional |
-| **S5** | Repository, JPA, SQL bàsic | Connectar domini amb persistència i BD |
-| **S6** | Testing, mocks, cobertura | Fer software validable i robust |
-| **S7** | REST, DTOs i Virtual Threads | Construir APIs reals i escalables |
-| **S8** | Python, Pydantic, structured output | Fer servir IA amb sortides controlades |
-| **S9** | Logs, handling d’errors, observabilitat | Entendre depuració real i resiliència |
-| **S10** | Streamlit, dashboards, specs UI | Mostrar informació del sistema i validar fluxos |
-| **S11** | Docker i infra local | Executar sistemes reals amb múltiples serveis |
-| **S12** | Knowledge + MCP + agent basics | Introduir IA com a eina operativa, no només un chatbot |
-
-### Fletxa de priorització
-- **S1–S6:** fonaments i qualitat de codi
-- **S7–S10:** APIs, integració i productivitat
-- **S11–S12:** infraestructura i IA aplicada
-
-> Aquesta seqüència prioritza el que més impacta en l’ocupabilitat, i és la ruta recomanada si es vol avançar ràpid i amb sentit professional.
-
 ## Competències Transversals
 
 El curs té 5 fils que es treballen de forma progressiva cada setmana (no en blocs aïllats):
@@ -172,7 +146,7 @@ El curs té 5 fils que es treballen de forma progressiva cada setmana (no en blo
 
 | Setmana | Tema | Material |
 |---------|------|----------|
-| **S7** | APIs REST amb Spring Boot 3, Virtual Threads | [Pla](temari-setmanal/setmana07/setmana_07.md) · [Teoria](temari-setmanal/setmana07/teoria_setmana_07.md) · [Exercicis](temari-setmanal/setmana07/exercicis_consolidacio_07.md) |
+| **S7** | APIs REST amb Spring Boot 3 | [Pla](temari-setmanal/setmana07/setmana_07.md) · [Teoria](temari-setmanal/setmana07/teoria_setmana_07.md) · [Exercicis](temari-setmanal/setmana07/exercicis_consolidacio_07.md) |
 | **S8** | Python, Pydantic, LLMs, MCP basics | [Pla](temari-setmanal/setmana08/setmana_08.md) · [Teoria](temari-setmanal/setmana08/teoria_setmana_08.md) · [Exercicis](temari-setmanal/setmana08/exercicis_consolidacio_08.md) |
 | **S9** | Error Handling, Logging, MCP pràctic | [Pla](temari-setmanal/setmana09/setmana_09.md) · [Teoria](temari-setmanal/setmana09/teoria_setmana_09.md) · [Exercicis](temari-setmanal/setmana09/exercicis_consolidacio_09.md) |
 | **S10** | Streamlit, Spec-Driven UI, Testing E2E | [Pla](temari-setmanal/setmana10/setmana_10.md) · [Teoria](temari-setmanal/setmana10/teoria_setmana_10.md) · [Exercicis](temari-setmanal/setmana10/exercicis_consolidacio_10.md) |

@@ -1,4 +1,4 @@
-# Setmana 7 - Teoria: REST APIs, DTOs, Persistència i Virtual Threads
+# Setmana 7 - Teoria: REST APIs, DTOs i Persistència
 
 ## 1. Per què una API REST és la capa de comunicació de la majoria de projectes
 
@@ -107,32 +107,7 @@ Això evita:
 
 ---
 
-## 5. Virtual Threads: quan la concurrència real es manifesta
-
-La setmana 3 ja va introduir conceptes de concurrència. Ara, amb REST, la necessitat es fa evident.
-
-### Problema real
-
-Si un endpoint fa crides externes (Steam, RAWG, altres APIs) i cada petició consumeix un thread de l’ecosistema Java, llavors amb moltes peticions simultànies el pool es pot saturar.
-
-### Solució
-
-Java 21 introdueix Virtual Threads:
-- més lleugers que threads del sistema,
-- adequades per treballar amb E/S bound tasks,
-- ideades per a aplicacions amb moltes peticions async i I/O.
-
-Configuració típica:
-
-```properties
-spring.threads.virtual.enabled=true
-```
-
-Aquest canvi no és una bala màgica, però sí una solució molt útil per a frameworks web amb moltes peticions de lectura i crides externes.
-
----
-
-## 6. OpenAPI / Swagger: documentar el contracte
+## 5. OpenAPI / Swagger: documentar el contracte
 
 La documentació no és extra; és part del producte.
 
@@ -150,7 +125,7 @@ Això facilita:
 
 ---
 
-## 7. Connexió amb Python i el flux del curs
+## 6. Connexió amb Python i el flux del curs
 
 La setmana 7 posa la base de l’arquitectura de software moderna:
 
@@ -168,11 +143,10 @@ L’important és entendre que l’API no és només codi: és un contracte entr
 
 ---
 
-## 8. Objectiu d’aprenentatge de la setmana
+## 7. Objectiu d’aprenentatge de la setmana
 
 Al final d’aquesta setmana, l’estudiant ha de ser capaç de:
 - crear DTOs i controllers REST,
 - validar input i output,
 - gestionar errors de forma professional,
-- documentar la API amb Swagger,
-- i comprendre la necessitat de Virtual Threads en un sistema real.
+- i documentar la API amb Swagger.
