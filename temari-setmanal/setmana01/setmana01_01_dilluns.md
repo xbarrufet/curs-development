@@ -169,31 +169,47 @@ Si surt `BUILD SUCCESS`, l'estructura és correcta.
 
 ### 3. Configurar `.gitignore` (10 min)
 
+**Què és `.gitignore`?** Un fitxer que diu a Git quins fitxers i carpetes **no ha de rastrejar**. Sense `.gitignore`, Git intentaria pujar tot el que hi ha a la carpeta — incloent-hi fitxers temporals de compilació, configuració local del teu IDE, i pitjor encara, claus secretes d'API. Això és un problema per tres motius:
+- **Soroll:** El repositori s'omple de fitxers que no són codi font (binaris, caches, logs).
+- **Conflictes:** Cada developer té un IDE diferent — si puges `.idea/` (IntelliJ) o `.vscode/`, cada cop que algú obre el projecte genera canvis fantasma que contaminen els commits.
+- **Seguretat:** Si puges un `.env` amb claus d'API, qualsevol que tingui accés al repo les pot veure. I un cop a l'historial de Git, eliminar-les és molt difícil (el fitxer desapareix del directori però queda als commits anteriors).
+
 Crea el fitxer `.gitignore` a l'arrel del projecte:
 
 ```gitignore
-# Java
+# Java — Maven compila el codi dins target/. Conté .class (bytecode)
+# i .jar (executables). Tot això es regenera amb `mvn compile`, no cal guardar-ho.
 target/
 *.class
 *.jar
 
-# IDE
+# IDE — Cada developer usa un IDE diferent (IntelliJ, VS Code, Cursor).
+# Aquests fitxers contenen configuració LOCAL (mida de finestra, breakpoints,
+# plugins actius). No formen part del projecte, són preferències personals.
 .idea/
 *.iml
 .vscode/
 .cursor/
 
-# Python
+# Python — Quan Python executa un fitxer .py, crea una versió compilada
+# .pyc dins __pycache__/ per anar més ràpid la propera vegada. Es regenera
+# automàticament, no cal versionar-ho. .venv/ és l'entorn virtual (les
+# dependències instal·lades amb pip) — cada developer el crea localment.
 __pycache__/
 *.pyc
 .venv/
 
-# OS
+# OS — macOS crea .DS_Store a cada carpeta que obres al Finder.
+# No té res a veure amb el projecte.
 .DS_Store
 
-# Secrets
+# Secrets — El fitxer .env conté claus d'API (Riot, OpenAI, etc.).
+# MAI ha d'arribar a GitHub. Si algú el veu, pot usar les teves claus
+# i generar-te factures o accedir a les teves dades.
 .env
 ```
+
+> **Regla d'or:** Si un fitxer es pot regenerar (`target/`, `__pycache__/`, `.venv/`) o és personal (`.idea/`, `.DS_Store`) o és secret (`.env`), va al `.gitignore`.
 
 ### 4. Inicialitzar Git i pujar a GitHub (15 min)
 
