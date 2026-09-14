@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Construir la capa de servei (`GameManagementService`) que aplica Dependency Inversion de forma real: rep el repositori per constructor, no crea res directament. Tambe escriure un `.cursorrules` que funcioni com a especificacio de comportament per a l'assistent IA, verificant que genera codi coherent amb el projecte. Al final del dia tens el servei funcionant amb el repositori d'ahir i un `.cursorrules` que produeix resultats consistents.
+Construir la capa de servei (`ChampionManagementService`) que aplica Dependency Inversion de forma real: rep el repositori per constructor, no crea res directament. Tambe escriure un `.cursorrules` que funcioni com a especificacio de comportament per a l'assistent IA, verificant que genera codi coherent amb el projecte. Al final del dia tens el servei funcionant amb el repositori d'ahir i un `.cursorrules` que produeix resultats consistents.
 
 ---
 
@@ -11,24 +11,24 @@ Construir la capa de servei (`GameManagementService`) que aplica Dependency Inve
 ### Dependency Inversion en 3 Capes
 
 Fins ara tens dues peces:
-- `GameRecord` — el model immutable (dilluns)
-- `InMemoryGameRepository` — la persistencia en memoria (dimarts)
+- `ChampionRecord` — el model immutable (dilluns)
+- `InMemoryChampionRepository` — la persistencia en memoria (dimarts)
 
 Avui afegim la tercera: el servei de negoci. L'arquitectura queda aixi:
 
 ```
 ┌──────────────────────────────────┐
-│      GameManagementService       │  ← Logica de negoci: QUE fer
+│    ChampionManagementService     │  ← Logica de negoci: QUE fer
 │  (orquestra, no crea ni guarda)  │
 └────────────┬─────────────────────┘
              │ depèn de (interficie)
 ┌────────────▼─────────────────────┐
-│        GameRepository            │  ← Contracte: quins metodes existeixen
+│       ChampionRepository         │  ← Contracte: quins metodes existeixen
 │     (interficie abstracta)       │
 └────────────┬─────────────────────┘
              │ implementa
 ┌────────────▼─────────────────────┐
-│   InMemoryGameRepository         │  ← COM es fa: detall d'implementacio
+│  InMemoryChampionRepository      │  ← COM es fa: detall d'implementacio
 │   (ConcurrentHashMap)            │
 └──────────────────────────────────┘
 ```
@@ -37,29 +37,29 @@ Avui afegim la tercera: el servei de negoci. L'arquitectura queda aixi:
 
 ### Factory Pattern: Centralitzar la Creacio
 
-El servei no hauria de saber com es crea un `GameRecord` — nomes que en vol un. Per aixo usem un Factory:
+El servei no hauria de saber com es crea un `ChampionRecord` — nomes que en vol un. Per aixo usem un Factory:
 
 ```java
-// Factory: responsable de CREAR GameRecords amb logica centralitzada
+// Factory: responsable de CREAR ChampionRecords amb logica centralitzada
 // Si el format de creacio canvia, nomes toques aquesta classe
-public class GameRecordFactory {
+public class ChampionRecordFactory {
 
-    // Crea un GameRecord amb valors per defecte (preu 0, jugadors 0)
-    // Util per quan registres un joc nou que encara no te dades de mercat
-    public GameRecord createDefault(String appId, String title, BigDecimal price) {
-        return new GameRecord(appId, title, price, 0L);
+    // Crea un ChampionRecord amb valors per defecte (pickRate 0.0)
+    // Util per quan registres un campio nou que encara no te dades de meta
+    public ChampionRecord createDefault(String championId, String name, double winRate) {
+        return new ChampionRecord(championId, name, winRate, 0.0);
     }
 
-    // Crea un GameRecord a partir d'un JSON de la Steam API
+    // Crea un ChampionRecord a partir d'un JSON de la Riot API
     // Encapsula tota la logica de parsing — el servei no sap res de JSON
-    public GameRecord createFromSteamAPI(String appId, String json) {
-        // Parseja el JSON per extreure els camps necessaris
-        String title = extractField(json, "name");
-        BigDecimal price = new BigDecimal(extractField(json, "price"));
-        Long players = Long.parseLong(extractField(json, "players"));
+    public ChampionRecord createFromRiotAPI(String championId, String json) {
+        // Parseja el JSON de la Riot API per extreure els camps necessaris
+        String name = extractField(json, "name");
+        double winRate = Double.parseDouble(extractField(json, "winRate"));
+        double pickRate = Double.parseDouble(extractField(json, "pickRate"));
 
         // Crea el record — la validacio del compact constructor s'aplica automaticament
-        return new GameRecord(appId, title, price, players);
+        return new ChampionRecord(championId, name, winRate, pickRate);
     }
 
     // Metode auxiliar per extreure un camp del JSON
@@ -82,40 +82,40 @@ public class GameRecordFactory {
 ```java
 // Servei de negoci: orquestra la logica sense saber detalls d'implementacio
 // Rep les dependencies per CONSTRUCTOR — mai les crea ell (DIP)
-public class GameManagementService {
+public class ChampionManagementService {
 
     // Dependencies declarades com a interficies (abstraccions)
     // El servei no sap si el repo es in-memory, SQL, o MongoDB
-    private final GameRepository repo;
-    private final GameRecordFactory factory;
+    private final ChampionRepository repo;
+    private final ChampionRecordFactory factory;
 
     // Constructor injection: qui crea el servei decideix QUINES implementacions usar
     // Aixo es DIP pur: el servei depèn d'abstraccions, no de concrecions
-    public GameManagementService(GameRepository repo, GameRecordFactory factory) {
+    public ChampionManagementService(ChampionRepository repo, ChampionRecordFactory factory) {
         this.repo = repo;
         this.factory = factory;
     }
 
-    // Registra un joc nou: delega creacio al factory, persistencia al repo
-    public void registerGame(String appId, String title, BigDecimal price) {
+    // Registra un campio nou: delega creacio al factory, persistencia al repo
+    public void registerChampion(String championId, String name, double winRate) {
         // El factory crea el record (amb validacio del compact constructor)
-        GameRecord game = factory.createDefault(appId, title, price);
+        ChampionRecord champion = factory.createDefault(championId, name, winRate);
         // El repo el guarda (no sabem on — in-memory? SQL? No importa)
-        repo.save(game);
+        repo.save(champion);
     }
 
-    // Retorna nomes els jocs populars (mes de 100K jugadors)
-    // Filtra usant el metode isPopular() del propi GameRecord
-    public List<GameRecord> getPopularGames() {
-        return repo.findAll()        // Obte tots els jocs del repo
+    // Retorna nomes els campions meta (amb pickRate i winRate alts)
+    // Filtra usant el metode isMeta() del propi ChampionRecord
+    public List<ChampionRecord> getMetaChampions() {
+        return repo.findAll()        // Obte tots els campions del repo
             .stream()                // Converteix a stream per filtrar
-            .filter(GameRecord::isPopular)  // Filtra els que son populars
+            .filter(ChampionRecord::isMeta)  // Filtra els que son meta
             .toList();               // Converteix el resultat a llista
     }
 
-    // Busca un joc per ID — delega al repo i retorna Optional
-    public Optional<GameRecord> findGame(String appId) {
-        return repo.findById(appId);
+    // Busca un campio per ID — delega al repo i retorna Optional
+    public Optional<ChampionRecord> findChampion(String championId) {
+        return repo.findById(championId);
     }
 }
 ```
@@ -124,34 +124,34 @@ public class GameManagementService {
 
 ```java
 // MAL — el servei CREA les seves dependencies
-public class GameManagementService {
-    // Acoblat a InMemoryGameRepository — si vull SQL, he de modificar AQUESTA classe
-    private GameRepository repo = new InMemoryGameRepository();
+public class ChampionManagementService {
+    // Acoblat a InMemoryChampionRepository — si vull SQL, he de modificar AQUESTA classe
+    private ChampionRepository repo = new InMemoryChampionRepository();
 
     // Impossible de testejar amb un mock — sempre usa InMemory
 }
 
 // BE — el servei REP les seves dependencies
-public class GameManagementService {
-    private final GameRepository repo;
+public class ChampionManagementService {
+    private final ChampionRepository repo;
 
     // Qui crea el servei decideix la implementacio
-    public GameManagementService(GameRepository repo, GameRecordFactory factory) {
+    public ChampionManagementService(ChampionRepository repo, ChampionRecordFactory factory) {
         this.repo = repo;
         this.factory = factory;
     }
 }
 
 // Produccio: usa SQL
-GameRepository sqlRepo = new SqlGameRepository(dataSource);
-GameManagementService prodService = new GameManagementService(sqlRepo, factory);
+ChampionRepository sqlRepo = new SqlChampionRepository(dataSource);
+ChampionManagementService prodService = new ChampionManagementService(sqlRepo, factory);
 
 // Test: usa un mock o in-memory — SENSE tocar el servei
-GameRepository testRepo = new InMemoryGameRepository();
-GameManagementService testService = new GameManagementService(testRepo, factory);
+ChampionRepository testRepo = new InMemoryChampionRepository();
+ChampionManagementService testService = new ChampionManagementService(testRepo, factory);
 ```
 
-**El benefici real:** als tests de demà podras crear un `InMemoryGameRepository`, injectar-lo al servei, i testejar la logica de negoci sense cap base de dades. Si el servei creés les seves dependencies, no podries fer-ho.
+**El benefici real:** als tests de demà podras crear un `InMemoryChampionRepository`, injectar-lo al servei, i testejar la logica de negoci sense cap base de dades. Si el servei creés les seves dependencies, no podries fer-ho.
 
 ### `.cursorrules` com a Especificacio de Comportament
 
@@ -166,8 +166,8 @@ Un `.cursorrules` no es un fitxer de configuracio generic — es la primera espe
 "Escriu codi net"
 
 # PRECIS — l'agent sap exactament que fer
-"Variables Java en camelCase: gameRecord, activePlayerCount"
-"Variables Python en snake_case: game_record, active_player_count"
+"Variables Java en camelCase: championRecord, pickRate"
+"Variables Python en snake_case: champion_record, pick_rate"
 "Models de domini: record (Java), @dataclass(frozen=True) (Python). Mai setters."
 "Cada classe publica necessita un test JUnit corresponent"
 "Commits: Conventional Commits (feat/fix/test/docs/refactor)"
@@ -179,59 +179,57 @@ Un `.cursorrules` no es un fitxer de configuracio generic — es la primera espe
 
 ## Activitat
 
-### 1. Crear `GameRecordFactory` (20 min)
+### 1. Crear `ChampionRecordFactory` (20 min)
 
 Crea el fitxer:
 ```
-backend-java/src/main/java/com/esportspulse/engine/factory/GameRecordFactory.java
+backend-java/src/main/java/com/esportspulse/engine/factory/ChampionRecordFactory.java
 ```
 
 Implementa:
-- `createDefault(String appId, String title, BigDecimal price)` — crea un GameRecord amb 0 jugadors
-- `createFromSteamAPI(String appId, String json)` — parseja JSON simplificat i crea un GameRecord
+- `createDefault(String championId, String name, double winRate)` — crea un ChampionRecord amb pickRate 0.0
+- `createFromRiotAPI(String championId, String json)` — parseja JSON simplificat i crea un ChampionRecord
 
-### 2. Crear `GameManagementService` (30 min)
+### 2. Crear `ChampionManagementService` (30 min)
 
 Crea el fitxer:
 ```
-backend-java/src/main/java/com/esportspulse/engine/service/GameManagementService.java
+backend-java/src/main/java/com/esportspulse/engine/service/ChampionManagementService.java
 ```
 
 Implementa:
-- Constructor que rep `GameRepository` i `GameRecordFactory` (DIP)
-- `registerGame(String appId, String title, BigDecimal price)`
-- `getPopularGames()` — filtra amb stream + `isPopular()`
-- `findGame(String appId)` — delega al repo
+- Constructor que rep `ChampionRepository` i `ChampionRecordFactory` (DIP)
+- `registerChampion(String championId, String name, double winRate)`
+- `getMetaChampions()` — filtra amb stream + `isMeta()`
+- `findChampion(String championId)` — delega al repo
 
 ### 3. Integrar les 3 capes (20 min)
 
 ```java
 public class ServiceDemo {
     public static void main(String[] args) {
-        // COMPOSICIO: aqui decidim quines implementacions usar
-        // En una aplicacio real, aixo ho faria Spring Boot automaticament
-        GameRepository repo = new InMemoryGameRepository();
-        GameRecordFactory factory = new GameRecordFactory();
-        GameManagementService service = new GameManagementService(repo, factory);
+        ChampionRepository repo = new InMemoryChampionRepository();
+        ChampionRecordFactory factory = new ChampionRecordFactory();
+        ChampionManagementService service = new ChampionManagementService(repo, factory);
 
-        // Registrem jocs usant el SERVEI — no el repo directament
-        service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
-        service.registerGame("APP-2", "Dota 2", BigDecimal.ZERO);
-        service.registerGame("APP-3", "Indie Game", BigDecimal.valueOf(19.99));
+        // Registrem campions usant el SERVEI
+        service.registerChampion("CHAMP-1", "Ahri", 52.3);
+        service.registerChampion("CHAMP-2", "Yasuo", 49.1);
+        service.registerChampion("CHAMP-3", "Jinx", 51.5);
 
-        // Nota: registerGame crea jocs amb 0 jugadors (createDefault)
-        // Aixi que getPopularGames() retornara llista buida
-        List<GameRecord> popular = service.getPopularGames();
-        System.out.println("Populars: " + popular.size());  // 0 — tots tenen 0 jugadors
+        // Nota: registerChampion crea campions amb pickRate 0.0 (createDefault)
+        // Aixi que getMetaChampions() retornara llista buida
+        List<ChampionRecord> meta = service.getMetaChampions();
+        System.out.println("Meta: " + meta.size());  // 0 — tots tenen pickRate 0
 
-        // Busquem un joc per ID
-        service.findGame("APP-1").ifPresent(
-            g -> System.out.println("Trobat: " + g.title())  // "Trobat: League of Legends"
+        // Busquem un campio per ID
+        service.findChampion("CHAMP-1").ifPresent(
+            c -> System.out.println("Trobat: " + c.name())  // "Trobat: Ahri"
         );
 
-        // Busquem un joc que no existeix
-        boolean exists = service.findGame("APP-999").isPresent();
-        System.out.println("APP-999 existeix? " + exists);  // false
+        // Busquem un campio que no existeix
+        boolean exists = service.findChampion("CHAMP-999").isPresent();
+        System.out.println("CHAMP-999 existeix? " + exists);  // false
     }
 }
 ```
@@ -244,8 +242,8 @@ Crea o reescriu el fitxer `.cursorrules` a l'arrel del projecte. Ha de ser una e
 # EsportsPulse Engine — Especificacio per a l'Assistent
 
 ## Llenguatge i Convencions
-- Java 21: variables en camelCase (gameRecord, activePlayerCount)
-- Python 3.12: variables en snake_case (game_record, active_player_count)
+- Java 21: variables en camelCase (championRecord, pickRate)
+- Python 3.12: variables en snake_case (champion_record, pick_rate)
 - Classes en PascalCase en ambdos llenguatges
 
 ## Models de Domini
@@ -267,7 +265,7 @@ Crea o reescriu el fitxer `.cursorrules` a l'arrel del projecte. Ha de ser una e
 
 ## Git
 - Format: Conventional Commits (feat/fix/test/docs/refactor)
-- Exemple: `feat(java): add GameManagementService with DI`
+- Exemple: `feat(java): add ChampionManagementService with DI`
 - Branques: `feature/weekN-description`
 ```
 
@@ -279,17 +277,17 @@ Crea o reescriu el fitxer `.cursorrules` a l'arrel del projecte. Ha de ser una e
 git add backend-java/src/main/java/com/esportspulse/engine/factory/
 git add backend-java/src/main/java/com/esportspulse/engine/service/
 git add .cursorrules
-git commit -m "feat(java): GameManagementService with DI + GameRecordFactory + .cursorrules spec"
+git commit -m "feat(java): ChampionManagementService with DI + ChampionRecordFactory + .cursorrules spec"
 ```
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `GameRecordFactory` amb `createDefault` i `createFromSteamAPI`
-- [ ] `GameManagementService` rep `GameRepository` i `GameRecordFactory` per constructor (DIP)
-- [ ] `registerGame()` usa el factory per crear i el repo per guardar
-- [ ] `getPopularGames()` filtra correctament amb streams
+- [ ] `ChampionRecordFactory` amb `createDefault` i `createFromRiotAPI`
+- [ ] `ChampionManagementService` rep `ChampionRepository` i `ChampionRecordFactory` per constructor (DIP)
+- [ ] `registerChampion()` usa el factory per crear i el repo per guardar
+- [ ] `getMetaChampions()` filtra correctament amb streams
 - [ ] Demo de les 3 capes integrades funciona sense errors
 - [ ] `.cursorrules` escrit com a especificacio precisa (no generica)
 - [ ] Cursor genera `PlayerRecord` com a `record` (no POJO) quan li demanes

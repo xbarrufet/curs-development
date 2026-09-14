@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Crear la capa de persistencia del projecte EsportsPulse usant el patro Repository amb interficies Java. Implementar una versio in-memory que mes endavant (Setmana 5) es podra canviar per SQL sense tocar el codi de negoci. Veure com Python fa el mateix amb `abc.ABC` i `@dataclass`. Al final del dia tens `GameRepository`, `InMemoryGameRepository`, i l'equivalent Python funcionant.
+Crear la capa de persistencia del projecte EsportsPulse usant el patro Repository amb interficies Java. Implementar una versio in-memory que mes endavant (Setmana 5) es podra canviar per SQL sense tocar el codi de negoci. Veure com Python fa el mateix amb `abc.ABC` i `@dataclass`. Al final del dia tens `ChampionRepository`, `InMemoryChampionRepository`, i l'equivalent Python funcionant.
 
 ---
 
@@ -13,70 +13,70 @@ Crear la capa de persistencia del projecte EsportsPulse usant el patro Repositor
 Una interficie en Java defineix QUE ha de fer una classe, pero no COM. Es un contracte: qualsevol classe que la implementi promet oferir certs metodes.
 
 ```java
-// Interficie: defineix el contracte per a qualsevol repositori de jocs
+// Interficie: defineix el contracte per a qualsevol repositori de campions
 // No te codi — nomes la signatura dels metodes que han d'existir
-public interface GameRepository {
+public interface ChampionRepository {
 
-    // Guarda un joc (o l'actualitza si ja existeix)
-    void save(GameRecord game);
+    // Guarda un campió (o l'actualitza si ja existeix)
+    void save(ChampionRecord champion);
 
-    // Busca un joc per ID — retorna Optional per evitar nulls
+    // Busca un campió per ID — retorna Optional per evitar nulls
     // Optional es una caixa que pot contenir un valor o estar buida
-    Optional<GameRecord> findById(String appId);
+    Optional<ChampionRecord> findById(String championId);
 
-    // Retorna tots els jocs com a llista immutable
+    // Retorna tots els campions com a llista immutable
     // Collections.unmodifiableList evita que qui rebi la llista la modifiqui
-    List<GameRecord> findAll();
+    List<ChampionRecord> findAll();
 
-    // Elimina un joc per ID
-    void delete(String appId);
+    // Elimina un campió per ID
+    void delete(String championId);
 }
 ```
 
 **Per que Optional i no null?**
 
 ```java
-// MAL — retorna null si no troba el joc
-public GameRecord findById(String appId) {
-    return storage.get(appId);  // Pot ser null!
+// MAL — retorna null si no trova el campió
+public ChampionRecord findById(String championId) {
+    return storage.get(championId);  // Pot ser null!
 }
 
 // Qui crida el metode oblida comprovar null → NullPointerException
-GameRecord g = repo.findById("APP-999");
-System.out.println(g.title());  // CRASH si no existeix
+ChampionRecord g = repo.findById("CHAMP-999");
+System.out.println(g.name());  // CRASH si no existeix
 
 // BE — retorna Optional, que OBLIGA a gestionar l'absencia
-public Optional<GameRecord> findById(String appId) {
-    return Optional.ofNullable(storage.get(appId));
+public Optional<ChampionRecord> findById(String championId) {
+    return Optional.ofNullable(storage.get(championId));
 }
 
 // Qui crida el metode HA de decidir que fer si no existeix
-Optional<GameRecord> result = repo.findById("APP-999");
+Optional<ChampionRecord> result = repo.findById("CHAMP-999");
 
 // Opcio 1: valor per defecte
-GameRecord g = result.orElse(defaultGame);
+ChampionRecord g = result.orElse(defaultChampion);
 
 // Opcio 2: excepcio controlada
-GameRecord g = result.orElseThrow(
-    () -> new GameNotFoundException("APP-999 no existeix")
+ChampionRecord g = result.orElseThrow(
+    () -> new ChampionNotFoundException("CHAMP-999 no existeix")
 );
 
 // Opcio 3: actuar nomes si existeix
-result.ifPresent(game -> System.out.println(game.title()));
+result.ifPresent(champion -> System.out.println(champion.name()));
 ```
 
 ### Repository Pattern: Separar Dades de Negoci
 
-El patro Repository es una abstraccio que amaga on i com es guarden les dades. El codi de negoci (`GameManagementService`) treballa amb la interficie `GameRepository` — no sap si les dades estan en memoria, en una base de dades SQL, o en un fitxer JSON.
+El patro Repository es una abstraccio que amaga on i com es guarden les dades. El codi de negoci (`ChampionManagementService`) treballa amb la interficie `ChampionRepository` — no sap si les dades estan en memoria, en una base de dades SQL, o en un fitxer JSON.
 
 ```
-                        GameManagementService
+                     ChampionManagementService
                                |
                      depèn de (interficie)
                                |
-                        GameRepository       ← CONTRACTE
+                     ChampionRepository       ← CONTRACTE
                         /           \
-            InMemoryGameRepo    SqlGameRepo  ← IMPLEMENTACIONS
+         InMemoryChampionRepo  SqlChampionRepo  ← IMPLEMENTACIONS
             (Setmana 2)         (Setmana 5)
 ```
 
@@ -90,30 +90,30 @@ Aixo es DIP (Dependency Inversion) i OCP (Open/Closed) en accio:
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Implementa la interficie GameRepository guardant tot en memoria
+// Implementa la interficie ChampionRepository guardant tot en memoria
 // ConcurrentHashMap es thread-safe: multiples threads poden llegir/escriure sense problemes
-public class InMemoryGameRepository implements GameRepository {
+public class InMemoryChampionRepository implements ChampionRepository {
 
-    // ConcurrentHashMap: clau = appId, valor = GameRecord
+    // ConcurrentHashMap: clau = championId, valor = ChampionRecord
     // Es thread-safe perque permet lectures concurrents i escriptures atomiques
     // Un HashMap normal petaria si dos threads escriuen al mateix temps
-    private final Map<String, GameRecord> storage = new ConcurrentHashMap<>();
+    private final Map<String, ChampionRecord> storage = new ConcurrentHashMap<>();
 
     @Override
-    public void save(GameRecord game) {
-        // put() afegeix o substitueix — si l'appId ja existeix, actualitza
-        storage.put(game.appId(), game);
+    public void save(ChampionRecord champion) {
+        // put() afegeix o substitueix — si el championId ja existeix, actualitza
+        storage.put(champion.championId(), champion);
     }
 
     @Override
-    public Optional<GameRecord> findById(String appId) {
+    public Optional<ChampionRecord> findById(String championId) {
         // ofNullable: si get() retorna null, Optional estara buit
         // Si retorna un valor, Optional el contindra
-        return Optional.ofNullable(storage.get(appId));
+        return Optional.ofNullable(storage.get(championId));
     }
 
     @Override
-    public List<GameRecord> findAll() {
+    public List<ChampionRecord> findAll() {
         // Retorna una COPIA immutable de tots els valors
         // Si qui rebi la llista intenta afegir-hi elements, petara (UnsupportedOperationException)
         // Aixo protegeix l'estat intern del repositori
@@ -123,10 +123,10 @@ public class InMemoryGameRepository implements GameRepository {
     }
 
     @Override
-    public void delete(String appId) {
+    public void delete(String championId) {
         // remove() elimina l'entrada amb aquesta clau
         // Si no existeix, no fa res (no peta)
-        storage.remove(appId);
+        storage.remove(championId);
     }
 }
 ```
@@ -144,36 +144,35 @@ Python no te `record` ni `interface` com a paraula clau, pero te equivalents fun
 
 ```python
 from dataclasses import dataclass
-from decimal import Decimal
 
 # frozen=True fa que l'objecte sigui immutable — no pots canviar atributs despres de crear-lo
 # Es l'equivalent de Java record: camps finals, sense setters, __eq__ i __hash__ automatics
 @dataclass(frozen=True)
-class GameRecord:
-    app_id: str                    # Identificador unic del joc
-    title: str                     # Nom del joc
-    price: Decimal                 # Preu en euros
-    active_player_count: int       # Jugadors actius
+class ChampionRecord:
+    champion_id: str               # Identificador unic del campió
+    name: str                      # Nom del campió
+    win_rate: float                # Percentatge de victories (0-100)
+    pick_rate: float               # Percentatge de seleccio (0-100)
 
-    def is_popular(self) -> bool:
-        """Un joc es popular si te mes de 100.000 jugadors actius."""
-        return self.active_player_count > 100_000
+    def is_meta(self) -> bool:
+        """Un campió es meta si te win rate > 52% i pick rate > 10%."""
+        return self.win_rate > 52.0 and self.pick_rate > 10.0
 
-    def discounted_price(self, percentage: float) -> "GameRecord":
-        """Retorna un NOU GameRecord amb el preu reduit.
+    def with_patch_adjustment(self, modifier: float) -> "ChampionRecord":
+        """Retorna un NOU ChampionRecord amb el win_rate ajustat.
         L'original no canvia — frozen=True ho impedeix."""
-        new_price = self.price * Decimal(str(1 - percentage))
+        new_win_rate = self.win_rate * modifier
         # Creem un objecte nou perque l'original es immutable
-        return GameRecord(
-            app_id=self.app_id,
-            title=self.title,
-            price=new_price,
-            active_player_count=self.active_player_count
+        return ChampionRecord(
+            champion_id=self.champion_id,
+            name=self.name,
+            win_rate=new_win_rate,
+            pick_rate=self.pick_rate
         )
 
 # Prova d'immutabilitat:
-lol = GameRecord("APP-1", "LoL", Decimal("0"), 5_000_000)
-# lol.price = Decimal("100")  # ERROR! FrozenInstanceError — no es pot mutar
+ahri = ChampionRecord("CHAMP-1", "Ahri", 53.2, 12.5)
+# ahri.win_rate = 60.0  # ERROR! FrozenInstanceError — no es pot mutar
 ```
 
 **`abc.ABC` = Java Interface:**
@@ -184,58 +183,58 @@ from typing import Optional
 
 # ABC = Abstract Base Class — equivalent a una interficie Java
 # No es pot instanciar directament, nomes serveix com a contracte
-class GameRepository(ABC):
+class ChampionRepository(ABC):
 
     @abstractmethod  # Obliga les subclasses a implementar aquest metode
-    def save(self, game: GameRecord) -> None:
-        """Guarda un joc al repositori."""
+    def save(self, champion: ChampionRecord) -> None:
+        """Guarda un campió al repositori."""
         pass
 
     @abstractmethod
-    def find_by_id(self, app_id: str) -> Optional[GameRecord]:
-        """Busca un joc per ID. Retorna None si no existeix."""
+    def find_by_id(self, champion_id: str) -> Optional[ChampionRecord]:
+        """Busca un campió per ID. Retorna None si no existeix."""
         pass
 
     @abstractmethod
-    def find_all(self) -> list[GameRecord]:
-        """Retorna tots els jocs."""
+    def find_all(self) -> list[ChampionRecord]:
+        """Retorna tots els campions."""
         pass
 
     @abstractmethod
-    def delete(self, app_id: str) -> None:
-        """Elimina un joc per ID."""
+    def delete(self, champion_id: str) -> None:
+        """Elimina un campió per ID."""
         pass
 
 
-# Implementacio concreta — equivalent a InMemoryGameRepository en Java
-class InMemoryGameRepository(GameRepository):
+# Implementacio concreta — equivalent a InMemoryChampionRepository en Java
+class InMemoryChampionRepository(ChampionRepository):
 
     def __init__(self):
         # dict Python es similar a HashMap Java
-        self._storage: dict[str, GameRecord] = {}
+        self._storage: dict[str, ChampionRecord] = {}
 
-    def save(self, game: GameRecord) -> None:
-        self._storage[game.app_id] = game
+    def save(self, champion: ChampionRecord) -> None:
+        self._storage[champion.champion_id] = champion
 
-    def find_by_id(self, app_id: str) -> Optional[GameRecord]:
+    def find_by_id(self, champion_id: str) -> Optional[ChampionRecord]:
         # dict.get() retorna None si la clau no existeix (equivalent a Optional.empty())
-        return self._storage.get(app_id)
+        return self._storage.get(champion_id)
 
-    def find_all(self) -> list[GameRecord]:
+    def find_all(self) -> list[ChampionRecord]:
         # Retorna una copia de la llista per protegir l'estat intern
         return list(self._storage.values())
 
-    def delete(self, app_id: str) -> None:
+    def delete(self, champion_id: str) -> None:
         # pop amb default None: elimina si existeix, no peta si no
-        self._storage.pop(app_id, None)
+        self._storage.pop(champion_id, None)
 ```
 
 ### Taula Comparativa Java vs Python
 
 | Concepte | Java 21 | Python 3.12 |
 |----------|---------|-------------|
-| Model immutable | `record GameRecord(...)` | `@dataclass(frozen=True)` |
-| Interficie | `interface GameRepository` | `class GameRepository(ABC)` |
+| Model immutable | `record ChampionRecord(...)` | `@dataclass(frozen=True)` |
+| Interficie | `interface ChampionRepository` | `class ChampionRepository(ABC)` |
 | Metode abstracte | Implicit a interficie | `@abstractmethod` |
 | Null-safe | `Optional<T>` | `Optional[T]` (typing) o `None` |
 | Map thread-safe | `ConcurrentHashMap` | `dict` + `threading.Lock` |
@@ -245,20 +244,20 @@ class InMemoryGameRepository(GameRepository):
 
 ## Activitat
 
-### 1. Crear la interficie `GameRepository` (15 min)
+### 1. Crear la interficie `ChampionRepository` (15 min)
 
 Crea el fitxer:
 ```
-backend-java/src/main/java/com/esportspulse/engine/repository/GameRepository.java
+backend-java/src/main/java/com/esportspulse/engine/repository/ChampionRepository.java
 ```
 
-Defineix els 4 metodes: `save`, `findById`, `findAll`, `delete`. Usa `Optional<GameRecord>` per a `findById`.
+Defineix els 4 metodes: `save`, `findById`, `findAll`, `delete`. Usa `Optional<ChampionRecord>` per a `findById`.
 
-### 2. Implementar `InMemoryGameRepository` (30 min)
+### 2. Implementar `InMemoryChampionRepository` (30 min)
 
 Crea el fitxer:
 ```
-backend-java/src/main/java/com/esportspulse/engine/repository/InMemoryGameRepository.java
+backend-java/src/main/java/com/esportspulse/engine/repository/InMemoryChampionRepository.java
 ```
 
 Implementa tots 4 metodes usant `ConcurrentHashMap`. `findAll()` ha de retornar una copia immutable.
@@ -269,30 +268,30 @@ Implementa tots 4 metodes usant `ConcurrentHashMap`. `findAll()` ha de retornar 
 public class RepositoryDemo {
     public static void main(String[] args) {
         // Creem el repositori — notem que el tipus declarat es la INTERFICIE
-        // Aixo es DIP: el codi depèn de GameRepository, no de InMemoryGameRepository
-        GameRepository repo = new InMemoryGameRepository();
+        // Aixo es DIP: el codi depèn de ChampionRepository, no de InMemoryChampionRepository
+        ChampionRepository repo = new InMemoryChampionRepository();
 
-        // Guardem dos jocs
-        GameRecord lol = new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L);
-        GameRecord dota = new GameRecord("APP-2", "Dota 2", BigDecimal.ZERO, 800_000L);
-        repo.save(lol);
-        repo.save(dota);
+        // Guardem dos campions
+        ChampionRecord ahri = new ChampionRecord("CHAMP-1", "Ahri", 53.2, 12.5);
+        ChampionRecord yasuo = new ChampionRecord("CHAMP-2", "Yasuo", 49.8, 15.3);
+        repo.save(ahri);
+        repo.save(yasuo);
 
         // Busquem per ID — Optional ens obliga a gestionar l'absencia
-        Optional<GameRecord> found = repo.findById("APP-1");
-        found.ifPresent(g -> System.out.println("Trobat: " + g.title()));  // "Trobat: LoL"
+        Optional<ChampionRecord> found = repo.findById("CHAMP-1");
+        found.ifPresent(c -> System.out.println("Trobat: " + c.name()));  // "Trobat: Ahri"
 
         // Busquem un ID que no existeix
-        Optional<GameRecord> notFound = repo.findById("APP-999");
+        Optional<ChampionRecord> notFound = repo.findById("CHAMP-999");
         System.out.println("Existeix? " + notFound.isPresent());  // false
 
-        // Llistem tots els jocs
-        List<GameRecord> all = repo.findAll();
-        System.out.println("Total jocs: " + all.size());  // 2
+        // Llistem tots els campions
+        List<ChampionRecord> all = repo.findAll();
+        System.out.println("Total campions: " + all.size());  // 2
 
         // Verifiquem que la llista es immutable — aixo HA de petar
         try {
-            all.add(new GameRecord("APP-3", "Hack", BigDecimal.ZERO, 0L));
+            all.add(new ChampionRecord("CHAMP-3", "Hack", 0.0, 0.0));
         } catch (UnsupportedOperationException e) {
             System.out.println("Llista immutable OK — no es pot modificar des de fora");
         }
@@ -303,32 +302,31 @@ public class RepositoryDemo {
 ### 4. Mirror Python (30 min)
 
 Crea a `ai-python/src/`:
-- `game_record.py` — `@dataclass(frozen=True)` amb `is_popular()` i `discounted_price()`
-- `game_repository.py` — `GameRepository(ABC)` i `InMemoryGameRepository`
+- `champion_record.py` — `@dataclass(frozen=True)` amb `is_meta()` i `with_patch_adjustment()`
+- `champion_repository.py` — `ChampionRepository(ABC)` i `InMemoryChampionRepository`
 
 Prova amb un script:
 
 ```python
 # ai-python/src/demo_repository.py
-from decimal import Decimal
-from game_record import GameRecord
-from game_repository import InMemoryGameRepository
+from champion_record import ChampionRecord
+from champion_repository import InMemoryChampionRepository
 
-# Creem el repositori i uns quants jocs
-repo = InMemoryGameRepository()
-lol = GameRecord("APP-1", "LoL", Decimal("0"), 5_000_000)
-dota = GameRecord("APP-2", "Dota 2", Decimal("0"), 800_000)
+# Creem el repositori i uns quants campions
+repo = InMemoryChampionRepository()
+ahri = ChampionRecord("CHAMP-1", "Ahri", 53.2, 12.5)
+yasuo = ChampionRecord("CHAMP-2", "Yasuo", 49.8, 15.3)
 
-repo.save(lol)
-repo.save(dota)
+repo.save(ahri)
+repo.save(yasuo)
 
 # Busquem per ID
-found = repo.find_by_id("APP-1")
-print(f"Trobat: {found.title}" if found else "No trobat")  # "Trobat: LoL"
+found = repo.find_by_id("CHAMP-1")
+print(f"Trobat: {found.name}" if found else "No trobat")  # "Trobat: Ahri"
 
 # Verifiquem immutabilitat
 try:
-    lol.price = Decimal("100")  # HA de petar — frozen=True
+    ahri.win_rate = 60.0  # HA de petar — frozen=True
 except Exception as e:
     print(f"Immutabilitat OK: {e}")
 ```
@@ -338,18 +336,18 @@ except Exception as e:
 ```bash
 git add backend-java/src/main/java/com/esportspulse/engine/repository/
 git add ai-python/src/
-git commit -m "feat: GameRepository interface + InMemory impl (Java + Python mirror)"
+git commit -m "feat: ChampionRepository interface + InMemory impl (Java + Python mirror)"
 ```
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `GameRepository` interficie amb `save`, `findById`, `findAll`, `delete`
-- [ ] `InMemoryGameRepository` implementa tots 4 metodes amb `ConcurrentHashMap`
-- [ ] `findById` retorna `Optional<GameRecord>` — mai null
+- [ ] `ChampionRepository` interficie amb `save`, `findById`, `findAll`, `delete`
+- [ ] `InMemoryChampionRepository` implementa tots 4 metodes amb `ConcurrentHashMap`
+- [ ] `findById` retorna `Optional<ChampionRecord>` — mai null
 - [ ] `findAll` retorna una llista immutable (modificar-la peta)
-- [ ] Python: `GameRecord` amb `@dataclass(frozen=True)` funcional
-- [ ] Python: `GameRepository(ABC)` amb `InMemoryGameRepository` funcional
+- [ ] Python: `ChampionRecord` amb `@dataclass(frozen=True)` funcional
+- [ ] Python: `ChampionRepository(ABC)` amb `InMemoryChampionRepository` funcional
 - [ ] Demo Java i Python executats sense errors
 - [ ] Commit amb format Conventional Commits

@@ -37,6 +37,86 @@ La interfície d'usuari del projecte és **Streamlit** (Python). No és "el fron
 
 ---
 
+## Model de Domini
+
+EsportsPulse treballa amb les entitats del món competitiu de League of Legends. Aquests són els objectes de negoci del sistema.
+
+### Campions per Rol
+
+El joc té 170+ campions, cadascun amb un o més rols. Exemples reals (carregats de l'API Data Dragon, sense clau):
+
+| Rol | Campions d'exemple | Descripció del rol |
+|-----|-------------------|-------------------|
+| **Assassin** | Ahri, Akali, Zed | Eliminen objectius prioritaris ràpidament |
+| **Mage** | Lux, Anivia, Syndra | Dany màgic a distància, control de zona |
+| **Fighter** | Yasuo, Aatrox, Darius | Cos a cos amb resistència i dany sostingut |
+| **Marksman** | Jinx, Aphelios, Caitlyn | Dany físic a distància, principals portadors de partida |
+| **Support** | Thresh, Lulu, Nautilus | Protegeixen i potencien els aliats |
+| **Tank** | Amumu, Alistar, Ornn | Absorbeixen dany i inicien lluites d'equip |
+
+### Entitats de Domini
+
+**ChampionRecord** — Un campió de LoL. Conté la identitat del campió (nom, rol) i les seves estadístiques competitives: percentatge de victòries (win rate) i percentatge de selecció (pick rate). Un campió amb win rate alt i pick rate alt es considera "meta" — dominant en el joc competitiu actual. És l'entitat central del sistema.
+- *Font de dades:* Data Dragon (dades estàtiques: nom, rol, stats base) + Riot API match-v5 (estadístiques calculades a partir de partides)
+
+**PlayerRecord** — Un jugador/invocador de LoL. Representa el perfil d'un jugador amb el seu progrés i experiència de joc. No és un usuari del sistema EsportsPulse — és una entitat del domini de LoL.
+- *Font de dades:* Riot API summoner-v4
+
+**MatchRecord** — Una partida jugada. Cada partida enfronta 2 equips de 5 jugadors, on cada jugador ha seleccionat un campió. Conté els campions que hi van participar, la durada, el resultat, i la versió del patch en què es va jugar. Connecta campions amb jugadors en un moment concret del joc.
+- *Font de dades:* Riot API match-v5
+
+**PatchNote** — Les notes d'una actualització del joc. Cada 2 setmanes, Riot Games modifica l'equilibri dels campions (buffs i nerfs). Conté la versió del patch, la data, i els canvis per campió. És la base del knowledge retrieval — permet respondre preguntes com "quan van nerfar Yasuo?" o "quin campió ha rebut més buffs recentment?".
+- *Font de dades:* Web scraping de leagueoflegends.com/patch-notes
+
+**User** — Usuari del sistema EsportsPulse (no un jugador de LoL). Per autenticació i autorització via JWT.
+
+### Relacions entre Entitats
+
+```
+                    ┌─────────────┐
+                    │  PatchNote  │
+                    └──────┬──────┘
+                  modifica │ (buff/nerf)
+                           ▼
+┌──────────────┐    ┌─────────────────┐
+│ PlayerRecord │    │ ChampionRecord  │
+└──────┬───────┘    └────────┬────────┘
+       │                     │
+       │  juga com a         │ seleccionat a
+       │                     │
+       └────────►┌───────────┴──┐
+                 │ MatchRecord  │
+                 └──────────────┘
+```
+
+Una **partida** connecta jugadors amb campions: cada jugador selecciona un campió per jugar. Les **patch notes** modifiquen les estadístiques dels campions, alterant el "meta" — el conjunt de campions dominants en cada moment. L'anàlisi d'EsportsPulse creua aquestes dades per respondre preguntes com "Yasuo està overpowered des de l'últim patch?".
+
+### Font de Dades per Entitat
+
+| Entitat | API | Autenticació | Primer ús al curs |
+|---------|-----|-------------|-------------------|
+| PlayerRecord | Riot API summoner-v4 | API key gratuïta | S1 (sintètic), S7 (real) |
+| ChampionRecord | Data Dragon (CDN públic) | Cap | S2 (sintètic), S7 (real) |
+| MatchRecord | Riot API match-v5 | API key gratuïta | S3 (extractor concurrent) |
+| PatchNote | Web scraping LoL patch notes | Cap | S12 (knowledge retrieval) |
+| User | Intern (BD pròpia) | — | S14 (JWT auth) |
+
+### Evolució de les Entitats al Curs
+
+| Setmana | Entitat | Què passa |
+|---------|---------|-----------|
+| S1 | PlayerRecord | Es crea amb dades sintètiques (100K jugadors) per practicar col·leccions i benchmarking |
+| S2 | PlayerRecord | S'amplia amb validació (compact constructor) i mètodes de negoci |
+| S2 | ChampionRecord | Es crea quan es connecta amb APIs reals (Data Dragon, Riot API) |
+| S3 | MatchRecord | Es crea per a l'extractor concurrent de partides via Riot API |
+| S5-S6 | ChampionRecord, PlayerRecord | Persistència amb JPA + H2, repositoris SQL |
+| S7 | Totes | Endpoints REST, dades reals de Data Dragon i Riot API |
+| S12-S13 | PatchNote | Parser de patch notes + indexació a Qdrant per knowledge retrieval |
+| S14 | User | Autenticació JWT, endpoints protegits |
+| S15 | Totes | PostgreSQL, migracions Flyway, JOINs entre entitats |
+
+---
+
 ## APIs Públiques de League of Legends
 
 EsportsPulse consumeix dades reals de League of Legends. Les APIs recomanades (totes amb tier gratuït):
@@ -104,7 +184,7 @@ https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{championKey}_0.jpg
 → Retorna: imatge de splash art per visualitzar al dashboard
 ```
 
-**Avantatge:** Zero autenticació, zero rate limit, dades completes per a 170+ campiòns. Ideal per a l'exercici de S1 (benchmark HashMap vs ArrayList indexant 170 campiòns).
+**Avantatge:** Zero autenticació, zero rate limit, dades completes per a 170+ campiòns. S'integra a partir de S7 quan es connecta amb dades reals (a S1-S2 les dades són sintètiques).
 
 ### PandaScore API (Alternativa/Complement — Multi-Game)
 
@@ -166,8 +246,8 @@ pandascore_api_key = os.environ["PANDASCORE_API_KEY"]
 **Objectiu:** Domini bàsic de Java 21 + Python, estructura de projecte, i concurrència pràctica.
 
 **Features:**
-- **(S1)** Benchmark O(n) vs O(1): Search lineal vs HashMap indexant 170+ campiòns de Data Dragon
-- **(S2)** Model `ChampionRecord` immutable (record / dataclass); DTO amb role, winRate, gamesPlayed
+- **(S1)** Benchmark O(n) vs O(1): Search lineal vs HashMap amb 100.000 jugadors sintètics (`PlayerRecord`)
+- **(S2)** Ampliar `PlayerRecord` amb validació; crear `ChampionRecord` immutable (record / dataclass) connectat a APIs
 - **(S3)** Concurrència pràctica: race conditions, @Transactional, CompletableFuture, extractor concurrent d'APIs Riot/PandaScore
 - **(S4)** Code review, refactorització d'anti-patrons IA, Git workflow, CI bàsic
 - **(S5)** Factory + Repository patterns amb JPA + H2; SQL pur a consola
@@ -231,7 +311,7 @@ pandascore_api_key = os.environ["PANDASCORE_API_KEY"]
 
 | Setmana | Tema | EsportsPulse Milestone |
 |---------|------|-------------------|
-| 1-6 | Algorítmica + POO + Concurrència + Testing | `v0.1`: Backend Java + Python amb tests, indexació de 170+ campiòns |
+| 1-6 | Algorítmica + POO + Concurrència + Testing | `v0.1`: Backend Java + Python amb tests, model de domini amb dades sintètiques |
 | 7-10 | APIs + LLMs + Dashboard + MCP | `v0.2`: REST + Streamlit (tier list, campiò search) + MCP servers |
 | 11-16 | Docker + Knowledge + Auth + SQL + Redis + Queues | `v0.3`: Docker + Retrieval de patch notes + JWT + PostgreSQL + Redis + RabbitMQ |
 | 17-19 | Agents + Specs + Consolidació | `v0.4`: Agents (Estadístic + Knowledge) + evals + dashboard d'agents + Draft Assistant |

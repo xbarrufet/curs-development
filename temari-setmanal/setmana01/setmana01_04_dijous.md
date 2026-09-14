@@ -13,7 +13,7 @@ Mesurar la diferència real de rendiment entre cerca lineal i cerca per HashMap 
 La temptació és fer:
 ```java
 long start = System.nanoTime();
-searchLinear(games, "APP-100000");
+searchLinear(players, "P-100000");
 long elapsed = System.nanoTime() - start;
 System.out.println("Triga: " + elapsed + " ns");
 ```
@@ -79,9 +79,9 @@ backend-java/src/main/java/com/esportspulse/engine/benchmark/BenchmarkRunner.jav
 
 Programa una classe amb mètode `main` que faci el següent, en aquest ordre:
 
-1. **Genera les dades:** 100.000 jocs en `ArrayList` i el `HashMap` equivalent (usant `GameDataGenerator`).
+1. **Genera les dades:** 100.000 jugadors en `ArrayList` i el `HashMap` equivalent (usant `PlayerDataGenerator`).
 
-2. **Defineix l'objectiu de cerca:** `"APP-100000"` — el pitjor cas per la cerca lineal (últim element).
+2. **Defineix l'objectiu de cerca:** `"P-100000"` — el pitjor cas per la cerca lineal (últim element).
 
 3. **Warm-up:** Executa 100 cerques de cada tipus (lineal i hash) **sense mesurar**. Això força la compilació JIT.
 

@@ -176,7 +176,7 @@ class PlayerRecord:
 **Java:**
 ```java
 // Interficie generica — funciona per a qualsevol tipus de domini
-// T es un parametre de tipus: quan creem GameRepository, T = GameRecord
+// T es un parametre de tipus: quan creem ChampionRepository, T = ChampionRecord
 public interface Repository<T> {
     void save(T entity);
     Optional<T> findById(String id);

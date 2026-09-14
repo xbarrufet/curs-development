@@ -24,24 +24,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.*;
 
-class GameSearchServiceTest {
+class PlayerSearchServiceTest {
 
-    private List<GameRecord> list;
-    private Map<String, GameRecord> map;
-    private GameSearchService service;
+    private List<PlayerRecord> list;
+    private Map<String, PlayerRecord> map;
+    private PlayerSearchService service;
 
     @BeforeEach  // S'executa ABANS de cada test — estat fresc cada vegada
     void setUp() {
-        list = GameDataGenerator.generateList(1_000);
-        map = GameDataGenerator.toMap(list);
-        service = new GameSearchService();
+        list = PlayerDataGenerator.generateList(1_000);
+        map = PlayerDataGenerator.toMap(list);
+        service = new PlayerSearchService();
     }
 
     @Test  // Marca el mètode com a test
-    void linearSearch_findsExistingGame() {
-        GameRecord result = service.searchLinear(list, "APP-500");
+    void linearSearch_findsExistingPlayer() {
+        PlayerRecord result = service.searchLinear(list, "P-500");
         assertNotNull(result);                    // No és null
-        assertEquals("APP-500", result.appId());  // Té l'ID correcte
+        assertEquals("P-500", result.playerId());  // Té l'ID correcte
     }
 }
 ```
@@ -54,12 +54,37 @@ class GameSearchServiceTest {
 - **`assertNull(value)`** — Verifica que el valor és null.
 - **`assertTrue(condition)`** — Verifica que una condició és certa.
 
+### Estructura d'un Test: Given / When / Then
+
+Tot test segueix el mateix patró de tres passos, conegut com **Given / When / Then**:
+
+- **GIVEN** (Donat) — L'estat inicial. Quines dades o objectes necessites preparats abans d'actuar. Exemple: "donada una llista amb 1.000 jugadors".
+- **WHEN** (Quan) — L'acció que vols provar. La crida al mètode que estàs testejant. Exemple: "quan busco el playerId P-500 amb cerca lineal".
+- **THEN** (Llavors) — La verificació. Què esperes que passi després de l'acció. Exemple: "llavors el resultat no és null i té el playerId correcte".
+
+```java
+@Test
+void linearSearch_findsPlayerById() {
+    // GIVEN: una llista amb 1.000 jugadors
+    List<PlayerRecord> players = PlayerDataGenerator.generateList(1_000);
+
+    // WHEN: busquem un playerId que existeix
+    PlayerRecord result = PlayerSearchService.searchLinear(players, "P-500");
+
+    // THEN: el resultat no és null i té el playerId correcte
+    assertNotNull(result);
+    assertEquals("P-500", result.playerId());
+}
+```
+
+No cal escriure els comentaris `// GIVEN`, `// WHEN`, `// THEN` a cada test — però sí que has de pensar en aquests tres passos cada vegada. Si no saps què posar a un dels tres, és que el test no està ben definit.
+
 ### Noms de Test: Què Verifiquen, No Com
 
 Un bon nom de test descriu el comportament que verifica:
 ```java
 // BÉ — descriu el comportament
-void searchLinear_returnsNull_whenIdDoesNotExist()
+void searchLinear_returnsNull_whenPlayerIdDoesNotExist()
 void searchByKey_returnsSameResult_asLinearSearch()
 
 // MALAMENT — descriu la implementació
@@ -69,32 +94,73 @@ void test1()
 
 > **Lectura recomanada (opcional, no bloquejant):**
 > - [JUnit 5 User Guide](https://junit.org/junit5/docs/current/user-guide/) — Seccions d'Assercions i cicle de vida
-> - [Conventional Commits](https://www.conventionalcommits.org/)
 
 ---
 
 ## Activitat
 
-### 1. Crear els tests — `GameSearchServiceTest` (45 min)
+### 1. Crear els tests — `PlayerSearchServiceTest` (45 min)
 
 Crea el fitxer:
 ```
-backend-java/src/test/java/com/esportspulse/engine/search/GameSearchServiceTest.java
+backend-java/src/test/java/com/esportspulse/engine/search/PlayerSearchServiceTest.java
 ```
 
-Escriu els tests següents:
+Comença copiant aquest test resolt. Llegeix-lo línia per línia, executa'l amb `mvn test`, i verifica que passa (verd). Un cop l'entenguis, escriu els tests 1, 2 i 3 tu sol seguint el mateix patró.
 
-**Test 1: Ambdós mètodes troben el mateix objecte**
-- Genera 1.000 jocs (no cal 100.000 per tests de correcció — han de ser ràpids)
-- Busca un appId que existeix (ex: `"APP-500"`)
-- Verifica amb `assertEquals` que ambdós mètodes retornen un objecte amb el mateix `appId`
+**Test 0 (resolt): `linearSearch_findsPlayerById()`**
 
-**Test 2: Ambdós mètodes retornen null si l'ID no existeix**
-- Busca un appId que no existeix (ex: `"APP-999999"`)
+```java
+package com.esportspulse.engine.search;
+
+import com.esportspulse.engine.data.PlayerDataGenerator;
+import com.esportspulse.engine.model.PlayerRecord;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+import java.util.Map;
+
+class PlayerSearchServiceTest {
+
+    private List<PlayerRecord> list;
+    private Map<String, PlayerRecord> map;
+
+    @BeforeEach  // S'executa ABANS de cada test — cada test arrenca amb dades fresques
+    void setUp() {
+        list = PlayerDataGenerator.generateList(1_000);
+        map = PlayerDataGenerator.toMap(list);
+    }
+
+    @Test  // Marca aquest mètode com a test — JUnit el trobarà i l'executarà
+    void linearSearch_findsPlayerById() {
+        // GIVEN: una llista amb 1.000 jugadors (creada a setUp)
+        // WHEN: busquem un playerId que sabem que existeix
+        PlayerRecord result = PlayerSearchService.searchLinear(list, "P-500");
+
+        // THEN: el resultat no és null i té el playerId correcte
+        assertNotNull(result);                     // Si és null, el test falla aquí
+        assertEquals("P-500", result.playerId());   // Si el playerId no coincideix, falla aquí
+    }
+}
+```
+
+Executa'l: `mvn test`. Has de veure `Tests run: 1, Failures: 0`. Si falla, llegeix el missatge de JUnit — et diu exactament què esperava i què ha rebut.
+
+Ara escriu els tests següents **dins la mateixa classe** (afegeix-los sota el test 0):
+
+**Test 1: `bothMethods_findSamePlayer()`**
+- Genera 1.000 jugadors (no cal 100.000 per tests de correcció — han de ser ràpids)
+- Busca un playerId que existeix (ex: `"P-500"`)
+- Verifica amb `assertEquals` que ambdós mètodes retornen un objecte amb el mateix `playerId`
+
+**Test 2: `bothMethods_returnNull_forMissingId()`**
+- Busca un playerId que no existeix (ex: `"P-999999"`)
 - Verifica amb `assertNull` que ambdós retornen `null`
 
-**Test 3: HashMap és almenys 10x més ràpid que la cerca lineal**
-- Genera 100.000 jocs (aquí sí cal volum per veure la diferència)
+**Test 3: `hashMap_isAtLeast10xFaster()`**
+- Genera 100.000 jugadors (aquí sí cal volum per veure la diferència)
 - Warm-up: 50 cerques de cada sense mesurar
 - Mesura 1.000 cerques de cada amb `System.nanoTime()`
 - `assertTrue(linearTime > hashTime * 10)` — verifica que la lineal és almenys 10x més lenta
@@ -120,7 +186,7 @@ Si algun test falla, llegeix el missatge d'error de JUnit — et diu exactament 
 
 Fes el commit dels tests:
 ```bash
-git add backend-java/src/test/java/com/esportspulse/engine/search/GameSearchServiceTest.java
+git add backend-java/src/test/java/com/esportspulse/engine/search/PlayerSearchServiceTest.java
 git commit -m "test(java): add search service tests (correctness + performance)"
 ```
 

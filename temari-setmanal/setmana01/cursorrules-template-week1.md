@@ -9,11 +9,11 @@
 - Keep concerns separated: never import Java code into Python; APIs via REST
 
 ## Naming Conventions
-- **Java packages:** `com.esportspulse.{domain}.{layer}` (e.g., `com.esportspulse.game.service`)
-- **Java classes:** PascalCase (e.g., `GameSearchService`, `GameRecord`)
-- **Java variables/methods:** camelCase (e.g., `appId`, `searchByHash()`)
-- **Python modules:** snake_case (e.g., `game_search_service.py`)
-- **Python classes:** PascalCase (e.g., `GameSearchService`)
+- **Java packages:** `com.esportspulse.{domain}.{layer}` (e.g., `com.esportspulse.player.service`)
+- **Java classes:** PascalCase (e.g., `PlayerSearchService`, `PlayerRecord`)
+- **Java variables/methods:** camelCase (e.g., `playerId`, `searchByHash()`)
+- **Python modules:** snake_case (e.g., `player_search_service.py`)
+- **Python classes:** PascalCase (e.g., `PlayerSearchService`)
 
 ## Code Quality
 - **Java:** Use records for immutable DTOs; no setters

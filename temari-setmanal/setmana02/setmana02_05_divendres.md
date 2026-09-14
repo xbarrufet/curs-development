@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Escriure tests unitaris per totes les classes creades aquesta setmana: `GameRecord`, `PlayerRecord`, `InMemoryGameRepository`, `InMemoryPlayerRepository` i `GameManagementService`. Tancar la setmana amb tots els tests verds, un commit final i una Pull Request a GitHub. Al final del dia tens 12+ tests verds, codi fusionat a `main`, i la branca tancada.
+Escriure tests unitaris per totes les classes creades aquesta setmana: `ChampionRecord`, `PlayerRecord`, `InMemoryChampionRepository`, `InMemoryPlayerRepository` i `ChampionManagementService`. Tancar la setmana amb tots els tests verds, un commit final i una Pull Request a GitHub. Al final del dia tens 12+ tests verds, codi fusionat a `main`, i la branca tancada.
 
 ---
 
@@ -14,73 +14,76 @@ Testejar un record immutable es mes senzill que testejar un objecte mutable. Per
 
 ```java
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
-class GameRecordTest {
+class ChampionRecordTest {
 
     // Test 1: Verificar que el compact constructor rebutja dades invalides
-    // assertThrows comprova que es llança l'excepcio correcta
+    // assertThrows comprova que es llanca l'excepcio correcta
     @Test
-    void constructor_throwsException_whenAppIdIsNull() {
+    void constructor_throwsException_whenChampionIdIsNull() {
         // arrange + act + assert en una sola linia
-        // Intentem crear un GameRecord amb appId null — HA de petar
+        // Intentem crear un ChampionRecord amb championId null — HA de petar
         assertThrows(IllegalArgumentException.class, () ->
-            new GameRecord(null, "Test", BigDecimal.ZERO, 0L)
+            new ChampionRecord(null, "Test", 50.0, 5.0)
         );
     }
 
     @Test
-    void constructor_throwsException_whenPriceIsNegative() {
-        // Preu negatiu no te sentit — el compact constructor ho valida
+    void constructor_throwsException_whenWinRateIsNegative() {
+        // WinRate negatiu no te sentit — el compact constructor ho valida
         assertThrows(IllegalArgumentException.class, () ->
-            new GameRecord("APP-1", "Test", BigDecimal.valueOf(-1), 0L)
+            new ChampionRecord("CHAMP-1", "Test", -1.0, 5.0)
         );
     }
 
-    // Test 2: Parameteritzat — prova isPopular amb multiples valors
-    // En lloc d'escriure 3 tests iguals amb valors diferents,
-    // @ParameterizedTest executa el MATEIX test amb cada valor
-    @ParameterizedTest
-    @ValueSource(longs = {100_001L, 500_000L, 1_000_000L, 5_000_000L})
-    void isPopular_returnsTrue_whenPlayersAboveThreshold(long players) {
-        GameRecord game = new GameRecord("APP-1", "Test", BigDecimal.ZERO, players);
+    // Test 2: isMeta requereix DUES condicions: winRate > 52.0 AND pickRate > 10.0
+    // Usem tests regulars per cobrir els casos significatius
+    @Test
+    void isMeta_returnsTrue_whenWinRateAndPickRateAboveThreshold() {
+        ChampionRecord champion = new ChampionRecord("CHAMP-1", "Ahri", 53.0, 12.0);
         // assertTrue: verifica que la condicio es certa
-        assertTrue(game.isPopular(),
-            "Joc amb " + players + " jugadors hauria de ser popular");
+        assertTrue(champion.isMeta(),
+            "Campio amb winRate 53.0 i pickRate 12.0 hauria de ser meta");
     }
 
-    @ParameterizedTest
-    @ValueSource(longs = {0L, 50_000L, 99_999L, 100_000L})
-    void isPopular_returnsFalse_whenPlayersBelowOrEqualThreshold(long players) {
-        GameRecord game = new GameRecord("APP-1", "Test", BigDecimal.ZERO, players);
-        // assertFalse: verifica que la condicio es falsa
-        assertFalse(game.isPopular(),
-            "Joc amb " + players + " jugadors NO hauria de ser popular");
-    }
-
-    // Test 3: Verificar que discountedPrice NO muta l'original
     @Test
-    void discountedPrice_doesNotMutateOriginal() {
-        BigDecimal originalPrice = BigDecimal.valueOf(59.99);
-        GameRecord original = new GameRecord("APP-1", "Test", originalPrice, 0L);
+    void isMeta_returnsFalse_whenBelowThreshold() {
+        // winRate alta pero pickRate baixa — NO es meta
+        ChampionRecord lowPick = new ChampionRecord("CHAMP-1", "Aurelion Sol", 54.0, 3.0);
+        assertFalse(lowPick.isMeta(),
+            "Campio amb pickRate 3.0 NO hauria de ser meta");
 
-        // Creem un record descomptat
-        GameRecord discounted = original.discountedPrice(0.50);
+        // pickRate alta pero winRate baixa — NO es meta
+        ChampionRecord lowWin = new ChampionRecord("CHAMP-2", "Yasuo", 49.0, 15.0);
+        assertFalse(lowWin.isMeta(),
+            "Campio amb winRate 49.0 NO hauria de ser meta");
 
-        // L'original NO ha canviat — segueix amb el preu original
-        assertEquals(originalPrice, original.price(),
-            "El preu original no hauria de canviar despres de discountedPrice");
+        // Ambdues al llindar exacte — NO es meta (cal superar, no igualar)
+        ChampionRecord atThreshold = new ChampionRecord("CHAMP-3", "Ezreal", 52.0, 10.0);
+        assertFalse(atThreshold.isMeta(),
+            "Campio amb winRate 52.0 i pickRate 10.0 NO hauria de ser meta (cal superar el llindar)");
+    }
 
-        // El descomptat te el preu reduit
-        // compareTo == 0 vol dir "son iguals" (BigDecimal no usa equals per comparar valors)
-        assertTrue(discounted.price().compareTo(BigDecimal.valueOf(29.995)) == 0,
-            "El preu descomptat hauria de ser la meitat");
+    // Test 3: Verificar que withPatchAdjustment NO muta l'original
+    @Test
+    void withPatchAdjustment_doesNotMutateOriginal() {
+        ChampionRecord original = new ChampionRecord("CHAMP-1", "Ahri", 55.0, 12.0);
+
+        // Creem un record ajustat pel patch
+        ChampionRecord adjusted = original.withPatchAdjustment(-2.5);
+
+        // L'original NO ha canviat — segueix amb el winRate original
+        assertEquals(55.0, original.winRate(),
+            "El winRate original no hauria de canviar despres de withPatchAdjustment");
+
+        // L'ajustat te el winRate reduit
+        assertEquals(52.5, adjusted.winRate(),
+            "El winRate ajustat hauria de ser 52.5");
 
         // Son objectes DIFERENTS
-        assertNotSame(original, discounted,
-            "discountedPrice ha de retornar un objecte NOU, no el mateix");
+        assertNotSame(original, adjusted,
+            "withPatchAdjustment ha de retornar un objecte NOU, no el mateix");
     }
 }
 ```
@@ -92,37 +95,37 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-class InMemoryGameRepositoryTest {
+class InMemoryChampionRepositoryTest {
 
-    private InMemoryGameRepository repo;
-    private GameRecord sampleGame;
+    private InMemoryChampionRepository repo;
+    private ChampionRecord sampleChampion;
 
     // S'executa ABANS de cada test — cada test comenca amb un repo buit
     // Aixo garanteix que els tests son independents entre ells
     @BeforeEach
     void setUp() {
-        repo = new InMemoryGameRepository();
-        sampleGame = new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L);
+        repo = new InMemoryChampionRepository();
+        sampleChampion = new ChampionRecord("CHAMP-1", "Ahri", 52.3, 8.1);
     }
 
     @Test
     void save_andFindById_returnsSameRecord() {
-        // Guardem un joc
-        repo.save(sampleGame);
+        // Guardem un campio
+        repo.save(sampleChampion);
 
         // El busquem per ID
-        Optional<GameRecord> found = repo.findById("APP-1");
+        Optional<ChampionRecord> found = repo.findById("CHAMP-1");
 
         // Ha de ser present i ser el MATEIX objecte
-        assertTrue(found.isPresent(), "El joc guardat hauria d'existir");
-        assertEquals(sampleGame, found.get(),
-            "El joc trobat hauria de ser igual al guardat");
+        assertTrue(found.isPresent(), "El campio guardat hauria d'existir");
+        assertEquals(sampleChampion, found.get(),
+            "El campio trobat hauria de ser igual al guardat");
     }
 
     @Test
     void findById_returnsEmpty_whenNotFound() {
         // Busquem un ID que no existeix — ha de retornar Optional buit
-        Optional<GameRecord> result = repo.findById("APP-999");
+        Optional<ChampionRecord> result = repo.findById("CHAMP-999");
 
         assertTrue(result.isEmpty(),
             "findById hauria de retornar buit per un ID que no existeix");
@@ -130,82 +133,81 @@ class InMemoryGameRepositoryTest {
 
     @Test
     void findAll_returnsImmutableCopy() {
-        repo.save(sampleGame);
+        repo.save(sampleChampion);
 
         // Obtenim la llista
-        List<GameRecord> all = repo.findAll();
+        List<ChampionRecord> all = repo.findAll();
 
         // Intentem modificar-la — HA de petar
         // Aixo verifica que findAll retorna una copia immutable
         assertThrows(UnsupportedOperationException.class, () ->
-            all.add(new GameRecord("APP-2", "Hack", BigDecimal.ZERO, 0L))
+            all.add(new ChampionRecord("CHAMP-2", "Zed", 51.0, 7.0))
         );
     }
 
     @Test
     void delete_removesRecord() {
-        repo.save(sampleGame);
+        repo.save(sampleChampion);
 
-        // Eliminem el joc
-        repo.delete("APP-1");
+        // Eliminem el campio
+        repo.delete("CHAMP-1");
 
         // Ja no hauria d'existir
-        assertTrue(repo.findById("APP-1").isEmpty(),
-            "El joc eliminat no hauria d'existir");
+        assertTrue(repo.findById("CHAMP-1").isEmpty(),
+            "El campio eliminat no hauria d'existir");
     }
 }
 ```
 
 ### Testejar el Servei amb Dependencies Injectades
 
-Aqui es on DIP brilla: podem testejar `GameManagementService` amb un `InMemoryGameRepository` real, sense necessitat de mocks complexos. El servei no sap ni li importa que el repo es in-memory.
+Aqui es on DIP brilla: podem testejar `ChampionManagementService` amb un `InMemoryChampionRepository` real, sense necessitat de mocks complexos. El servei no sap ni li importa que el repo es in-memory.
 
 ```java
-class GameManagementServiceTest {
+class ChampionManagementServiceTest {
 
-    private InMemoryGameRepository repo;
-    private GameRecordFactory factory;
-    private GameManagementService service;
+    private InMemoryChampionRepository repo;
+    private ChampionRecordFactory factory;
+    private ChampionManagementService service;
 
     @BeforeEach
     void setUp() {
         // Creem dependencies reals — no calen mocks perque InMemory es lleuger
-        repo = new InMemoryGameRepository();
-        factory = new GameRecordFactory();
+        repo = new InMemoryChampionRepository();
+        factory = new ChampionRecordFactory();
         // Injectem per constructor — exactament com a produccio, pero amb InMemory
-        service = new GameManagementService(repo, factory);
+        service = new ChampionManagementService(repo, factory);
     }
 
     @Test
-    void registerGame_savesGameToRepository() {
-        // Registrem un joc a traves del servei
-        service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
+    void registerChampion_savesChampionToRepository() {
+        // Registrem un campio a traves del servei
+        service.registerChampion("CHAMP-1", "Ahri", 53.0);
 
         // Verifiquem que el repo el te
-        Optional<GameRecord> found = repo.findById("APP-1");
-        assertTrue(found.isPresent(), "El joc registrat hauria d'existir al repo");
-        assertEquals("League of Legends", found.get().title());
+        Optional<ChampionRecord> found = repo.findById("CHAMP-1");
+        assertTrue(found.isPresent(), "El campio registrat hauria d'existir al repo");
+        assertEquals("Ahri", found.get().name());
     }
 
     @Test
-    void getPopularGames_filtersCorrectly() {
-        // Registrem jocs — pero registerGame usa createDefault que posa 0 jugadors
-        // Necessitem guardar directament al repo per controlar activePlayerCount
-        repo.save(new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L));
-        repo.save(new GameRecord("APP-2", "Indie", BigDecimal.valueOf(19.99), 500L));
-        repo.save(new GameRecord("APP-3", "Valorant", BigDecimal.ZERO, 200_000L));
+    void getMetaChampions_filtersCorrectly() {
+        // Guardem campions directament al repo per controlar winRate i pickRate
+        repo.save(new ChampionRecord("CHAMP-1", "Ahri", 53.0, 12.0));
+        repo.save(new ChampionRecord("CHAMP-2", "Yasuo", 49.1, 15.0));
+        repo.save(new ChampionRecord("CHAMP-3", "Jinx", 54.0, 11.0));
 
-        // Filtrem populars (> 100K jugadors)
-        List<GameRecord> popular = service.getPopularGames();
+        // Filtrem campions meta (winRate > 52.0 AND pickRate > 10.0)
+        List<ChampionRecord> meta = service.getMetaChampions();
 
-        // Nomes LoL i Valorant son populars
-        assertEquals(2, popular.size(),
-            "Nomes 2 jocs tenen > 100K jugadors");
+        // Nomes Ahri i Jinx son meta (Yasuo te winRate massa baixa)
+        assertEquals(2, meta.size(),
+            "Nomes 2 campions tenen winRate > 52.0 i pickRate > 10.0");
     }
 
     @Test
-    void findGame_returnsEmpty_whenGameDoesNotExist() {
-        Optional<GameRecord> result = service.findGame("APP-999");
+    void findChampion_returnsEmpty_whenChampionDoesNotExist() {
+        Optional<ChampionRecord> result = service.findChampion("CHAMP-999");
         assertTrue(result.isEmpty());
     }
 }
@@ -215,31 +217,30 @@ class GameManagementServiceTest {
 
 ```python
 import pytest
-from decimal import Decimal
-from game_record import GameRecord
+from champion_record import ChampionRecord
 from player_record import PlayerRecord
-from game_repository import InMemoryGameRepository
+from champion_repository import InMemoryChampionRepository
 
 # pytest detecta automaticament funcions que comencen per test_
 
-def test_game_record_immutability():
-    """Verificar que no es pot mutar un GameRecord."""
-    game = GameRecord("APP-1", "LoL", Decimal("0"), 5_000_000)
-    # Intentar canviar un atribut HA de llançar FrozenInstanceError
+def test_champion_record_immutability():
+    """Verificar que no es pot mutar un ChampionRecord."""
+    champion = ChampionRecord("CHAMP-1", "Ahri", 52.3, 8.1)
+    # Intentar canviar un atribut HA de llancar FrozenInstanceError
     with pytest.raises(AttributeError):
-        game.price = Decimal("100")
+        champion.win_rate = 99.0
 
-def test_game_record_is_popular():
-    """Verificar que isPopular funciona correctament."""
-    popular = GameRecord("APP-1", "LoL", Decimal("0"), 5_000_000)
-    not_popular = GameRecord("APP-2", "Indie", Decimal("19.99"), 500)
-    assert popular.is_popular() is True
-    assert not_popular.is_popular() is False
+def test_champion_record_is_meta():
+    """Verificar que is_meta funciona correctament."""
+    meta = ChampionRecord("CHAMP-1", "Ahri", 53.0, 12.0)
+    not_meta = ChampionRecord("CHAMP-2", "Yasuo", 49.1, 15.0)
+    assert meta.is_meta() is True
+    assert not_meta.is_meta() is False
 
-def test_game_record_validation():
+def test_champion_record_validation():
     """Verificar que el constructor rebutja dades invalides."""
     with pytest.raises(ValueError):
-        GameRecord("", "Bad", Decimal("0"), 0)  # app_id buit
+        ChampionRecord("", "Bad", 50.0, 5.0)  # champion_id buit
 
 def test_player_record_is_veteran():
     """Verificar que is_veteran funciona correctament."""
@@ -258,39 +259,39 @@ def test_player_record_level_up_immutable():
 
 def test_repository_save_and_find():
     """Verificar que save + find retorna el mateix objecte."""
-    repo = InMemoryGameRepository()
-    game = GameRecord("APP-1", "LoL", Decimal("0"), 5_000_000)
-    repo.save(game)
-    found = repo.find_by_id("APP-1")
-    assert found == game
+    repo = InMemoryChampionRepository()
+    champion = ChampionRecord("CHAMP-1", "Ahri", 52.3, 8.1)
+    repo.save(champion)
+    found = repo.find_by_id("CHAMP-1")
+    assert found == champion
 
 def test_repository_find_returns_none_when_not_found():
     """Verificar que find retorna None si no existeix."""
-    repo = InMemoryGameRepository()
-    assert repo.find_by_id("APP-999") is None
+    repo = InMemoryChampionRepository()
+    assert repo.find_by_id("CHAMP-999") is None
 ```
 
 ---
 
 ## Activitat
 
-### 1. Tests Java: `GameRecordTest` (20 min)
+### 1. Tests Java: `ChampionRecordTest` (20 min)
 
 Crea el fitxer:
 ```
-backend-java/src/test/java/com/esportspulse/engine/model/GameRecordTest.java
+backend-java/src/test/java/com/esportspulse/engine/model/ChampionRecordTest.java
 ```
 
 Tests minims:
-- Compact constructor rebutja `appId` null i preu negatiu (2 tests)
-- `isPopular()` parameteritzat amb valors per sobre i per sota del llindar (2 tests)
-- `discountedPrice()` no muta l'original (1 test)
+- Compact constructor rebutja `championId` null i winRate negatiu (2 tests)
+- `isMeta()` amb valors per sobre i per sota del llindar (2 tests)
+- `withPatchAdjustment()` no muta l'original (1 test)
 
-### 2. Tests Java: `InMemoryGameRepositoryTest` (20 min)
+### 2. Tests Java: `InMemoryChampionRepositoryTest` (20 min)
 
 Crea el fitxer:
 ```
-backend-java/src/test/java/com/esportspulse/engine/repository/InMemoryGameRepositoryTest.java
+backend-java/src/test/java/com/esportspulse/engine/repository/InMemoryChampionRepositoryTest.java
 ```
 
 Tests minims:
@@ -299,17 +300,17 @@ Tests minims:
 - `findAll()` retorna copia immutable (1 test)
 - `delete` elimina correctament (1 test)
 
-### 3. Tests Java: `GameManagementServiceTest` (20 min)
+### 3. Tests Java: `ChampionManagementServiceTest` (20 min)
 
 Crea el fitxer:
 ```
-backend-java/src/test/java/com/esportspulse/engine/service/GameManagementServiceTest.java
+backend-java/src/test/java/com/esportspulse/engine/service/ChampionManagementServiceTest.java
 ```
 
 Tests minims:
-- `registerGame` guarda al repositori (1 test)
-- `getPopularGames` filtra correctament (1 test)
-- `findGame` retorna buit per ID inexistent (1 test)
+- `registerChampion` guarda al repositori (1 test)
+- `getMetaChampions` filtra correctament (1 test)
+- `findChampion` retorna buit per ID inexistent (1 test)
 
 ### 4. Tests Python amb pytest (20 min)
 
@@ -319,8 +320,8 @@ ai-python/src/test_models.py
 ```
 
 Tests minims:
-- Immutabilitat de GameRecord (1 test)
-- `is_popular()` correcte (1 test)
+- Immutabilitat de ChampionRecord (1 test)
+- `is_meta()` correcte (1 test)
 - Validacio rebutja dades invalides (1 test)
 - `is_veteran()` correcte (1 test)
 - `level_up()` immutable (1 test)
@@ -391,10 +392,10 @@ git branch -d feature/week2-oop-solid
 
 ## Checklist de Lliurament
 
-- [ ] `GameRecordTest`: 5 tests (validacio constructor x2, isPopular x2, discountedPrice immutable)
-- [ ] `InMemoryGameRepositoryTest`: 4 tests (save+find, find buit, findAll immutable, delete)
-- [ ] `GameManagementServiceTest`: 3 tests (register, getPopular, findGame buit)
-- [ ] Python `test_models.py`: 7 tests (immutabilitat, is_popular, validacio, is_veteran, level_up, repo save+find, repo find None)
+- [ ] `ChampionRecordTest`: 5 tests (validacio constructor x2, isMeta x2, withPatchAdjustment immutable)
+- [ ] `InMemoryChampionRepositoryTest`: 4 tests (save+find, find buit, findAll immutable, delete)
+- [ ] `ChampionManagementServiceTest`: 3 tests (register, getMetaChampions, findChampion buit)
+- [ ] Python `test_models.py`: 7 tests (immutabilitat, is_meta, validacio, is_veteran, level_up, repo save+find, repo find None)
 - [ ] `mvn test` passa amb 12+ tests verds, 0 errors
 - [ ] `pytest` passa amb 7 tests verds
 - [ ] Commit amb format Conventional Commits

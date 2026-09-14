@@ -26,17 +26,38 @@ git checkout feature/week1-bench  # Canvia a la branca
 git push -u origin main           # Puja a GitHub
 ```
 
-**Conventional Commits** — Els missatges de commit segueixen un format estàndard:
+**Conventional Commits** — A la indústria, els missatges de commit segueixen un format estàndard perquè qualsevol persona de l'equip pugui entendre què ha canviat i per què sense haver de llegir el codi. El format és:
+
 ```
-feat(java): initial project structure with Java 21 + Python
-fix(search): correct null handling in linear search
-docs: add README with setup instructions
+type(scope): description
 ```
 
-Format: `type(scope): description`. Tipus habituals: `feat`, `fix`, `docs`, `test`, `refactor`.
+- **`type`** — Què has fet. Els tipus més habituals:
+
+| Tipus | Quan s'usa | Exemple |
+|-------|-----------|---------|
+| `feat` | Afegir funcionalitat nova | `feat(java): add PlayerRecord domain entity` |
+| `fix` | Corregir un bug | `fix(search): correct null handling in linear search` |
+| `test` | Afegir o modificar tests | `test(java): add search service tests` |
+| `docs` | Documentació | `docs: add README with setup instructions` |
+| `refactor` | Reestructurar codi sense canviar comportament | `refactor(search): extract method for key lookup` |
+
+- **`scope`** (opcional) — Quina part del projecte afecta, entre parèntesis. Exemples: `java`, `python`, `search`, `model`. Ajuda a filtrar commits quan el projecte creix.
+
+- **`description`** — Què has fet, en minúscules, breu i directe. Comença amb un verb en imperatiu: "add", "fix", "remove" — no "added" ni "adding".
+
+**Exemples incorrectes** (evita'ls):
+```
+he afegit la classe de jugadors     ← sense format, sense type
+FIX: arreglat bug                   ← type en majúscules, descripció vaga
+feat: coses noves                   ← descripció no diu res útil
+```
+
+**Per què importa?** Quan el projecte tingui centenars de commits, un `git log` amb missatges com "coses noves" o "fix" no t'ajuda a trobar res. Amb Conventional Commits, pots filtrar per tipus (`git log --grep="feat"`) i entendre l'evolució del projecte d'un cop d'ull.
 
 > **Lectura recomanada (opcional, no bloquejant):**
 > - [Pro Git](https://git-scm.com/book/en/v2) — Capítols 1-2
+> - [Conventional Commits](https://www.conventionalcommits.org/) — Especificació completa
 > - [Curso de Git y GitHub desde cero](https://www.youtube.com/watch?v=niPExbK8lSw) — Midudev (YouTube)
 
 ### Estructura d'un Projecte Java amb Maven
