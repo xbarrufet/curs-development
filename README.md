@@ -48,7 +48,7 @@ La priorització ideal és:
 | **Git** | 2.40+ | `brew install git` (macOS) / [git-scm.com](https://git-scm.com) | Control de versions |
 | **Cursor IDE** | Latest | [cursor.sh](https://cursor.sh) | IDE amb IA integrada (alternativa: VS Code + extensió Claude) |
 | **Compte GitHub** | — | [github.com](https://github.com) | Repositori, CI/CD, PRs |
-| **Compte Steam** | — | [store.steampowered.com](https://store.steampowered.com) (gratuït) | API key per a dades de jocs |
+| **Compte Riot Developer** | — | [developer.riotgames.com](https://developer.riotgames.com) (gratuït) | API key per a dades de League of Legends |
 
 ### S'afegeix al llarg del curs
 
@@ -59,7 +59,7 @@ La priorització ideal és:
 | **Streamlit** | S10 | `pip install streamlit` | Dashboard / spec-driven UI |
 | **Qdrant** | S12 | Via Docker (`docker run qdrant/qdrant`) | Base vectorial per knowledge retrieval |
 | **Postman** o **curl** | S7 | [postman.com](https://www.postman.com/downloads/) / ja instal·lat (macOS) | Testejar APIs REST manualment |
-| **Compte RAWG API** | S3 (extractor) | [rawg.io](https://rawg.io/login) (gratuït) | API de videojocs complementària a Steam |
+| **Compte PandaScore** | S3 (extractor) | [pandascore.co](https://pandascore.co) (gratuït) | API de tornejos i resultats d'eSports |
 | **Redis** | S13 (cache LLM) | Via Docker (`docker run redis:7`) | Cache de respostes, sessions, queries |
 | **RabbitMQ** | S16 (message queues) | Via Docker (`docker run rabbitmq:3-management`) | Events asíncrons entre serveis |
 | **Claude Code CLI** | S17+ (agents) | [claude.ai/claude-code](https://claude.ai/claude-code) | Agent de codi per terminal |
@@ -103,8 +103,8 @@ mvn --version    # Ha de ser 3.9+
 
 ```bash
 # .env — MAI pujar a Git (afegir a .gitignore)
-STEAM_API_KEY=your_steam_key_here
-RAWG_API_KEY=your_rawg_key_here
+RIOT_API_KEY=your_riot_key_here        # developer.riotgames.com
+PANDASCORE_API_KEY=your_key_here       # pandascore.co (tornejos)
 OPENAI_API_KEY=your_key_here      # S8+
 ANTHROPIC_API_KEY=your_key_here   # S8+ (alternativa)
 ```
