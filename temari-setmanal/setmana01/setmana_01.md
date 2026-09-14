@@ -17,13 +17,13 @@
   * Configura Cursor per usar Claude com a model per defecte.
   * Prova una conversa simple amb l'agent: "Genera un `.gitignore` per un projecte Java + Python políglota."
   * Obres Cursor Settings → Features → activar "Tab autocomplete" i "Agent mode".
-* Inicialitza des de la terminal el repositori `gamepulse-engine`.
+* Inicialitza des de la terminal el repositori `esportspulse-engine`.
 * Crea l'estructura de directoris aïllant la carpeta `/backend-java` de la carpeta `/ai-python`.
 * **Exercici de Prompt Engineering amb Cursor (competència transversal):**
   * Obre Cursor, navega a la carpeta del projecte i crea un `.cursorrules` buit.
   * Obres la seva finestra de chat i demana: *"Escriu un `.cursorrules` per a un projecte Java 21 + Python amb Spring Boot i Pydantic. Inclou regles per a noms de variable, format de commit, i structure de carpetes."*
   * Deixa que Cursor generi el fitxer. (Alternativa: usa el [template inicial](../cursorrules-template-week1.md) de referència).
-  * Revisa el contingut generat. **Ajusta a mà** les regles que no quadrin amb GamePulse (ex: noms de serveis, convencions de API).
+  * Revisa el contingut generat. **Ajusta a mà** les regles que no quadrin amb EsportsPulse (ex: noms de serveis, convencions de API).
   * **Lliçó:** L'IA pot generar boilerplate, però **l'arquitectura la dibuixes tu**.
 * Configura el fitxer `.gitignore` a l'arrel per excloure brossa de compilació de Java (`target/`, `.class`), la configuració de l'IDE (`.idea/`) i els entorns virtuals de Python.
 * Fes el primer *commit* d'estructura i crea la branca `feature/week1-benchmarking`.

@@ -45,14 +45,14 @@ Exemple conceptual:
 
 ```text
 ┌─────────────────────────────────────┐
-│ GamePulse Dashboard      [Refresh]  │
+│ EsportsPulse Dashboard   [Refresh]  │
 ├────────────────────────────┬────────┤
-│ Filtres                   │ Taula  │
-│ Buscar...                 │ Jocs   │
-│ Preu min/max              │        │
-│ Només gratuïts            │        │
-├────────────────────────────┴────────┤
-│ Detall del joc seleccionado          │
+│ Filtres                   │ Taula      │
+│ Buscar...                 │ Champions  │
+│ WinRate min/max           │            │
+│ Filtrar per role          │            │
+├────────────────────────────┴────────────┤
+│ Detall del champion seleccionat          │
 └─────────────────────────────────────┘
 ```
 
@@ -65,9 +65,9 @@ Aquesta especificació és molt útil perquè l’agent sap exactament què ha d
 Una de les lliçons clau d’aquesta setmana és que Streamlit no ha de contenir tota la lògica de negoci.
 
 És millor separar:
-- `filter_games(...)`
+- `filter_champions(...)`
 - `calculate_kpis(...)`
-- `format_price(...)`
+- `format_win_rate(...)`
 - i la capa d’UI `st.*`
 
 Això permet:
@@ -90,9 +90,9 @@ Una UI de Streamlit és difícil de provar com a frontend tradicional. El patró
 
 Exemples de tests útils:
 - filtrar per nom,
-- filtrar per rang de preu,
+- filtrar per rang de winRate,
 - mostrar KPIs amb llista buida,
-- format de preus,
+- format de winRate,
 - error si l’API no respon.
 
 L’objectiu és fer que el dashboard sigui observabilitat i verificació visual, no una “cosa de clickar i veure”.
@@ -117,8 +117,8 @@ Això és la base del desenvolupament modern: no hi ha “feature feta” si els
 
 La millor validació del dashboard no és un screenshot bonic; és que l’usuari real pot:
 - obrir el dashboard,
-- cercar un joc,
-- crear un joc,
+- cercar un champion,
+- registrar un champion,
 - veure canvis reals,
 - i llegir errors si el backend falla.
 

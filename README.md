@@ -2,7 +2,7 @@
 
 Pla de formació de 24 setmanes per formar un enginyer de software junior (no només un developer). Combina fonaments d'enginyeria de software (algorítmica, SOLID, testing, APIs, SQL, seguretat, observabilitat) amb les noves formes de treballar amb IA (prompt engineering, MCP, agents, specs, eval-driven development). L'objectiu: codi que no només funciona, sinó que es pot operar, mantenir i escalar en producció.
 
-**Projecte vehicle:** [GamePulse](gamepulse-project-brief.md) — un sistema multi-agent per analitzar el balanç i evolució de videojocs (Java 21 + Python + Qdrant + Streamlit).
+**Projecte vehicle:** [EsportsPulse](esportspulse-project-brief.md) — un sistema multi-agent per analitzar champions, metes i estadístiques d'eSports de League of Legends (Java 21 + Python + Qdrant + Streamlit).
 
 ## Priorització Recomanada per Empleabilitat
 
@@ -193,13 +193,13 @@ temari-setmanal/setmanaXX/
 ```
 
 - **Pla setmanal:** Activitats guiades pas a pas per cada dia, amb material de lectura i lliuraments.
-- **Teoria:** Explicacions amb exemples aplicats a GamePulse, diagrames ASCII, codi Java + Python.
+- **Teoria:** Explicacions amb exemples aplicats a EsportsPulse, diagrames ASCII, codi Java + Python.
 - **Exercicis de consolidació:** Reptes sense instruccions pas a pas. Bàsics (imprescindibles) i Avançats (opcionals). Cada exercici connecta amb setmanes anteriors.
 
 ## Documents Generals
 
 - [Pla Global de 24 Setmanes](temari-global-24.md) — Visió completa amb competències transversals.
-- [GamePulse Project Brief](gamepulse-project-brief.md) — Descripció del projecte vehicle, stack, roadmap.
+- [EsportsPulse Project Brief](esportspulse-project-brief.md) — Descripció del projecte vehicle, stack, roadmap.
 
 ## Principis del Curs
 

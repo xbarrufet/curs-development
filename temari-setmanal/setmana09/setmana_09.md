@@ -14,14 +14,14 @@
 * **Activitat i Què s'espera programar:**
 * **Experiment: Què passa quan Python crida Java i falla?**
   * Atura el servei Java (`Ctrl+C` al Spring Boot).
-  * Des de Python, crida `requests.get("http://localhost:8080/games/APP-1")` — obtens `ConnectionError`.
+  * Des de Python, crida `requests.get("http://localhost:8080/champions/ahri")` — obtens `ConnectionError`.
   * Ara arrenca Java però afegeix un `Thread.sleep(30000)` al controller — obtens `ReadTimeout` (si tens timeout) o un thread bloquejat per sempre (si no en tens).
   * Lliço: sense timeout, un servei lent pot matar el teu servei.
 * **Afegir timeout a totes les crides HTTP:**
   ```python
   # Python — SEMPRE timeout
   response = requests.get(
-      f"{JAVA_API_URL}/games/{game_id}",
+      f"{JAVA_API_URL}/champions/{champion_id}",
       timeout=5  # 5 segons màxim
   )
   ```
@@ -45,9 +45,9 @@
       stop=stop_after_attempt(3),
       wait=wait_exponential(multiplier=1, min=1, max=8)
   )
-  def call_java_api(game_id: str) -> dict:
+  def call_java_api(champion_id: str) -> dict:
       response = requests.get(
-          f"{JAVA_API_URL}/games/{game_id}",
+          f"{JAVA_API_URL}/champions/{champion_id}",
           timeout=5
       )
       response.raise_for_status()
@@ -56,10 +56,10 @@
 * **Definir format d'error estàndard (RFC 7807 Problem Details):**
   * Java: ampliar el `@ControllerAdvice` de S7 per retornar Problem Details.
   * Python: crear exception handlers a FastAPI.
-  * Custom exceptions: `GameNotFoundException`, `ExternalServiceUnavailableException`.
+  * Custom exceptions: `ChampionNotFoundException`, `ExternalServiceUnavailableException`.
 * **HTTP status codes — quan usar cada un:**
   * 400: request malformada (JSON invàlid, camp obligatori absent).
-  * 404: recurs no trobat (`/games/APP-999`).
+  * 404: recurs no trobat (`/champions/unknown`).
   * 422: validació de negoci fallida (preu negatiu, nom duplicat).
   * 500: bug intern del teu servei.
   * 502: l'upstream (Java) ha retornat un error.
@@ -128,7 +128,7 @@
 
 ---
 
-### **Dimecres: MCP Server Personalitzat — GamePulse com a Tool**
+### **Dimecres: MCP Server Personalitzat — EsportsPulse com a Tool**
 
 * **Cursos i Material de Lectura:**
 * **Documentació:** MCP Python SDK — [*GitHub: modelcontextprotocol/python-sdk*](https://github.com/modelcontextprotocol/python-sdk).
@@ -137,28 +137,28 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Crear un MCP server que exposa GamePulse com a tools.**
+* **Crear un MCP server que exposa EsportsPulse com a tools.**
   * A S8 vas connectar MCP servers existents. Ara en crees un de propi.
   ```python
   from mcp.server.fastmcp import FastMCP
 
-  mcp = FastMCP("gamepulse")
+  mcp = FastMCP("esportspulse")
 
   @mcp.tool()
-  async def get_game(game_id: str) -> dict:
-      """Obté les dades d'un joc per ID (appId).
-      Retorna títol, preu i jugadors actius."""
+  async def get_champion(champion_id: str) -> dict:
+      """Obté les dades d'un champion per ID.
+      Retorna nom, winRate i role."""
       response = requests.get(
-          f"{JAVA_API_URL}/games/{game_id}", timeout=5
+          f"{JAVA_API_URL}/champions/{champion_id}", timeout=5
       )
       response.raise_for_status()
       return response.json()
 
   @mcp.tool()
-  async def search_games(query: str, limit: int = 10) -> list[dict]:
-      """Cerca jocs per títol. Retorna fins a `limit` resultats."""
+  async def search_champions(query: str, limit: int = 10) -> list[dict]:
+      """Cerca champions per nom. Retorna fins a `limit` resultats."""
       response = requests.get(
-          f"{JAVA_API_URL}/games",
+          f"{JAVA_API_URL}/champions",
           params={"title": query, "size": limit},
           timeout=5
       )
@@ -166,38 +166,38 @@
       return response.json()
 
   @mcp.tool()
-  async def get_game_analysis(game_id: str) -> dict:
-      """Analitza el balanç d'un joc usant un LLM (crida el servei Python de S8)."""
+  async def get_champion_analysis(champion_id: str) -> dict:
+      """Analitza el rendiment d'un champion usant un LLM (crida el servei Python de S8)."""
       # Crida al endpoint d'anàlisi de FastAPI
       response = requests.post(
-          f"{PYTHON_API_URL}/analyze/{game_id}", timeout=30
+          f"{PYTHON_API_URL}/analyze/{champion_id}", timeout=30
       )
       response.raise_for_status()
       return response.json()
 
   @mcp.tool()
-  async def get_player_stats() -> dict:
-      """Retorna estadístiques agregades de tots els jocs:
-      total jocs, mitjana jugadors, joc més popular."""
+  async def get_champion_stats() -> dict:
+      """Retorna estadístiques agregades de tots els champions:
+      total champions, mitjana winRate, champion més popular."""
       response = requests.get(
-          f"{JAVA_API_URL}/games", timeout=5
+          f"{JAVA_API_URL}/champions", timeout=5
       )
-      games = response.json()
-      total = len(games)
-      avg_players = sum(g["activePlayerCount"] for g in games) / total if total else 0
-      top_game = max(games, key=lambda g: g["activePlayerCount"], default=None)
+      champions = response.json()
+      total = len(champions)
+      avg_winrate = sum(c["winRate"] for c in champions) / total if total else 0
+      top_champion = max(champions, key=lambda c: c["gamesPlayed"], default=None)
       return {
-          "totalGames": total,
-          "averagePlayers": round(avg_players),
-          "mostPopular": top_game["title"] if top_game else None,
+          "totalChampions": total,
+          "averageWinRate": round(avg_winrate, 2),
+          "mostPopular": top_champion["name"] if top_champion else None,
       }
   ```
 * **Testejar localment:**
-  * Arrencar: `python gamepulse_mcp_server.py` (mode stdio).
+  * Arrencar: `python esportspulse_mcp_server.py` (mode stdio).
   * Connectar a Cursor: afegir el server a `.cursor/mcp.json`.
   * Verificar que les 4 tools apareixen al panell MCP.
-  * Fer una pregunta: "Quin preu té el joc APP-1?" — Cursor ha de cridar `get_game`.
-* **Clau del dia:** "Ara Cursor pot parlar directament amb GamePulse sense que tu facis de pont."
+  * Fer una pregunta: "Quin winRate té el champion Ahri?" — Cursor ha de cridar `get_champion`.
+* **Clau del dia:** "Ara Cursor pot parlar directament amb EsportsPulse sense que tu facis de pont."
 
 
 ---
@@ -212,32 +212,32 @@
 * **Activitat i Què s'espera programar:**
 * **Usar el MCP server creat ahir en un workflow real:**
   * Pregunta a Cursor (amb MCP connectat):
-    * "Quin és el joc més popular?" — espera que cridi `get_player_stats`.
-    * "Analitza el balanç de League of Legends" — espera que cridi `get_game_analysis`.
-    * "Mostra'm tots els jocs de menys de 20 euros" — espera que cridi `search_games`.
+    * "Quin és el champion més popular?" — espera que cridi `get_champion_stats`.
+    * "Analitza el rendiment de Ahri" — espera que cridi `get_champion_analysis`.
+    * "Mostra'm tots els champions amb winRate superior al 52%" — espera que cridi `search_champions`.
   * Les respostes han de venir del MCP server (dades reals de la BD), no de les dades d'entrenament de Cursor.
 * **Iterar l'spec del MCP server:**
   * Afegir un **resource** (dades que el model pot llegir sense cridar un tool):
   ```python
-  @mcp.resource("gamepulse://games/top10")
-  async def top10_games() -> str:
-      """Retorna els 10 jocs més populars en format text."""
+  @mcp.resource("esportspulse://champions/top10")
+  async def top10_champions() -> str:
+      """Retorna els 10 champions més populars en format text."""
       response = requests.get(
-          f"{JAVA_API_URL}/games?sort=activePlayerCount,desc&size=10",
+          f"{JAVA_API_URL}/champions?sort=gamesPlayed,desc&size=10",
           timeout=5
       )
-      games = response.json()
-      lines = [f"- {g['title']}: {g['activePlayerCount']} jugadors" for g in games]
+      champions = response.json()
+      lines = [f"- {c['name']}: {c['winRate']}% winRate, {c['gamesPlayed']} games" for c in champions]
       return "\n".join(lines)
   ```
   * Afegir un **prompt template** (prompt pre-definit que el model pot usar):
   ```python
   @mcp.prompt()
-  async def analyze_game(game_id: str) -> str:
-      """Prompt per analitzar el balanç d'un joc."""
-      return f"""Analitza el balanç del joc amb ID {game_id}.
-  Usa el tool get_game per obtenir les dades del joc.
-  Després usa get_game_analysis per obtenir l'anàlisi del LLM.
+  async def analyze_champion(champion_id: str) -> str:
+      """Prompt per analitzar el rendiment d'un champion."""
+      return f"""Analitza el rendiment del champion amb ID {champion_id}.
+  Usa el tool get_champion per obtenir les dades del champion.
+  Després usa get_champion_analysis per obtenir l'anàlisi del LLM.
   Presenta els resultats de forma clara amb punts forts i febles."""
   ```
 * **Reflexió:** Què ha funcionat? Què no? Quan el model no crida el tool correcte, és culpa del prompt o de la descripció del tool?
@@ -261,10 +261,10 @@
   def test_java_unavailable_returns_502():
       responses.add(
           responses.GET,
-          f"{JAVA_API_URL}/games/APP-1",
+          f"{JAVA_API_URL}/champions/ahri",
           body=ConnectionError("Connection refused")
       )
-      response = client.get("/games/APP-1")
+      response = client.get("/champions/ahri")
       assert response.status_code == 502
       body = response.json()
       assert body["type"] == "about:blank"

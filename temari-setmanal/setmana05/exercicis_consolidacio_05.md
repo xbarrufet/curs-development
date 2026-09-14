@@ -17,7 +17,7 @@ Obre la consola H2 i escriu 5 queries SQL a mà (sense tocar Java):
 **Fet quan:** Les 5 queries copiades a un fitxer `queries.sql` dins el projecte. L'EXPLAIN mostra la diferència entre table scan i index scan.
 
 ### 2. Swap verification: els tests de S2 passen amb JPA
-Executa tots els tests de S2 (`GameRepositoryTests`, `GameManagementServiceTests`) sense modificar-los. Han de passar ara que el repository és JPA en lloc d'InMemory. Si algun falla, identifica per què i corregeix **sense canviar el test** — el problema és a la implementació, no al test.
+Executa tots els tests de S2 (`ChampionRepositoryTests`, `ChampionManagementServiceTests`) sense modificar-los. Han de passar ara que el repository és JPA en lloc d'InMemory. Si algun falla, identifica per què i corregeix **sense canviar el test** — el problema és a la implementació, no al test.
 
 **Connexió S2 + SOLID:** Això demostra el poder del patró Repository i DIP. Si els tests no passen, és que l'abstracció té un forat.
 
@@ -33,7 +33,7 @@ Implementa `SqlitePlayerRepository` en Python (per al `PlayerRecord` de l'exerci
 ## Avançats (si vas sobrat)
 
 ### 4. Query derivada custom
-Afegeix a `GameJpaRepository` una query derivada que Spring Data no pot generar automàticament: "jocs amb preu entre X i Y, ordenats per jugadors actius, limitant a N resultats". Usa `@Query` amb JPQL. Escriu el test corresponent.
+Afegeix a `ChampionJpaRepository` una query derivada que Spring Data no pot generar automàticament: "champions amb winRate entre X i Y, ordenats per partides jugades, limitant a N resultats". Usa `@Query` amb JPQL. Escriu el test corresponent.
 
 **Connexió S7:** Aquesta mateixa query serà l'endpoint `GET /games?minPrice=X&maxPrice=Y&limit=N` a la setmana 7.
 

@@ -2,7 +2,7 @@
 
 ## 1. Introducció: Per Què Importa el Rendiment?
 
-Imagina que GamePulse tiene 100 milions de jocs indexats. Un usuario pregunta: "Quants jugadors actius té el joc amb ID APP-42857?"
+Imagina que EsportsPulse tiene 170 champions de Data Dragon indexats. Un usuario pregunta: "Quants jugadors actius té el champion amb ID Jinx?"
 
 **Escenari A (cercador lent):** Recorrem els 100M de jocs un per un fins trobar-lo.
 - Si la BD tarda 1 microsegon per joc: **100 milions × 1μs = 100 segons**
@@ -46,7 +46,7 @@ O(n²):      10,000,000,000 operacions (10 mil milions!)
 
 ---
 
-## 3. ArrayList vs HashMap en GamePulse
+## 3. ArrayList vs HashMap en EsportsPulse
 
 ### ArrayList (O(n) search)
 
@@ -225,7 +225,7 @@ Memòria: ~2MB (més per hash table, però O(1))
 
 ---
 
-## 7. A GamePulse: Aplicació Pràctica
+## 7. A EsportsPulse: Aplicació Pràctica
 
 ### S1: Benchmark O(n) vs O(1)
 
@@ -290,6 +290,6 @@ Tens 1 milió de jocs. Escull l'estructura per a cada cas:
 | **ArrayList** | Recorregut lineal → lookup O(n) |
 | **Trade-off** | HashMap usa 2x memòria per guanyar 50x velocitat |
 | **Warm-up** | JIT compilation: els primers iterations són més lents |
-| **Aplicació** | GamePulse usarà HashMap (S1), DB indexed (S5), REST (S7) — tots O(1)/(log n) |
+| **Aplicació** | EsportsPulse usarà HashMap (S1), DB indexed (S5), REST (S7) — tots O(1)/(log n) |
 
 **Objectiu setmana:** Entendre per què les estructures importan; veure-ho en pràctica amb benchmark.

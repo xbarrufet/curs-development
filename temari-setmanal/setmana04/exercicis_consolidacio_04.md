@@ -33,6 +33,6 @@ Introdueix un bug deliberat en un commit antic del teu projecte (ex: canvia un `
 **Fet quan:** `git bisect` identifica el commit culpable correctament.
 
 ### 5. Auditoria de seguretat del projecte
-Passa per tot el codi del projecte GamePulse (S1-S4) i busca problemes de seguretat reals: secrets hardcodejats, SQL injection potencial, null handling absent, excepcions silenciades. Escriu un informe breu (màx 1 pàgina) amb els problemes trobats i les correccions proposades.
+Passa per tot el codi del projecte EsportsPulse (S1-S4) i busca problemes de seguretat reals: secrets hardcodejats, SQL injection potencial, null handling absent, excepcions silenciades. Escriu un informe breu (màx 1 pàgina) amb els problemes trobats i les correccions proposades.
 
 **Fet quan:** Document markdown amb problemes + fixes. Aplica els fixes i verifica que els tests passen.

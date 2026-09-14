@@ -207,9 +207,9 @@
   * Verificar que tots els tests passen: `mvn test`.
   * Verificar que Checkstyle passa: `mvn checkstyle:check`.
 * **README professional:**
-  * Secció "Què és GamePulse" (2 frases).
+  * Secció "Què és EsportsPulse" (2 frases).
   * Secció "Com executar" amb comandes exactes.
-  * Badge de CI: `![CI](https://github.com/USER/gamepulse-engine/actions/workflows/ci.yml/badge.svg)`.
+  * Badge de CI: `![CI](https://github.com/USER/esportspulse-engine/actions/workflows/ci.yml/badge.svg)`.
 * **Tag de versió:**
   * `git tag -a v0.1 -m "Bloc 1 complete: domain model, repository patterns, concurrency, CI"`.
   * `git push origin v0.1`.

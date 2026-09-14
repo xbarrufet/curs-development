@@ -1,7 +1,7 @@
-# .cursorrules - GamePulse Initial Setup (Setmana 1)
+# .cursorrules - EsportsPulse Initial Setup (Setmana 1)
 
 ```
-# GamePulse - Java Backend + Python IA Rules
+# EsportsPulse - Java Backend + Python IA Rules
 
 ## Project Structure
 - `/backend-java`: Spring Boot 3 microservices with Java 21
@@ -9,7 +9,7 @@
 - Keep concerns separated: never import Java code into Python; APIs via REST
 
 ## Naming Conventions
-- **Java packages:** `com.gamepulse.{domain}.{layer}` (e.g., `com.gamepulse.game.service`)
+- **Java packages:** `com.esportspulse.{domain}.{layer}` (e.g., `com.esportspulse.game.service`)
 - **Java classes:** PascalCase (e.g., `GameSearchService`, `GameRecord`)
 - **Java variables/methods:** camelCase (e.g., `appId`, `searchByHash()`)
 - **Python modules:** snake_case (e.g., `game_search_service.py`)

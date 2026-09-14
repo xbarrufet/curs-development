@@ -13,12 +13,12 @@
 * **Activitat i Què s'espera programar:**
 * **Instal·lació i primer contacte:**
   * `pip install streamlit` al venv del projecte.
-  * Crear `dashboard/app.py` amb un "Hello GamePulse" i executar `streamlit run dashboard/app.py`.
+  * Crear `dashboard/app.py` amb un "Hello EsportsPulse" i executar `streamlit run dashboard/app.py`.
   * Entendre el model de Streamlit: cada interacció de l'usuari re-executa l'script sencer. No hi ha "event handlers" com a React — el flux és top-to-bottom.
 * **Dashboard mínim connectat a l'API REST:**
   * Importar `requests` per consumir l'API Java (S7).
-  * Mostrar una llista de jocs en una taula (`st.dataframe`) cridant `GET /games`.
-  * Afegir un camp de cerca (`st.text_input`) que filtra per títol (`GET /games?title=X`).
+  * Mostrar una llista de champions en una taula (`st.dataframe`) cridant `GET /champions`.
+  * Afegir un camp de cerca (`st.text_input`) que filtra per nom (`GET /champions?name=X`).
   * Afegir un botó "Refresh" que torna a cridar l'API.
 * **Prova manual:** Arrenca el backend Java (`mvn spring-boot:run`) i el dashboard (`streamlit run`) en dues terminals. Verifica que les dades es mostren.
 * **Lliçó:** Streamlit és ràpid per prototipar — en 30 línies tens un dashboard funcional. Però no és React: no hi ha components reutilitzables, no hi ha routing, no escala per a producció. El seu valor és **velocitat de prototipatge i feedback visual per iterar specs**.
@@ -37,40 +37,40 @@
 * **Exercici d'Escriptura de Specs: Dashboard Spec en Markdown.**
   * Escriu un fitxer `dashboard-spec.md` que descrigui el dashboard complet:
     ```markdown
-    ## GamePulse Dashboard — Spec
+    ## EsportsPulse Dashboard — Spec
 
     ### Layout
-    ┌─────────────────────────────────────────────┐
-    │  GamePulse Dashboard            [🔄 Refresh] │
-    ├──────────────────┬──────────────────────────┤
-    │                  │                          │
-    │  Filtres:        │  Taula de Jocs:          │
-    │  [Cerca títol__] │  | Títol | Preu | Jugadors│
-    │  [Preu min: ___] │  | LoL   | 0€   | 5M     │
-    │  [Preu max: ___] │  | CS2   | 0€   | 1.2M   │
-    │  [Només free ☐]  │  | BG3   | 60€  | 800K   │
-    │                  │                          │
-    ├──────────────────┴──────────────────────────┤
-    │  Detall del joc seleccionat:                │
-    │  Nom: League of Legends                     │
-    │  Jugadors actius: 5.000.000                 │
-    │  Gràfic: [barra de jugadors vs competidors] │
-    └─────────────────────────────────────────────┘
+    ┌──────────────────────────────────────────────────┐
+    │  EsportsPulse Dashboard              [🔄 Refresh] │
+    ├──────────────────┬───────────────────────────────┤
+    │                  │                               │
+    │  Filtres:        │  Taula de Champions:           │
+    │  [Cerca nom____] │  | Champion | WinRate | GamesPlayed│
+    │  [WinRate min: _] │  | Ahri     | 52.3%  | 150K   │
+    │  [WinRate max: _] │  | Jinx     | 51.1%  | 120K   │
+    │  [Només role: ☐] │  | Thresh   | 50.8%  | 200K   │
+    │                  │                               │
+    ├──────────────────┴───────────────────────────────┤
+    │  Detall del champion seleccionat:                │
+    │  Nom: Ahri                                       │
+    │  Games played: 150.000                           │
+    │  Gràfic: [barra de winRate vs mitjana del role]  │
+    └──────────────────────────────────────────────────┘
 
     ### Components
     1. **Header:** Títol + botó Refresh que recarrega dades de l'API.
     2. **Sidebar (columna esquerra):** Filtres de cerca:
-       - Text input per títol (cerca parcial).
-       - Sliders per rang de preu (min/max).
-       - Checkbox "Només jocs gratuïts".
-    3. **Taula principal:** Llista de jocs filtrats. Columnes: títol, preu, jugadors actius.
-       - Clicable: seleccionar un joc mostra el detall a sota.
-    4. **Detall:** Informació ampliada del joc seleccionat + gràfic de barres (opcional).
+       - Text input per nom de champion (cerca parcial).
+       - Sliders per rang de winRate (min/max).
+       - Checkbox per filtrar per role.
+    3. **Taula principal:** Llista de champions filtrats. Columnes: champion, winRate, gamesPlayed.
+       - Clicable: seleccionar un champion mostra el detall a sota.
+    4. **Detall:** Informació ampliada del champion seleccionat + gràfic de barres (opcional).
 
     ### Flux d'interacció
-    1. L'usuari obre el dashboard → es carreguen tots els jocs via GET /games.
-    2. L'usuari escriu "Legend" al camp de cerca → la taula es filtra en temps real.
-    3. L'usuari selecciona un joc → el panell de detall mostra info ampliada.
+    1. L'usuari obre el dashboard → es carreguen tots els champions via GET /champions.
+    2. L'usuari escriu "Ahri" al camp de cerca → la taula es filtra en temps real.
+    3. L'usuari selecciona un champion → el panell de detall mostra info ampliada.
     4. L'usuari clica Refresh → es tornen a cridar les APIs.
 
     ### Restriccions
@@ -97,17 +97,17 @@
 * **Activitat i Què s'espera programar:**
 * **KPIs amb `st.metric`:**
   * Afegir a la part superior del dashboard 3 mètriques:
-    * Total de jocs a la BD.
-    * Preu mitjà dels jocs de pagament.
-    * Joc amb més jugadors actius.
+    * Total de champions a la BD.
+    * WinRate mitjà de tots els champions.
+    * Champion amb més games played.
   * Usar `st.columns(3)` per mostrar-los en fila.
 * **Gràfic de barres:**
-  * Top 10 jocs per jugadors actius, visualitzat amb `st.bar_chart`.
+  * Top 10 champions per games played, visualitzat amb `st.bar_chart`.
   * Alternativa: usar `plotly` per a gràfics interactius (hover amb detalls).
-* **Formulari de creació de joc:**
-  * `st.form` amb camps: títol, preu, jugadors actius.
-  * En submit: `POST /games` a l'API.
-  * Mostrar `st.success("Joc creat!")` o `st.error("Error: ...")`.
+* **Formulari de registre de champion:**
+  * `st.form` amb camps: nom, role, winRate, gamesPlayed.
+  * En submit: `POST /champions` a l'API.
+  * Mostrar `st.success("Champion registrat!")` o `st.error("Error: ...")`.
 * **Connexió S9 (Error Handling):**
   * Si l'API Java no respon (timeout): mostrar `st.warning("Backend no disponible. Revisa que el servidor Java estigui actiu.")`.
   * Si una crida retorna 400/404: mostrar l'error de l'API de forma llegible, no el stacktrace.
@@ -125,14 +125,14 @@
 * **Activitat i Què s'espera programar:**
 * **Tests del dashboard (lògica, no UI):**
   * Extreure la lògica de negoci del dashboard a funcions pures testejables:
-    * `filter_games(games: list, title: str, min_price: float, max_price: float) -> list`
-    * `calculate_kpis(games: list) -> dict`
-    * `format_price(price: float) -> str`
+    * `filter_champions(champions: list, name: str, min_winrate: float, max_winrate: float) -> list`
+    * `calculate_kpis(champions: list) -> dict`
+    * `format_win_rate(win_rate: float) -> str`
   * Tests amb `pytest`:
-    * `test_filter_by_title()`: filtra correctament per substring.
-    * `test_filter_free_games()`: checkbox "només free" retorna jocs amb preu 0.
+    * `test_filter_by_name()`: filtra correctament per substring.
+    * `test_filter_by_role()`: filtra champions per role (ADC, Support, etc.).
     * `test_kpis_empty_list()`: no falla amb llista buida.
-    * `test_format_price()`: "29.99" → "29,99 €" (o el format escollit).
+    * `test_format_win_rate()`: 52.3 → "52,3%" (o el format escollit).
   * **Lliçó:** Streamlit és difícil de testejar com a UI. La solució és la mateixa que a Spring: separar lògica de presentació. Les funcions pures es testegen fàcilment; la capa de Streamlit és "només" la visualització.
 * **Ampliar CI per a Python:**
   * Afegir al workflow `.github/workflows/ci.yml`:
@@ -166,9 +166,9 @@
   2. Arrenca el servei Python (FastAPI) si existeix (S8-S9).
   3. Arrenca el dashboard (`streamlit run dashboard/app.py`).
   4. Verifica el flux complet:
-     * El dashboard mostra jocs de la BD.
+     * El dashboard mostra champions de la BD.
      * La cerca filtra correctament.
-     * Crear un joc via formulari → apareix a la taula.
+     * Registrar un champion via formulari → apareix a la taula.
      * KPIs es recalculen.
      * Errors d'API es gestionen (para el backend, refresca el dashboard → error visible).
 * **Revisió de la spec:**
@@ -176,7 +176,7 @@
   * Si hi ha desviacions justificades (millores que han sorgit), actualitza la spec per reflectir l'estat real.
   * **Lliçó:** La spec és un document viu — evoluciona amb el producte. No és un contracte rígid; és un acord que es revisa.
 * **Demo de 3 minuts:**
-  * Practica explicar el dashboard a algú que no l'ha vist: "Això és GamePulse, consumeix una API REST que..."
+  * Practica explicar el dashboard a algú que no l'ha vist: "Això és EsportsPulse, consumeix una API REST que..."
   * **Connexió S24:** Aquesta és la primera demo. A S24 serà la demo final del portfolio.
 
 * **Finalització del cicle Git:**

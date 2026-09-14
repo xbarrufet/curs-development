@@ -31,11 +31,11 @@ Per què és important?
 Exemple conceptual:
 
 ```java
-public record GameDto(
-    String appId,
-    String title,
-    BigDecimal price,
-    Long activePlayerCount
+public record ChampionDTO(
+    String championId,
+    String name,
+    Double winRate,
+    Long gamesPlayed
 ) {}
 ```
 
@@ -63,17 +63,17 @@ Abans de programar, cal definir:
 Exemple:
 
 ```http
-GET /games/{appId}
+GET /champions/{championId}
 ```
 
 Resposta 200:
 
 ```json
 {
-  "appId": "APP-42",
-  "title": "League of Legends",
-  "price": 0.0,
-  "activePlayerCount": 5000000
+  "championId": "CHAMP-42",
+  "name": "Jinx",
+  "winRate": 52.3,
+  "gamesPlayed": 150000
 }
 ```
 
@@ -81,7 +81,7 @@ Resposta 404:
 
 ```json
 {
-  "error": "Game APP-999 not found",
+  "error": "Champion CHAMP-999 not found",
   "status": 404
 }
 ```

@@ -2,7 +2,7 @@
 
 ## 1. Introducció: Per Què la Concurrència és el Teu Problema?
 
-Imagina que GamePulse té 500 usuaris simultanis. Cada un fa una petició:
+Imagina que EsportsPulse té 500 usuaris simultanis. Cada un fa una petició:
 
 ```
 Usuari A → GET /games/APP-123
@@ -190,7 +190,7 @@ Resultat: count = 43 (hauria de ser 44)
 
 Un increment s'ha perdut. Amb milers de threads, el comptador pot perdre el 20-30% dels increments.
 
-### Per Què Afecta GamePulse?
+### Per Què Afecta EsportsPulse?
 
 Imagina un camp `viewCount` que compta quantes vegades s'ha vist un joc:
 
@@ -377,18 +377,18 @@ El segon thread rep una excepció i pot reintentar amb les dades actualitzades.
 
 ### El Problema: APIs Externes Lentes
 
-GamePulse ha de consultar Steam (300ms) i IGDB (400ms) per cada joc:
+EsportsPulse ha de consultar Riot API (300ms) i Data Dragon (100ms) per cada champion:
 
 ```
 Seqüencial:
-Steam ─────────[300ms]───────→
-                               IGDB ─────────[400ms]──────────→
-                                                                 Total: 700ms
+Riot API ──────[300ms]───────→
+                               Data Dragon ──[100ms]──→
+                                                        Total: 400ms
 
 Paral·lel:
-Steam ─────────[300ms]───────→
-IGDB ─────────────[400ms]────────────→
-                                       Total: 400ms (el més lent dels dos)
+Riot API ──────[300ms]───────→
+Data Dragon ──[100ms]──→
+                          Total: 300ms (el més lent dels dos)
 ```
 
 ### Solució amb CompletableFuture
@@ -396,15 +396,15 @@ IGDB ─────────────[400ms]─────────�
 ```java
 public GameRecord enrichGame(String appId) {
     // Llançar les dues crides en paral·lel
-    CompletableFuture<SteamData> steamFuture = 
-        CompletableFuture.supplyAsync(() -> steamClient.fetch(appId));
+    CompletableFuture<RiotData> riotFuture = 
+        CompletableFuture.supplyAsync(() -> riotClient.fetch(championId));
     
-    CompletableFuture<IgdbData> igdbFuture = 
-        CompletableFuture.supplyAsync(() -> igdbClient.fetch(appId));
+    CompletableFuture<DataDragonData> ddFuture = 
+        CompletableFuture.supplyAsync(() -> dataDragonClient.fetch(championId));
     
     // Esperar que ambdues acabin i combinar
-    return steamFuture.thenCombine(igdbFuture, (steam, igdb) -> 
-        new GameRecord(appId, steam.title(), steam.price(), igdb.playerCount())
+    return riotFuture.thenCombine(ddFuture, (riot, dd) -> 
+        new ChampionRecord(championId, riot.name(), riot.winRate(), dd.imageUrl())
     ).join();  // Bloqueja fins que els dos acaben
 }
 ```
@@ -414,11 +414,11 @@ public GameRecord enrichGame(String appId) {
 ```
 Thread principal
     │
-    ├── supplyAsync → ForkJoinPool thread-1 → steamClient.fetch() ──→ SteamData
+    ├── supplyAsync → ForkJoinPool thread-1 → riotClient.fetch() ──→ RiotData
     │
-    ├── supplyAsync → ForkJoinPool thread-2 → igdbClient.fetch() ──→ IgdbData
+    ├── supplyAsync → ForkJoinPool thread-2 → dataDragonClient.fetch() ──→ DataDragonData
     │
-    └── thenCombine(steam, igdb) → GameRecord
+    └── thenCombine(riot, dd) → ChampionRecord
 ```
 
 > **Nota:** Virtual Threads (Java 21, Project Loom) es treballen a la **Setmana 7**, quan l'estudiant té endpoints REST que criden APIs externes i el problema d'escalabilitat del thread pool es fa evident de forma natural.
@@ -456,7 +456,7 @@ import asyncio
 import aiohttp
 
 async def fetch_game(session, app_id):
-    async with session.get(f"https://api.steam.com/game/{app_id}") as resp:
+    async with session.get(f"https://euw1.api.riotgames.com/lol/champion/{app_id}") as resp:
         return await resp.json()
 
 async def fetch_all(app_ids):
@@ -479,12 +479,12 @@ results = asyncio.run(fetch_all(["APP-1", "APP-2", "APP-3"]))
 
 ---
 
-## 9. Aplicació a GamePulse
+## 9. Aplicació a EsportsPulse
 
 ### S3: Extractor Concurrent
 
 ```
-50 jocs per extreure de Steam API (300ms cada crida)
+50 champions per extreure de Riot API (300ms cada crida)
 
 Seqüencial:          50 × 300ms = 15.000ms (15 segons!)
 CompletableFuture:   ~300-600ms (paral·lel, limitat pel ForkJoinPool)

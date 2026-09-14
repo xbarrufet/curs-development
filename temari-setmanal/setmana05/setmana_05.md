@@ -13,14 +13,14 @@
 
 * **Activitat i Què s'espera programar:**
 * Afegir dependències Maven: `spring-boot-starter-data-jpa`, `com.h2database:h2`.
-* Configurar `application.properties`: `spring.datasource.url=jdbc:h2:mem:gamepulse`, `spring.h2.console.enabled=true`.
+* Configurar `application.properties`: `spring.datasource.url=jdbc:h2:mem:esportspulse`, `spring.h2.console.enabled=true`.
 * Entendre la diferència entre In-Memory (S2) i BD relacional: transaccions, ACID, queries SQL.
 * **Exercici de Prompt Engineering:** Pregunta a Cursor: *"Explica quan és millor JPA que In-Memory i quins são els overhead"*. Reflexiona sobre trade-offs.
 
 
 ---
 
-### **Dimarts: GameRecord com a Entity i JpaRepository**
+### **Dimarts: ChampionRecord com a Entity i JpaRepository**
 
 * **Cursos i Material de Lectura:**
 * **Article:** Baeldung — [*JPA Entities*](https://www.baeldung.com/jpa-entities).
@@ -28,17 +28,17 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Convertir `GameRecord` en `@Entity`:**
-  * Afegir anotacions: `@Entity`, `@Table(name = "games")`.
-  * `@Id` a `appId` (String, primary key).
-  * `@Column` annotations si necessari (ex: `@Column(nullable = false)` a `title`).
+* **Convertir `ChampionRecord` en `@Entity`:**
+  * Afegir anotacions: `@Entity`, `@Table(name = "champions")`.
+  * `@Id` a `championId` (String, primary key).
+  * `@Column` annotations si necessari (ex: `@Column(nullable = false)` a `name`).
   * Mantenir el constructor (per a JPA cal un no-arg constructor; usar Lombok `@NoArgsConstructor` si es necessita).
   * **Important:** Discussió sobre mutabilitat: entities de JPA són mutables per defecte. Alternativi: usar `@Immutable` si vols mantenir immutabilitat.
-* **Crear `GameJpaRepository` extends `JpaRepository<GameRecord, String>`:**
+* **Crear `ChampionJpaRepository` extends `JpaRepository<ChampionRecord, String>`:**
   * Hereda `save()`, `findById()`, `findAll()`, `delete()`.
-  * Afegir query derivada: `List<GameRecord> findByTitleContaining(String title)`.
-  * Afegir query derivada: `List<GameRecord> findByActivePlayerCountGreaterThan(Long count)`.
-* **Prova manualment amb H2 Console:** Accedeix a `http://localhost:8080/h2-console`, verifica que la taula `games` es va crear.
+  * Afegir query derivada: `List<ChampionRecord> findByNameContaining(String title)`.
+  * Afegir query derivada: `List<ChampionRecord> findByGamesPlayedGreaterThan(Long count)`.
+* **Prova manualment amb H2 Console:** Accedeix a `http://localhost:8080/h2-console`, verifica que la taula `champions` es va crear.
 
 
 ---
@@ -51,14 +51,14 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Ampliar `GameManagementService` (de S4):**
-  * Injecta `GameJpaRepository` en lloc de `GameRepository` in-memory.
-  * Mètode `registerGame()`: persisten al `@Entity`.
-  * Mètode `searchByTitle(String keyword)`: usa `findByTitleContaining()`.
-  * Mètode `getPopularGames()`: usa `findByActivePlayerCountGreaterThan(100_000)`.
-  * Mètode `getAllGames()`: retorna `findAll()`.
+* **Ampliar `ChampionManagementService` (de S4):**
+  * Injecta `ChampionJpaRepository` en lloc de `ChampionRepository` in-memory.
+  * Mètode `registerChampion()`: persisten al `@Entity`.
+  * Mètode `searchByName(String keyword)`: usa `findByNameContaining()`.
+  * Mètode `getMetaChampions()`: usa `findByGamesPlayedGreaterThan(100_000)`.
+  * Mètode `getAllChampions()`: retorna `findAll()`.
 * **Consultes JPQL opcionals:**
-  * Afegir a `GameJpaRepository`: `@Query("SELECT g FROM GameRecord g WHERE g.price > :minPrice")` per a queries més complexes.
+  * Afegir a `ChampionJpaRepository`: `@Query("SELECT c FROM ChampionRecord c WHERE c.winRate > :minWinRate")` per a queries més complexes.
 * **Transaccions:**
   * Afegir `@Transactional` a mètodes que escriben (per seguretat ACID).
   * Discutió: Rollback automàtic en excepcions.
@@ -75,13 +75,13 @@
 
 * **Activitat i Què s'espera programar:**
 * **Refactorització del codi S4:**
-  * Reemplaçar `InMemoryGameRepository` per `GameJpaRepository` a `GameManagementService`.
+  * Reemplaçar `InMemoryChampionRepository` per `ChampionJpaRepository` a `ChampionManagementService`.
   * Assegurar que els tests S2/S4 segueixen passant (interfaces are key).
-* **Nous tests per a la capa JPA (`GameJpaRepositoryTests`):**
+* **Nous tests per a la capa JPA (`ChampionJpaRepositoryTests`):**
   * Usar `@DataJpaTest` per testejar només la capa de dades.
   * Test: `save()` i `findById()` retorna el mateix.
-  * Test: `findByTitleContaining()` amb wildcards.
-  * Test: `findByActivePlayerCountGreaterThan()` filtra correctament.
+  * Test: `findByNameContaining()` amb wildcards.
+  * Test: `findByGamesPlayedGreaterThan()` filtra correctament.
   * Test: `findAll()` retorna tots els records.
 * **Tots els tests vell (S2/S4) han de passar sense canvis gràcies al pattern Repository.**
 
@@ -95,16 +95,16 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Test d'integració (`GameManagementServiceIT`):**
+* **Test d'integració (`ChampionManagementServiceIT`):**
   * Inicia context Spring sencer (`@SpringBootTest`).
-  * Test: `registerGame()` → `searchByTitle()` → verifica que apareix.
-  * Test: `getPopularGames()` amb dades que cumplen/no cumplen criteris.
+  * Test: `registerChampion()` → `searchByName()` → verifica que apareix.
+  * Test: `getMetaChampions()` amb dades que cumplen/no cumplen criteris.
 * **Cobertura i CI:**
   * Executar `mvn test` i verificar cobertura >= 80%.
   * GitHub Actions workflow actualitzat: passa tots els tests (JPA + In-Memory legacy).
-  * Commit message: `feat(java): Spring Data JPA with H2, GameRecord @Entity, Repository pattern integration`
+  * Commit message: `feat(java): Spring Data JPA with H2, ChampionRecord @Entity, Repository pattern integration`
 * **Revisió d'arquitectura:**
-  * Dibuixa en comentaris: `InMemoryGameRepository` → `GameJpaRepository` swap sense canviar `GameManagementService`. Això és la **força de patterns**.
+  * Dibuixa en comentaris: `InMemoryChampionRepository` → `ChampionJpaRepository` swap sense canviar `ChampionManagementService`. Això és la **força de patterns**.
   * Afegir a `.cursorrules`: regles per a entities (immutability trade-offs, `@Transactional`, indices).
 
 

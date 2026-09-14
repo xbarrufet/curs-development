@@ -14,8 +14,8 @@ Distribució real del temps d'un developer:
 
 El teu primer dia a una empresa:
 1. Et donen accés a un repositori de 200.000 línies.
-2. Et donen un ticket Jira: "Bug: el preu es mostra amb decimals incorrectes".
-3. Has de trobar on es calcula el preu, entendre la lògica, i corregir-ho.
+2. Et donen un ticket Jira: "Bug: el winRate es mostra amb decimals incorrectes".
+3. Has de trobar on es calcula el winRate, entendre la lògica, i corregir-ho.
 
 Ningú t'explicarà el codi línia per línia. Has de saber llegir-lo sol.
 
@@ -27,17 +27,17 @@ Ningú t'explicarà el codi línia per línia. Has de saber llegir-lo sol.
 
 ```java
 // ❌ Què fa això?
-public List<GameRecord> get(String s, int n) {
+public List<ChampionRecord> get(String s, int n) {
     return repo.findAll().stream()
-        .filter(g -> g.title().contains(s))
+        .filter(g -> g.name().contains(s))
         .limit(n)
         .toList();
 }
 
 // ✅ Ara s'entén sense llegir la implementació
-public List<GameRecord> searchByTitle(String keyword, int maxResults) {
-    return gameRepository.findAll().stream()
-        .filter(game -> game.title().contains(keyword))
+public List<ChampionRecord> searchByName(String keyword, int maxResults) {
+    return championRepository.findAll().stream()
+        .filter(champion -> champion.name().contains(keyword))
         .limit(maxResults)
         .toList();
 }
@@ -50,48 +50,48 @@ public List<GameRecord> searchByTitle(String keyword, int maxResults) {
 ```python
 # ❌
 def get(s, n):
-    return [g for g in games if s in g.title][:n]
+    return [g for g in champions if s in g.name][:n]
 
 # ✅
-def search_by_title(keyword: str, max_results: int) -> list[GameRecord]:
-    return [game for game in games if keyword in game.title][:max_results]
+def search_by_name(keyword: str, max_results: int) -> list[ChampionRecord]:
+    return [champion for champion in champions if keyword in champion.name][:max_results]
 ```
 
 ### Funcions Petites amb Una Sola Responsabilitat
 
 ```java
 // ❌ Fa massa coses: valida, busca, transforma, i gestiona errors
-public GameDTO getGameWithDiscount(String appId, double discount) {
-    if (appId == null || appId.isBlank()) {
-        throw new IllegalArgumentException("appId is required");
+public ChampionDTO getChampionWithAdjustedStats(String championId, double patchModifier) {
+    if (championId == null || championId.isBlank()) {
+        throw new IllegalArgumentException("championId is required");
     }
-    if (discount < 0 || discount > 1) {
-        throw new IllegalArgumentException("discount must be between 0 and 1");
+    if (patchModifier < -1 || patchModifier > 1) {
+        throw new IllegalArgumentException("patchModifier must be between -1 and 1");
     }
-    GameRecord game = repository.findById(appId).orElse(null);
-    if (game == null) {
-        throw new EntityNotFoundException("Game " + appId + " not found");
+    ChampionRecord champion = repository.findById(championId).orElse(null);
+    if (champion == null) {
+        throw new EntityNotFoundException("Champion " + championId + " not found");
     }
-    BigDecimal discountedPrice = game.price().multiply(
-        BigDecimal.valueOf(1 - discount)
+    BigDecimal adjustedWinRate = champion.winRate().multiply(
+        BigDecimal.valueOf(1 + patchModifier)
     ).setScale(2, RoundingMode.HALF_UP);
-    return new GameDTO(game.appId(), game.title(), discountedPrice, game.activePlayerCount());
+    return new ChampionDTO(champion.championId(), champion.name(), adjustedWinRate, champion.gamesPlayed());
 }
 
 // ✅ Cada cosa al seu lloc
-public GameDTO getGameWithDiscount(String appId, double discount) {
-    GameRecord game = findGameOrThrow(appId);
-    BigDecimal discountedPrice = calculateDiscount(game.price(), discount);
-    return GameDTO.from(game, discountedPrice);
+public ChampionDTO getChampionWithAdjustedStats(String championId, double patchModifier) {
+    ChampionRecord champion = findChampionOrThrow(championId);
+    BigDecimal adjustedWinRate = calculateAdjustedWinRate(champion.winRate(), patchModifier);
+    return ChampionDTO.from(champion, adjustedWinRate);
 }
 
-private GameRecord findGameOrThrow(String appId) {
-    return repository.findById(appId)
-        .orElseThrow(() -> new EntityNotFoundException("Game " + appId + " not found"));
+private ChampionRecord findChampionOrThrow(String championId) {
+    return repository.findById(championId)
+        .orElseThrow(() -> new EntityNotFoundException("Champion " + championId + " not found"));
 }
 
-private BigDecimal calculateDiscount(BigDecimal price, double discount) {
-    return price.multiply(BigDecimal.valueOf(1 - discount))
+private BigDecimal calculateAdjustedWinRate(BigDecimal winRate, double patchModifier) {
+    return winRate.multiply(BigDecimal.valueOf(1 + patchModifier))
         .setScale(2, RoundingMode.HALF_UP);
 }
 ```
@@ -100,24 +100,24 @@ private BigDecimal calculateDiscount(BigDecimal price, double discount) {
 
 ```java
 // ❌ Piràmide de la mort
-public void processGame(GameRecord game) {
-    if (game != null) {
-        if (game.price().compareTo(BigDecimal.ZERO) > 0) {
-            if (game.activePlayerCount() > 0) {
+public void processChampion(ChampionRecord champion) {
+    if (champion != null) {
+        if (champion.winRate().compareTo(BigDecimal.ZERO) > 0) {
+            if (champion.gamesPlayed() > 0) {
                 // La lògica real està enterrada a 3 nivells
-                repository.save(game);
+                repository.save(champion);
             }
         }
     }
 }
 
 // ✅ Guard clauses: surt aviat si les precondicions fallen
-public void processGame(GameRecord game) {
-    if (game == null) return;
-    if (game.price().compareTo(BigDecimal.ZERO) <= 0) return;
-    if (game.activePlayerCount() <= 0) return;
+public void processChampion(ChampionRecord champion) {
+    if (champion == null) return;
+    if (champion.winRate().compareTo(BigDecimal.ZERO) <= 0) return;
+    if (champion.gamesPlayed() <= 0) return;
     
-    repository.save(game);
+    repository.save(champion);
 }
 ```
 
@@ -131,26 +131,26 @@ La IA (Claude, Copilot, ChatGPT) genera codi que **compila i funciona al happy p
 
 ```java
 // La IA sovint genera queries concatenant strings
-@Query("SELECT g FROM Game g WHERE g.title = '" + title + "'")
-List<GameRecord> findByTitle(String title);
+@Query("SELECT g FROM Champion g WHERE g.name = '" + name + "'")
+List<ChampionRecord> findByName(String name);
 ```
 
 **Per què és perillós:**
 
 ```
-Input normal:    title = "League of Legends"
-Query:           SELECT g FROM Game g WHERE g.title = 'League of Legends'  ✅
+Input normal:    name = "Jinx"
+Query:           SELECT g FROM Champion g WHERE g.name = 'Jinx'  ✅
 
-Input maliciós:  title = "'; DROP TABLE games; --"
-Query:           SELECT g FROM Game g WHERE g.title = ''; DROP TABLE games; --'
+Input maliciós:  name = "'; DROP TABLE champions; --"
+Query:           SELECT g FROM Champion g WHERE g.name = ''; DROP TABLE champions; --'
                  → ELIMINA TOTA LA TAULA
 ```
 
 **Solució:**
 
 ```java
-@Query("SELECT g FROM Game g WHERE g.title = :title")
-List<GameRecord> findByTitle(@Param("title") String title);
+@Query("SELECT g FROM Champion g WHERE g.name = :name")
+List<ChampionRecord> findByName(@Param("name") String name);
 // El paràmetre s'escapa automàticament → impossible injectar SQL
 ```
 
@@ -158,17 +158,17 @@ List<GameRecord> findByTitle(@Param("title") String title);
 
 ```python
 # ❌ SQL injection
-cursor.execute(f"SELECT * FROM games WHERE title = '{title}'")
+cursor.execute(f"SELECT * FROM champions WHERE name = '{name}'")
 
 # ✅ Paràmetres vinculats
-cursor.execute("SELECT * FROM games WHERE title = ?", (title,))
+cursor.execute("SELECT * FROM champions WHERE name = ?", (name,))
 ```
 
 ### Anti-Patró 2: Secrets al Codi Font
 
 ```java
 // La IA genera secrets inline perquè no coneix el teu entorn
-private static final String STEAM_API_KEY = "sk-abc123def456ghi789";
+private static final String RIOT_API_KEY = "RGAPI-abc123def456ghi789";
 private static final String DB_PASSWORD = "admin123";
 ```
 
@@ -178,85 +178,85 @@ private static final String DB_PASSWORD = "admin123";
 
 ```java
 // application.properties (exclòs de Git via .gitignore)
-steam.api.key=${STEAM_API_KEY}
+riot.api.key=${RIOT_API_KEY}
 
 // Codi
-@Value("${steam.api.key}")
-private String steamApiKey;
+@Value("${riot.api.key}")
+private String riotApiKey;
 ```
 
 ```python
 # .env (exclòs de Git)
-STEAM_API_KEY=sk-abc123def456ghi789
+RIOT_API_KEY=RGAPI-abc123def456ghi789
 
 # Codi
 import os
-steam_api_key = os.environ["STEAM_API_KEY"]
+riot_api_key = os.environ["RIOT_API_KEY"]
 ```
 
 ### Anti-Patró 3: NullPointerException Amagat
 
 ```java
 // La IA assumeix que tot existeix
-GameRecord game = repository.findById(appId);
-return game.title();  // ← Si el joc no existeix: NullPointerException
+ChampionRecord champion = repository.findById(championId);
+return champion.name();  // ← Si el campió no existeix: NullPointerException
 ```
 
 **Solució:**
 
 ```java
-return repository.findById(appId)
-    .orElseThrow(() -> new EntityNotFoundException("Game " + appId + " not found"))
-    .title();
+return repository.findById(championId)
+    .orElseThrow(() -> new EntityNotFoundException("Champion " + championId + " not found"))
+    .name();
 ```
 
 **En Python:**
 
 ```python
 # ❌
-game = repository.find_by_id(app_id)
-return game.title  # AttributeError si game és None
+champion = repository.find_by_id(champion_id)
+return champion.name  # AttributeError si champion és None
 
 # ✅
-game = repository.find_by_id(app_id)
-if game is None:
-    raise GameNotFoundError(f"Game {app_id} not found")
-return game.title
+champion = repository.find_by_id(champion_id)
+if champion is None:
+    raise ChampionNotFoundError(f"Champion {champion_id} not found")
+return champion.name
 ```
 
 ### Anti-Patró 4: Tests que No Testegen Res
 
 ```java
 @Test
-void testGetGame() {
+void testGetChampion() {
     // Setup: diem al mock què ha de retornar
-    when(mockService.findById("APP-1")).thenReturn(testGame);
+    when(mockService.findById("Jinx")).thenReturn(testChampion);
     
     // Act: cridem el mock directament
-    GameRecord result = mockService.findById("APP-1");
+    ChampionRecord result = mockService.findById("Jinx");
     
     // Assert: verifiquem que el mock retorna el que li hem dit
     assertNotNull(result);  // Sempre serà no-null perquè ho hem configurat!
-    assertEquals("APP-1", result.appId());  // Verifica el mock, no el codi!
+    assertEquals("Jinx", result.championId());  // Verifica el mock, no el codi!
 }
 ```
 
-**Per què és dolent:** No testeja el teu codi. Testeja que Mockito funciona. Si el teu `GameController` té un bug, aquest test seguirà passant.
+**Per què és dolent:** No testeja el teu codi. Testeja que Mockito funciona. Si el teu `ChampionController` té un bug, aquest test seguirà passant.
 
 **Solució: Testejar el codi real, mockejar les dependències**
 
 ```java
 @Test
-void testGetGame() {
+void testGetChampion() {
     // Mock de la dependència (repository)
-    when(mockRepository.findById("APP-1")).thenReturn(Optional.of(testGame));
+    when(mockRepository.findById("Jinx")).thenReturn(Optional.of(testChampion));
     
     // Crida al codi REAL (controller o service)
-    GameDTO result = gameService.getGame("APP-1");
+    ChampionDTO result = championService.getChampion("Jinx");
     
     // Verifica que el codi real transforma correctament
-    assertEquals("APP-1", result.appId());
-    assertEquals("League of Legends", result.title());
+    assertEquals("Jinx", result.championId());
+    assertEquals("Jinx", result.name());
 }
 ```
 
@@ -264,7 +264,7 @@ void testGetGame() {
 
 ```java
 try {
-    steamClient.fetchGameData(appId);
+    riotApiClient.fetchChampionData(championId);
 } catch (Exception e) {
     // TODO: handle later
 }
@@ -276,10 +276,10 @@ try {
 
 ```java
 try {
-    steamClient.fetchGameData(appId);
-} catch (SteamApiException e) {
-    log.error("Failed to fetch game data for {}: {}", appId, e.getMessage());
-    throw new GameEnrichmentException("Could not enrich game " + appId, e);
+    riotApiClient.fetchChampionData(championId);
+} catch (RiotApiException e) {
+    log.error("Failed to fetch champion data for {}: {}", championId, e.getMessage());
+    throw new ChampionEnrichmentException("Could not enrich champion " + championId, e);
 }
 ```
 
@@ -288,16 +288,16 @@ try {
 ```python
 # ❌
 try:
-    steam_client.fetch_game_data(app_id)
+    riot_client.fetch_champion_data(champion_id)
 except:  # Catch-all sense logging
     pass
 
 # ✅
 try:
-    steam_client.fetch_game_data(app_id)
-except SteamApiError as e:
-    logger.error("Failed to fetch game %s: %s", app_id, e)
-    raise GameEnrichmentError(f"Could not enrich {app_id}") from e
+    riot_client.fetch_champion_data(champion_id)
+except RiotApiError as e:
+    logger.error("Failed to fetch champion %s: %s", champion_id, e)
+    raise ChampionEnrichmentError(f"Could not enrich {champion_id}") from e
 ```
 
 ---
@@ -351,11 +351,11 @@ Merge a main
 "Això podria llançar NullPointerException si findById retorna empty. 
  Suggereixo usar orElseThrow() amb un missatge descriptiu."
 
-"Veig que concatenes el title al query SQL. Això obre un vector 
- d'SQL injection — caldria usar paràmetres vinculats (:title)."
+"Veig que concatenes el name al query SQL. Això obre un vector 
+ d'SQL injection — caldria usar paràmetres vinculats (:name)."
 
 "Bon refactoring separant la validació! Una cosa: el test 
- testGetGame() verifica el mock en lloc del controller — 
+ testGetChampion() verifica el mock en lloc del controller — 
  mockeja el repository i crida el controller real."
 ```
 
@@ -465,7 +465,7 @@ git bisect good v0.1      # El tag v0.1 era bo
 # Git fa binary search! Salta a un commit del mig:
 # "Bisecting: 50 revisions left to test"
 # Executes el test:
-mvn test -pl :module -Dtest=GameSearchTest
+mvn test -pl :module -Dtest=ChampionSearchTest
 
 # Si falla:
 git bisect bad
@@ -546,7 +546,7 @@ Producció: 💥 (diferent sistema operatiu)
 
 Amb CI:
 ```
-GitHub Actions: "El test testGetGame falla a Ubuntu amb Java 21"
+GitHub Actions: "El test testGetChampion falla a Ubuntu amb Java 21"
 Developer: "Ah, tenia un path hardcodejat amb \\ en lloc de /"
 → Fix before merge
 ```
@@ -560,14 +560,14 @@ Developer: "Ah, tenia un path hardcodejat amb \\ en lloc de /"
 Sense estàndard:
 ```java
 // Developer A
-public void save(GameRecord game){
-    repo.save( game );
+public void save(ChampionRecord champion){
+    repo.save( champion );
 }
 
 // Developer B
-public void save( GameRecord game )
+public void save( ChampionRecord champion )
 {
-    repo.save(game);
+    repo.save(champion);
 }
 ```
 
@@ -576,8 +576,8 @@ En una code review, acabes discutint espais en lloc de lògica.
 Amb Checkstyle:
 ```java
 // Tothom
-public void save(GameRecord game) {
-    repo.save(game);
+public void save(ChampionRecord champion) {
+    repo.save(champion);
 }
 // Checkstyle falla si no segueixes el format → no es pot mergejar
 ```

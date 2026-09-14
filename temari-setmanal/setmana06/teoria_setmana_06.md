@@ -1,8 +1,8 @@
 # Setmana 6 - Teoria: Testing, Mocks i Qualitat
 
-## 1. Per Què Testejar? El Cost del Bug
+## 1. Per Que Testejar? El Cost del Bug
 
-Un bug no costa el mateix en tot moment. Com més tard el detectes, més car és de corregir:
+Un bug no costa el mateix en tot moment. Com mes tard el detectes, mes car es de corregir:
 
 ```
 Cost de corregir un bug segons quan es detecta:
@@ -33,20 +33,20 @@ A producció            100x-1000x         L'usuari final
            Local  Test   Review  CI   Staging  Prod
 ```
 
-**Exemple concret amb GamePulse:**
+**Exemple concret amb EsportsPulse:**
 
-Imagina un bug a `getPopularGames()` que usa `>` en lloc de `>=`:
+Imagina un bug a `getMetaChampions()` que usa `>` en lloc de `>=`:
 
 ```java
-// Bug: retorna jocs amb MÉS de 100.000 jugadors
-// Hauria de retornar jocs amb 100.000 O MÉS
+// Bug: retorna champions amb MÉS de 100.000 partides jugades
+// Hauria de retornar champions amb 100.000 O MÉS
 return repository.findAll().stream()
-    .filter(g -> g.getActivePlayerCount() > 100_000)  // Bug: > en lloc de >=
+    .filter(c -> c.getGamesPlayed() > 100_000)  // Bug: > en lloc de >=
     .toList();
 ```
 
 - **Detectat en un test unitari:** 2 minuts. Canvies `>` per `>=`, test passa, commit.
-- **Detectat en producció:** Un analista es queixa que falten jocs al dashboard. L'equip de suport investiga. Un dev busca al codi. Es fa hotfix, deploy, validació. Total: hores o dies de treball de múltiples persones.
+- **Detectat en producció:** Un analista es queixa que falten champions al dashboard. L'equip de suport investiga. Un dev busca al codi. Es fa hotfix, deploy, validació. Total: hores o dies de treball de múltiples persones.
 
 El cost no és només el temps de fix. És el temps de **trobar** el bug, **comunicar-lo**, **prioritzar-lo**, i **validar** que el fix no trenca res més.
 
@@ -60,16 +60,16 @@ Tot bon test segueix una estructura de 3 fases. Hi ha dues formes d'expressar-ho
 
 ```java
 @Test
-void shouldReturnPopularGamesOnly() {
+void shouldReturnMetaChampionsOnly() {
     // ARRANGE — Prepara l'escenari
-    GameRecord popular = new GameRecord("APP-1", "League of Legends", 
-        BigDecimal.ZERO, 5_000_000L);
-    GameRecord unpopular = new GameRecord("APP-2", "Indie Gem", 
-        new BigDecimal("9.99"), 500L);
+    ChampionRecord popular = new ChampionRecord("jinx", "Jinx", 
+        new BigDecimal("52.30"), 5_000_000L);
+    ChampionRecord unpopular = new ChampionRecord("sona", "Sona", 
+        new BigDecimal("48.50"), 500L);
     when(repository.findAll()).thenReturn(List.of(popular, unpopular));
 
     // ACT — Executa l'acció que vols testejar
-    List<GameRecord> result = service.getPopularGames();
+    List<ChampionRecord> result = service.getMetaChampions();
 
     // ASSERT — Verifica el resultat
     assertThat(result).containsExactly(popular);
@@ -81,19 +81,19 @@ void shouldReturnPopularGamesOnly() {
 
 ```java
 @Test
-@DisplayName("Donat un mix de jocs populars i no populars, " +
-             "quan demano els populars, " +
-             "llavors només retorna els de >100k jugadors")
-void shouldReturnPopularGamesOnly() {
+@DisplayName("Donat un mix de meta champions i no meta, " +
+             "quan demano els meta champions, " +
+             "llavors només retorna els de >100k partides jugades")
+void shouldReturnMetaChampionsOnly() {
     // GIVEN — Donat un estat inicial
-    GameRecord popular = new GameRecord("APP-1", "League of Legends", 
-        BigDecimal.ZERO, 5_000_000L);
-    GameRecord unpopular = new GameRecord("APP-2", "Indie Gem", 
-        new BigDecimal("9.99"), 500L);
+    ChampionRecord popular = new ChampionRecord("jinx", "Jinx", 
+        new BigDecimal("52.30"), 5_000_000L);
+    ChampionRecord unpopular = new ChampionRecord("sona", "Sona", 
+        new BigDecimal("48.50"), 500L);
     when(repository.findAll()).thenReturn(List.of(popular, unpopular));
 
     // WHEN — Quan passa una acció
-    List<GameRecord> result = service.getPopularGames();
+    List<ChampionRecord> result = service.getMetaChampions();
 
     // THEN — Llavors espero un resultat
     assertThat(result).containsExactly(popular);
@@ -128,28 +128,28 @@ La piràmide de tests defineix quants tests de cada tipus hauries de tenir:
                                   Ex: Service amb mocks
 ```
 
-### Cada nivell amb GamePulse
+### Cada nivell amb EsportsPulse
 
 **Unit Tests (base de la piràmide):**
 ```java
-// Testeja NOMÉS la lògica de GameManagementService
+// Testeja NOMÉS la lògica de ChampionManagementService
 // Repository és un mock — no toca BD
 @ExtendWith(MockitoExtension.class)
-class GameManagementServiceTest {
-    @Mock GameJpaRepository repository;
-    @InjectMocks GameManagementService service;
+class ChampionManagementServiceTest {
+    @Mock ChampionJpaRepository repository;
+    @InjectMocks ChampionManagementService service;
 
     @Test
-    void shouldFilterPopularGames() {
+    void shouldFilterMetaChampions() {
         when(repository.findAll()).thenReturn(List.of(
-            new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L),
-            new GameRecord("APP-2", "Indie", BigDecimal.TEN, 100L)
+            new ChampionRecord("jinx", "Jinx", new BigDecimal("52.30"), 5_000_000L),
+            new ChampionRecord("sona", "Sona", new BigDecimal("48.50"), 100L)
         ));
         
-        List<GameRecord> result = service.getPopularGames();
+        List<ChampionRecord> result = service.getMetaChampions();
         
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTitle()).isEqualTo("LoL");
+        assertThat(result.get(0).getName()).isEqualTo("Jinx");
     }
 }
 // Temps: ~50ms — no arrenca Spring, no toca BD
@@ -159,9 +159,9 @@ class GameManagementServiceTest {
 ```java
 // Testeja Service + Repository + H2 junts
 @SpringBootTest
-class GameManagementServiceIT {
-    @Autowired GameManagementService service;
-    @Autowired GameJpaRepository repository;
+class ChampionManagementServiceIT {
+    @Autowired ChampionManagementService service;
+    @Autowired ChampionJpaRepository repository;
 
     @BeforeEach
     void setUp() {
@@ -169,13 +169,13 @@ class GameManagementServiceIT {
     }
 
     @Test
-    void shouldRegisterAndFindGame() {
-        service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
+    void shouldRegisterAndFindChampion() {
+        service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
         
-        Optional<GameRecord> found = repository.findById("APP-1");
+        Optional<ChampionRecord> found = repository.findById("jinx");
         
         assertThat(found).isPresent();
-        assertThat(found.get().getTitle()).isEqualTo("League of Legends");
+        assertThat(found.get().getName()).isEqualTo("Jinx");
     }
 }
 // Temps: ~2-5s — arrenca Spring context, crea BD H2
@@ -185,23 +185,23 @@ class GameManagementServiceIT {
 ```java
 // Testeja tot el stack: HTTP → Controller → Service → Repository → H2
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class GameControllerE2ETest {
+class ChampionControllerE2ETest {
     @Autowired TestRestTemplate restTemplate;
 
     @Test
-    void shouldCreateAndRetrieveGame() {
-        GameDTO dto = new GameDTO("APP-1", "League of Legends", BigDecimal.ZERO);
-        restTemplate.postForEntity("/api/games", dto, Void.class);
+    void shouldCreateAndRetrieveChampion() {
+        ChampionDTO dto = new ChampionDTO("jinx", "Jinx", new BigDecimal("52.30"));
+        restTemplate.postForEntity("/api/champions", dto, Void.class);
         
-        ResponseEntity<GameDTO> response = 
-            restTemplate.getForEntity("/api/games/APP-1", GameDTO.class);
+        ResponseEntity<ChampionDTO> response = 
+            restTemplate.getForEntity("/api/champions/jinx", ChampionDTO.class);
         
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().title()).isEqualTo("League of Legends");
+        assertThat(response.getBody().name()).isEqualTo("Jinx");
     }
 }
 // Temps: ~5-10s — arrenca servidor HTTP complet
-// Nota: GameController és de S7. Aquí és per il·lustrar el concepte.
+// Nota: ChampionController és de S7. Aquí és per il·lustrar el concepte.
 ```
 
 ### Speed vs Confidence
@@ -223,32 +223,32 @@ class GameControllerE2ETest {
 Ideal per testejar la mateixa lògica amb molts inputs:
 
 ```java
-@ParameterizedTest(name = "Preu {0} hauria de ser vàlid={1}")
+@ParameterizedTest(name = "WinRate {0} hauria de ser vàlid={1}")
 @CsvSource({
-    "0.00,   true",     // Free-to-play
-    "14.99,  true",     // Preu normal
-    "59.99,  true",     // AAA
+    "0.00,   true",     // WinRate zero (no data)
+    "52.30,  true",     // WinRate normal
+    "99.99,  true",     // WinRate alt
     "-1.00,  false",    // Negatiu: invàlid
-    "-0.01,  false"     // Just sota zero: invàlid
+    "101.00, false"     // >100: invàlid
 })
-void shouldValidateGamePrice(BigDecimal price, boolean expectedValid) {
+void shouldValidateChampionWinRate(BigDecimal winRate, boolean expectedValid) {
     if (expectedValid) {
-        assertDoesNotThrow(() -> service.registerGame("APP-1", "Test Game", price));
+        assertDoesNotThrow(() -> service.registerChampion("jinx", "Test Champion", winRate));
     } else {
         assertThrows(IllegalArgumentException.class, 
-            () -> service.registerGame("APP-1", "Test Game", price));
+            () -> service.registerChampion("jinx", "Test Champion", winRate));
     }
 }
 ```
 
 Output de Maven:
 ```
-shouldValidateGamePrice(BigDecimal, boolean)
-  ├─ Preu 0.00 hauria de ser vàlid=true       ✓
-  ├─ Preu 14.99 hauria de ser vàlid=true      ✓
-  ├─ Preu 59.99 hauria de ser vàlid=true      ✓
-  ├─ Preu -1.00 hauria de ser vàlid=false     ✓
-  └─ Preu -0.01 hauria de ser vàlid=false     ✓
+shouldValidateChampionWinRate(BigDecimal, boolean)
+  ├─ WinRate 0.00 hauria de ser vàlid=true       ✓
+  ├─ WinRate 52.30 hauria de ser vàlid=true      ✓
+  ├─ WinRate 99.99 hauria de ser vàlid=true      ✓
+  ├─ WinRate -1.00 hauria de ser vàlid=false     ✓
+  └─ WinRate 101.00 hauria de ser vàlid=false    ✓
 ```
 
 ### @MethodSource per inputs complexos
@@ -257,27 +257,27 @@ Quan `@CsvSource` no és suficient (objectes complexos, llistes):
 
 ```java
 @ParameterizedTest
-@MethodSource("provideGamesForPopularityCheck")
-void shouldCorrectlyClassifyPopularity(GameRecord game, boolean expectedPopular) {
-    when(repository.findAll()).thenReturn(List.of(game));
+@MethodSource("provideChampionsForMetaCheck")
+void shouldCorrectlyClassifyMeta(ChampionRecord champion, boolean expectedMeta) {
+    when(repository.findAll()).thenReturn(List.of(champion));
     
-    List<GameRecord> popular = service.getPopularGames();
+    List<ChampionRecord> meta = service.getMetaChampions();
     
-    if (expectedPopular) {
-        assertThat(popular).contains(game);
+    if (expectedMeta) {
+        assertThat(meta).contains(champion);
     } else {
-        assertThat(popular).isEmpty();
+        assertThat(meta).isEmpty();
     }
 }
 
-static Stream<Arguments> provideGamesForPopularityCheck() {
+static Stream<Arguments> provideChampionsForMetaCheck() {
     return Stream.of(
         Arguments.of(
-            new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L), true),
+            new ChampionRecord("jinx", "Jinx", new BigDecimal("52.30"), 5_000_000L), true),
         Arguments.of(
-            new GameRecord("APP-2", "Indie", BigDecimal.TEN, 500L), false),
+            new ChampionRecord("sona", "Sona", new BigDecimal("48.50"), 500L), false),
         Arguments.of(
-            new GameRecord("APP-3", "Edge Case", BigDecimal.ZERO, 100_000L), false)
+            new ChampionRecord("lux", "Lux", new BigDecimal("51.20"), 100_000L), false)
             // Atenció: 100_000 és exactament el límit. > o >=?
     );
 }
@@ -288,48 +288,48 @@ static Stream<Arguments> provideGamesForPopularityCheck() {
 Agrupa tests per escenari. Fa que l'output de Maven sigui una documentació:
 
 ```java
-@DisplayName("GameManagementService")
-class GameManagementServiceTest {
+@DisplayName("ChampionManagementService")
+class ChampionManagementServiceTest {
     
     @Nested
-    @DisplayName("quan registra un joc")
+    @DisplayName("quan registra un champion")
     class WhenRegistering {
         @Test
         @DisplayName("hauria de guardar-lo al repository")
         void shouldSaveToRepository() { ... }
 
         @Test
-        @DisplayName("hauria de rebutjar un títol buit")
-        void shouldRejectEmptyTitle() { ... }
+        @DisplayName("hauria de rebutjar un champion amb nom buit")
+        void shouldRejectEmptyName() { ... }
 
         @Test
-        @DisplayName("hauria de rebutjar un preu negatiu")
-        void shouldRejectNegativePrice() { ... }
+        @DisplayName("hauria de rebutjar un winRate invàlid")
+        void shouldRejectInvalidWinRate() { ... }
     }
 
     @Nested
-    @DisplayName("quan busca jocs populars")
-    class WhenSearchingPopular {
+    @DisplayName("quan busca meta champions")
+    class WhenSearchingMeta {
         @Test
-        @DisplayName("hauria de retornar només jocs amb >100k jugadors")
-        void shouldReturnOnlyPopular() { ... }
+        @DisplayName("hauria de retornar només champions amb >100k partides jugades")
+        void shouldReturnOnlyMeta() { ... }
 
         @Test
         @DisplayName("hauria de retornar llista buida si cap compleix")
-        void shouldReturnEmptyIfNonePopular() { ... }
+        void shouldReturnEmptyIfNoneMeta() { ... }
     }
 }
 ```
 
 Output:
 ```
-GameManagementService
-  quan registra un joc
+ChampionManagementService
+  quan registra un champion
     ✓ hauria de guardar-lo al repository
-    ✓ hauria de rebutjar un títol buit
-    ✓ hauria de rebutjar un preu negatiu
-  quan busca jocs populars
-    ✓ hauria de retornar només jocs amb >100k jugadors
+    ✓ hauria de rebutjar un champion amb nom buit
+    ✓ hauria de rebutjar un winRate invàlid
+  quan busca meta champions
+    ✓ hauria de retornar només champions amb >100k partides jugades
     ✓ hauria de retornar llista buida si cap compleix
 ```
 
@@ -369,15 +369,15 @@ Això és **documentació viva**: si el test passa, el comportament descrit exis
 
 ### Per Què Mock?
 
-`GameManagementService` depèn de `GameJpaRepository`. En un unit test, no volem arrancar Spring ni H2 — volem testejar **només** la lògica del servei:
+`ChampionManagementService` depèn de `ChampionJpaRepository`. En un unit test, no volem arrancar Spring ni H2 — volem testejar **només** la lògica del servei:
 
 ```
 Sense mock (integration test):        Amb mock (unit test):
 
-GameManagementService                 GameManagementService
+ChampionManagementService             ChampionManagementService
         │                                     │
         ▼                                     ▼
-GameJpaRepository                     Mock<GameJpaRepository>
+ChampionJpaRepository                 Mock<ChampionJpaRepository>
         │                                     │
         ▼                                     ▼
 H2 Database                           Respostes predefinides
@@ -391,28 +391,28 @@ El mock intercepta les crides al repository i retorna el que tu li dius. Així p
 
 ```java
 @ExtendWith(MockitoExtension.class)
-class GameManagementServiceTest {
-    @Mock GameJpaRepository repository;
-    @InjectMocks GameManagementService service;
+class ChampionManagementServiceTest {
+    @Mock ChampionJpaRepository repository;
+    @InjectMocks ChampionManagementService service;
 
     @Test
-    void shouldReturnGameById() {
-        // Definim: quan algú cridi findById("APP-1"), retorna aquest game
-        GameRecord game = new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L);
-        when(repository.findById("APP-1")).thenReturn(Optional.of(game));
+    void shouldReturnChampionById() {
+        // Definim: quan algú cridi findById("jinx"), retorna aquest champion
+        ChampionRecord champion = new ChampionRecord("jinx", "Jinx", new BigDecimal("52.30"), 5_000_000L);
+        when(repository.findById("jinx")).thenReturn(Optional.of(champion));
 
         // Ara cridem el servei — que internament crida repository.findById
-        Optional<GameRecord> result = service.findById("APP-1");
+        Optional<ChampionRecord> result = service.findById("jinx");
 
         assertThat(result).isPresent();
-        assertThat(result.get().getTitle()).isEqualTo("LoL");
+        assertThat(result.get().getName()).isEqualTo("Jinx");
     }
 
     @Test
-    void shouldThrowWhenGameNotFound() {
+    void shouldThrowWhenChampionNotFound() {
         when(repository.findById("NOPE")).thenReturn(Optional.empty());
 
-        assertThrows(GameNotFoundException.class, 
+        assertThrows(ChampionNotFoundException.class, 
             () -> service.findByIdOrThrow("NOPE"));
     }
 }
@@ -424,16 +424,16 @@ A vegades no importa el return, sinó que el servei **ha cridat** el que tocava:
 
 ```java
 @Test
-void shouldSaveGameToRepository() {
-    service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
+void shouldSaveChampionToRepository() {
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
 
     // Verifica que el servei ha cridat save() exactament 1 cop
-    verify(repository).save(any(GameRecord.class));
+    verify(repository).save(any(ChampionRecord.class));
 }
 
 @Test
 void shouldNotDeleteWhenRegistering() {
-    service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
 
     // Verifica que el servei NO ha cridat delete()
     verify(repository, never()).delete(any());
@@ -446,17 +446,17 @@ Quan vols verificar **què exactament** s'ha passat al mock:
 
 ```java
 @Test
-void shouldCreateGameRecordWithCorrectFields() {
-    service.registerGame("APP-1", "League of Legends", new BigDecimal("0.00"));
+void shouldCreateChampionRecordWithCorrectFields() {
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
 
-    ArgumentCaptor<GameRecord> captor = ArgumentCaptor.forClass(GameRecord.class);
+    ArgumentCaptor<ChampionRecord> captor = ArgumentCaptor.forClass(ChampionRecord.class);
     verify(repository).save(captor.capture());
 
-    GameRecord saved = captor.getValue();
-    assertThat(saved.getAppId()).isEqualTo("APP-1");
-    assertThat(saved.getTitle()).isEqualTo("League of Legends");
-    assertThat(saved.getPrice()).isEqualByComparingTo(BigDecimal.ZERO);
-    assertThat(saved.getActivePlayerCount()).isEqualTo(0L);  // Nou joc = 0 jugadors
+    ChampionRecord saved = captor.getValue();
+    assertThat(saved.getChampionId()).isEqualTo("jinx");
+    assertThat(saved.getName()).isEqualTo("Jinx");
+    assertThat(saved.getWinRate()).isEqualByComparingTo(new BigDecimal("52.30"));
+    assertThat(saved.getGamesPlayed()).isEqualTo(0L);  // Nou champion = 0 partides
 }
 ```
 
@@ -467,33 +467,33 @@ void shouldCreateGameRecordWithCorrectFields() {
 // MAL: Això testeja que Mockito funciona, no que el servei funciona
 @Test
 void badTest() {
-    List<GameRecord> games = List.of(someGame);
-    when(repository.findAll()).thenReturn(games);
+    List<ChampionRecord> champions = List.of(someChampion);
+    when(repository.findAll()).thenReturn(champions);
     
-    List<GameRecord> result = service.getAllGames();
+    List<ChampionRecord> result = service.getAllChampions();
     
-    assertEquals(games, result);  // Obvi! Has dit al mock que retorni 'games'!
+    assertEquals(champions, result);  // Obvi! Has dit al mock que retorni 'champions'!
 }
 
 // BÉ: Testeja la LÒGICA del servei (el filtratge)
 @Test
 void goodTest() {
-    when(repository.findAll()).thenReturn(List.of(popularGame, unpopularGame));
+    when(repository.findAll()).thenReturn(List.of(popularChampion, unpopularChampion));
     
-    List<GameRecord> result = service.getPopularGames();
+    List<ChampionRecord> result = service.getMetaChampions();
     
-    assertThat(result).containsOnly(popularGame);  // El servei filtra!
+    assertThat(result).containsOnly(popularChampion);  // El servei filtra!
 }
 ```
 
 **2. Over-mocking (mock everything, test nothing):**
 ```java
 // MAL: Mocking el propi servei
-@Mock GameManagementService service;  // NO! Vols testejar AQUEST servei!
+@Mock ChampionManagementService service;  // NO! Vols testejar AQUEST servei!
 
 // BÉ: Mock les dependències, no el subject under test
-@Mock GameJpaRepository repository;
-@InjectMocks GameManagementService service;  // service és REAL
+@Mock ChampionJpaRepository repository;
+@InjectMocks ChampionManagementService service;  // service és REAL
 ```
 
 **3. Verificar implementació interna:**
@@ -503,7 +503,7 @@ verify(repository).findAll();  // Què importa si ha cridat findAll?
                                 // El que importa és el RESULTAT
 
 // BÉ: Verifica comportament, no implementació
-assertThat(result).containsOnly(popularGame);
+assertThat(result).containsOnly(popularChampion);
 ```
 
 ---
@@ -535,48 +535,48 @@ Spring Boot ofereix "test slices" que carreguen només la part del context que n
 | `@WebMvcTest` | Controllers, MVC | Ràpid (~1s) | Testejar endpoints (S7) |
 | `@SpringBootTest` | Tot el context | Lent (~3-5s) | Tests d'integració complets |
 
-### @DataJpaTest: Testejar GameJpaRepository (connexió S5)
+### @DataJpaTest: Testejar ChampionJpaRepository (connexió S5)
 
 ```java
 @DataJpaTest
-class GameJpaRepositoryTest {
+class ChampionJpaRepositoryTest {
 
     @Autowired
-    private GameJpaRepository repository;
+    private ChampionJpaRepository repository;
 
     @Autowired
     private TestEntityManager entityManager;
 
     @BeforeEach
     void setUp() {
-        entityManager.persist(new GameRecord("APP-1", "League of Legends", 
-            BigDecimal.ZERO, 5_000_000L));
-        entityManager.persist(new GameRecord("APP-2", "Stardew Valley", 
-            new BigDecimal("14.99"), 90_000L));
-        entityManager.persist(new GameRecord("APP-3", "Elden Ring", 
-            new BigDecimal("49.99"), 300_000L));
+        entityManager.persist(new ChampionRecord("jinx", "Jinx", 
+            new BigDecimal("52.30"), 5_000_000L));
+        entityManager.persist(new ChampionRecord("thresh", "Thresh", 
+            new BigDecimal("51.20"), 90_000L));
+        entityManager.persist(new ChampionRecord("lux", "Lux", 
+            new BigDecimal("54.10"), 300_000L));
         entityManager.flush();
     }
 
     @Test
-    void shouldFindByTitleContaining() {
-        List<GameRecord> result = repository.findByTitleContaining("Legend");
+    void shouldFindByNameContaining() {
+        List<ChampionRecord> result = repository.findByNameContaining("Jin");
         
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getAppId()).isEqualTo("APP-1");
+        assertThat(result.get(0).getChampionId()).isEqualTo("jinx");
     }
 
     @Test
-    void shouldFindGamesWithManyPlayers() {
-        List<GameRecord> result = 
-            repository.findByActivePlayerCountGreaterThan(100_000L);
+    void shouldFindChampionsWithManyGamesPlayed() {
+        List<ChampionRecord> result = 
+            repository.findByGamesPlayedGreaterThan(100_000L);
         
-        assertThat(result).hasSize(2);  // LoL (5M) + Elden Ring (300k)
+        assertThat(result).hasSize(2);  // Jinx (5M) + Lux (300k)
     }
 
     @Test
-    void shouldReturnEmptyForNonExistentTitle() {
-        List<GameRecord> result = repository.findByTitleContaining("Cyberpunk");
+    void shouldReturnEmptyForNonExistentName() {
+        List<ChampionRecord> result = repository.findByNameContaining("Zed");
         
         assertThat(result).isEmpty();
     }
@@ -589,13 +589,13 @@ class GameJpaRepositoryTest {
 
 ```java
 @SpringBootTest
-class GameManagementServiceIT {
+class ChampionManagementServiceIT {
 
     @Autowired
-    private GameManagementService service;
+    private ChampionManagementService service;
 
     @Autowired
-    private GameJpaRepository repository;
+    private ChampionJpaRepository repository;
 
     @BeforeEach
     void setUp() {
@@ -603,49 +603,49 @@ class GameManagementServiceIT {
     }
 
     @Test
-    void shouldRegisterAndRetrieveGame() {
-        service.registerGame("APP-1", "League of Legends", BigDecimal.ZERO);
+    void shouldRegisterAndRetrieveChampion() {
+        service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
 
-        List<GameRecord> all = service.getAllGames();
+        List<ChampionRecord> all = service.getAllChampions();
 
         assertThat(all).hasSize(1);
-        assertThat(all.get(0).getTitle()).isEqualTo("League of Legends");
+        assertThat(all.get(0).getName()).isEqualTo("Jinx");
     }
 
     @Test
-    void shouldFindPopularGamesAfterRegistration() {
-        service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
-        // Simulem que el joc ja té jugadors (normalment vindria d'un update)
-        GameRecord game = repository.findById("APP-1").orElseThrow();
-        game.setActivePlayerCount(5_000_000L);
-        repository.save(game);
+    void shouldFindMetaChampionsAfterRegistration() {
+        service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
+        // Simulem que el champion ja té partides jugades (normalment vindria d'un update)
+        ChampionRecord champion = repository.findById("jinx").orElseThrow();
+        champion.setGamesPlayed(5_000_000L);
+        repository.save(champion);
 
-        List<GameRecord> popular = service.getPopularGames();
+        List<ChampionRecord> meta = service.getMetaChampions();
 
-        assertThat(popular).hasSize(1);
+        assertThat(meta).hasSize(1);
     }
 }
 ```
 
 ### @WebMvcTest: Preview de S7
 
-A S7 crearem `GameController` amb endpoints REST. Aleshores usarem `@WebMvcTest`:
+A S7 crearem `ChampionController` amb endpoints REST. Aleshores usarem `@WebMvcTest`:
 
 ```java
 // Això és S7 — aquí és només un preview conceptual
-@WebMvcTest(GameController.class)
-class GameControllerTest {
+@WebMvcTest(ChampionController.class)
+class ChampionControllerTest {
     @Autowired MockMvc mockMvc;
-    @MockBean GameManagementService service;
+    @MockBean ChampionManagementService service;
 
     @Test
-    void shouldReturnGameById() throws Exception {
-        when(service.findByIdOrThrow("APP-1"))
-            .thenReturn(new GameRecord("APP-1", "LoL", BigDecimal.ZERO, 5_000_000L));
+    void shouldReturnChampionById() throws Exception {
+        when(service.findByIdOrThrow("jinx"))
+            .thenReturn(new ChampionRecord("jinx", "Jinx", new BigDecimal("52.30"), 5_000_000L));
 
-        mockMvc.perform(get("/api/games/APP-1"))
+        mockMvc.perform(get("/api/champions/jinx"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.title").value("LoL"));
+            .andExpect(jsonPath("$.name").value("Jinx"));
     }
 }
 ```
@@ -661,49 +661,49 @@ Les fixtures de pytest són l'equivalent de `@BeforeEach` + factory methods, per
 ```python
 # conftest.py — fixtures compartides per a tots els tests
 import pytest
-from game_repository import SqliteGameRepository, GameRecord
+from champion_repository import SqliteChampionRepository, ChampionRecord
 
 @pytest.fixture
 def repo():
     """Crea un repository amb BD en memòria. Cada test en rep un de nou."""
-    return SqliteGameRepository(":memory:")
+    return SqliteChampionRepository(":memory:")
 
 @pytest.fixture
-def sample_game():
-    return GameRecord(
-        app_id="APP-1",
-        title="League of Legends",
-        price=0.0,
-        active_player_count=5_000_000
+def sample_champion():
+    return ChampionRecord(
+        champion_id="jinx",
+        name="Jinx",
+        win_rate=52.30,
+        games_played=5_000_000
     )
 
 @pytest.fixture
 def populated_repo(repo):
-    """Repository amb 3 jocs predefinits."""
-    games = [
-        GameRecord("APP-1", "League of Legends", 0.0, 5_000_000),
-        GameRecord("APP-2", "Stardew Valley", 14.99, 90_000),
-        GameRecord("APP-3", "Elden Ring", 49.99, 300_000),
+    """Repository amb 3 champions predefinits."""
+    champions = [
+        ChampionRecord("jinx", "Jinx", 52.30, 5_000_000),
+        ChampionRecord("thresh", "Thresh", 51.20, 90_000),
+        ChampionRecord("lux", "Lux", 54.10, 300_000),
     ]
-    for game in games:
-        repo.save(game)
+    for champion in champions:
+        repo.save(champion)
     return repo
 ```
 
 ```python
-# test_game_repository.py
+# test_champion_repository.py
 
-def test_save_and_find(repo, sample_game):
-    repo.save(sample_game)
-    found = repo.find_by_id("APP-1")
-    assert found == sample_game
+def test_save_and_find(repo, sample_champion):
+    repo.save(sample_champion)
+    found = repo.find_by_id("jinx")
+    assert found == sample_champion
 
 def test_find_nonexistent(repo):
     assert repo.find_by_id("NOPE") is None
 
 def test_find_all_returns_all(populated_repo):
-    games = populated_repo.find_all()
-    assert len(games) == 3
+    champions = populated_repo.find_all()
+    assert len(champions) == 3
 
 def test_find_all_empty(repo):
     assert repo.find_all() == []
@@ -712,20 +712,20 @@ def test_find_all_empty(repo):
 ### Parametrize
 
 ```python
-@pytest.mark.parametrize("price,expected_valid", [
-    (0.0, True),       # Free-to-play
-    (14.99, True),     # Normal
-    (59.99, True),     # AAA
+@pytest.mark.parametrize("win_rate,expected_valid", [
+    (0.0, True),       # WinRate zero (no data)
+    (52.30, True),     # Normal
+    (99.99, True),     # WinRate alt
     (-1.0, False),     # Negatiu
-    (-0.01, False),    # Just sota zero
+    (101.0, False),    # >100: invàlid
 ])
-def test_validate_game_price(price, expected_valid):
+def test_validate_win_rate(win_rate, expected_valid):
     if expected_valid:
         # No hauria de llançar excepció
-        validate_game_price(price)
+        validate_win_rate(win_rate)
     else:
         with pytest.raises(ValueError):
-            validate_game_price(price)
+            validate_win_rate(win_rate)
 ```
 
 ### Monkeypatch: L'Equivalent de Mockito
@@ -735,21 +735,21 @@ def test_validate_game_price(price, expected_valid):
 ```python
 def test_handles_database_error(monkeypatch):
     """Verifica que el servei gestiona errors de BD correctament."""
-    repo = SqliteGameRepository(":memory:")
+    repo = SqliteChampionRepository(":memory:")
 
-    def broken_save(game):
+    def broken_save(champion):
         raise sqlite3.OperationalError("database is locked")
 
     monkeypatch.setattr(repo, "save", broken_save)
 
     with pytest.raises(sqlite3.OperationalError):
-        repo.save(GameRecord("APP-1", "Test", 0.0, 0))
+        repo.save(ChampionRecord("jinx", "Test", 0.0, 0))
 ```
 
 ```python
 def test_uses_environment_variable(monkeypatch):
     """Verifica que el servei llegeix la config correcta."""
-    monkeypatch.setenv("GAMEPULSE_DB_PATH", "/tmp/test.db")
+    monkeypatch.setenv("ESPORTSPULSE_DB_PATH", "/tmp/test.db")
     
     config = load_config()
     
@@ -778,20 +778,20 @@ def test_uses_environment_variable(monkeypatch):
 ### Line Coverage i Branch Coverage
 
 ```java
-public BigDecimal calculateDiscount(GameRecord game) {
-    if (game.getPrice().compareTo(new BigDecimal("50")) > 0) {  // Branca A
-        return game.getPrice().multiply(new BigDecimal("0.10"));  // Línia 1
-    } else if (game.getActivePlayerCount() > 1_000_000) {        // Branca B
-        return game.getPrice().multiply(new BigDecimal("0.05"));  // Línia 2
+public BigDecimal calculateAdjustedWinRate(ChampionRecord champion) {
+    if (champion.getWinRate().compareTo(new BigDecimal("54")) > 0) {  // Branca A
+        return champion.getWinRate().multiply(new BigDecimal("0.95"));  // Línia 1
+    } else if (champion.getGamesPlayed() > 1_000_000) {               // Branca B
+        return champion.getWinRate().multiply(new BigDecimal("1.02"));  // Línia 2
     }
-    return BigDecimal.ZERO;                                       // Línia 3
+    return champion.getWinRate();                                       // Línia 3
 }
 ```
 
 - **Line coverage:** Percentatge de línies executades pels tests.
 - **Branch coverage:** Percentatge de branques (if/else) executades.
 
-Un test que només passa un joc de 60 euros tindria:
+Un test que només passa un champion amb winRate de 55 tindria:
 - Line coverage: 66% (Línia 1 i 3, però no Línia 2)
 - Branch coverage: 33% (Branca A, però no B ni el cas per defecte)
 
@@ -809,9 +809,9 @@ Coverage no garanteix que el codi sigui **correcte**. Exemple:
 @Test
 void terribleTestWithFullCoverage() {
     // Executa totes les línies... però no asserteja res!
-    service.getPopularGames();
-    service.registerGame("APP-1", "Test", BigDecimal.ZERO);
-    service.calculateDiscount(someGame);
+    service.getMetaChampions();
+    service.registerChampion("jinx", "Test", new BigDecimal("52.30"));
+    service.calculateAdjustedWinRate(someChampion);
     // Coverage: 100%. Valor del test: 0%.
 }
 ```
@@ -830,9 +830,9 @@ Si el test NO falla, el test és feble.
 ```
 
 Manualment (exercici de dijous):
-1. Canvia `>` per `>=` a `getPopularGames()`.
+1. Canvia `>` per `>=` a `getMetaChampions()`.
 2. Elimina un `null` check a `findByIdOrThrow()`.
-3. Canvia `return BigDecimal.ZERO` per `return null` a `calculateDiscount()`.
+3. Canvia `return champion.getWinRate()` per `return null` a `calculateAdjustedWinRate()`.
 4. Executa `mvn test`. Cada mutació hauria de fer fallar almenys un test.
 5. Si alguna passa desapercebuda, el test suite té un forat.
 
@@ -883,20 +883,20 @@ Amb això, `mvn verify` fallarà si el coverage baixa del 70%.
 ```ini
 # pytest.ini (o pyproject.toml)
 [pytest]
-addopts = --cov=gamepulse --cov-report=html --cov-report=term-missing
+addopts = --cov=esportspulse --cov-report=html --cov-report=term-missing
 ```
 
 ```bash
 # Execució manual
-pytest --cov=gamepulse --cov-fail-under=70
+pytest --cov=esportspulse --cov-fail-under=70
 
 # Output:
-# Name                          Stmts   Miss  Cover
-# -------------------------------------------------
-# gamepulse/game_repository.py     45      3    93%
-# gamepulse/game_service.py        30      8    73%
-# -------------------------------------------------
-# TOTAL                            75     11    85%
+# Name                                Stmts   Miss  Cover
+# -------------------------------------------------------
+# esportspulse/champion_repository.py    45      3    93%
+# esportspulse/champion_service.py       30      8    73%
+# -------------------------------------------------------
+# TOTAL                                  75     11    85%
 ```
 
 ---
@@ -908,19 +908,19 @@ pytest --cov=gamepulse --cov-fail-under=70
 ```java
 // MAL: Executa codi però no verifica res
 @Test
-void testRegisterGame() {
-    service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
+void testRegisterChampion() {
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
     // ... i ja? Què estem comprovant?
 }
 
 // BÉ: Verifica el comportament esperat
 @Test
-void shouldSaveGameWhenRegistering() {
-    service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
+void shouldSaveChampionWhenRegistering() {
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
     
-    verify(repository).save(argThat(game -> 
-        game.getAppId().equals("APP-1") && 
-        game.getTitle().equals("LoL")
+    verify(repository).save(argThat(champion -> 
+        champion.getChampionId().equals("jinx") && 
+        champion.getName().equals("Jinx")
     ));
 }
 ```
@@ -932,22 +932,22 @@ void shouldSaveGameWhenRegistering() {
 ```java
 // MAL: Estàs testejant que Mockito funciona
 @Test
-void testGetAllGames() {
-    List<GameRecord> games = List.of(someGame);
-    when(repository.findAll()).thenReturn(games);
+void testGetAllChampions() {
+    List<ChampionRecord> champions = List.of(someChampion);
+    when(repository.findAll()).thenReturn(champions);
     
-    assertEquals(games, service.getAllGames());
-    // Literalment li has dit que retorni 'games' i ara comproves que retorna 'games'
+    assertEquals(champions, service.getAllChampions());
+    // Literalment li has dit que retorni 'champions' i ara comproves que retorna 'champions'
 }
 
 // BÉ: Testeja lògica que transforma el resultat
 @Test
-void shouldReturnOnlyPopularGames() {
-    when(repository.findAll()).thenReturn(List.of(popularGame, unpopularGame));
+void shouldReturnOnlyMetaChampions() {
+    when(repository.findAll()).thenReturn(List.of(popularChampion, unpopularChampion));
     
-    List<GameRecord> result = service.getPopularGames();
+    List<ChampionRecord> result = service.getMetaChampions();
     
-    assertThat(result).containsOnly(popularGame);
+    assertThat(result).containsOnly(popularChampion);
     // Aquí SÍ testem la lògica de filtratge del servei
 }
 ```
@@ -960,18 +960,18 @@ Recorda el Snippet 4 de S4: si el test no testeja transformació, validació, o 
 // MAL: Depèn de l'ordre dels resultats
 @Test
 void testFindAll() {
-    List<GameRecord> result = service.getAllGames();
-    assertEquals("League of Legends", result.get(0).getTitle());  // Per què el primer?
-    assertEquals("Dota 2", result.get(1).getTitle());  // I si la BD retorna en ordre diferent?
+    List<ChampionRecord> result = service.getAllChampions();
+    assertEquals("Jinx", result.get(0).getName());  // Per què el primer?
+    assertEquals("Yasuo", result.get(1).getName());  // I si la BD retorna en ordre diferent?
 }
 
 // BÉ: Verifica contingut sense dependre de l'ordre
 @Test
-void shouldReturnAllRegisteredGames() {
-    List<GameRecord> result = service.getAllGames();
+void shouldReturnAllRegisteredChampions() {
+    List<ChampionRecord> result = service.getAllChampions();
     assertThat(result)
-        .extracting(GameRecord::getTitle)
-        .containsExactlyInAnyOrder("League of Legends", "Dota 2");
+        .extracting(ChampionRecord::getName)
+        .containsExactlyInAnyOrder("Jinx", "Yasuo");
 }
 ```
 
@@ -979,18 +979,18 @@ void shouldReturnAllRegisteredGames() {
 // MAL: Depèn del temps
 @Test
 void testTimestamp() {
-    GameRecord game = service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
-    assertEquals(LocalDateTime.now(), game.getCreatedAt());  // Pot fallar per mil·lisegons!
+    ChampionRecord champion = service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
+    assertEquals(LocalDateTime.now(), champion.getCreatedAt());  // Pot fallar per mil·lisegons!
 }
 
 // BÉ: Tolerància temporal
 @Test
 void shouldSetCreatedAtToCurrentTime() {
     LocalDateTime before = LocalDateTime.now();
-    GameRecord game = service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
+    ChampionRecord champion = service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
     LocalDateTime after = LocalDateTime.now();
     
-    assertThat(game.getCreatedAt()).isBetween(before, after);
+    assertThat(champion.getCreatedAt()).isBetween(before, after);
 }
 ```
 
@@ -998,12 +998,12 @@ void shouldSetCreatedAtToCurrentTime() {
 
 ```java
 // MAL: Tot mockejat, no testem res real
-@Mock GameJpaRepository repository;
-@Mock GameValidator validator;
-@Mock GameMapper mapper;
-@Mock PriceCalculator calculator;
+@Mock ChampionJpaRepository repository;
+@Mock ChampionValidator validator;
+@Mock ChampionMapper mapper;
+@Mock WinRateCalculator calculator;
 @Mock NotificationService notifier;
-@InjectMocks GameManagementService service;
+@InjectMocks ChampionManagementService service;
 
 @Test
 void testRegister() {
@@ -1024,71 +1024,71 @@ void testRegister() {
 // MAL: Fa 5 coses; si falla, quina ha fallat?
 @Test
 void testEverything() {
-    service.registerGame("APP-1", "LoL", BigDecimal.ZERO);
-    service.registerGame("APP-2", "Dota", BigDecimal.ZERO);
-    List<GameRecord> all = service.getAllGames();
+    service.registerChampion("jinx", "Jinx", new BigDecimal("52.30"));
+    service.registerChampion("yasuo", "Yasuo", new BigDecimal("48.50"));
+    List<ChampionRecord> all = service.getAllChampions();
     assertEquals(2, all.size());
-    List<GameRecord> popular = service.getPopularGames();
-    assertEquals(0, popular.size());
-    service.updatePlayerCount("APP-1", 5_000_000L);
-    popular = service.getPopularGames();
-    assertEquals(1, popular.size());
-    service.deleteGame("APP-1");
-    all = service.getAllGames();
+    List<ChampionRecord> meta = service.getMetaChampions();
+    assertEquals(0, meta.size());
+    service.updateGamesPlayed("jinx", 5_000_000L);
+    meta = service.getMetaChampions();
+    assertEquals(1, meta.size());
+    service.deleteChampion("jinx");
+    all = service.getAllChampions();
     assertEquals(1, all.size());
 }
 
 // BÉ: Un test, un concepte
-@Test void shouldRegisterGame() { ... }
-@Test void shouldReturnAllGames() { ... }
-@Test void shouldReturnNoPopularGamesInitially() { ... }
-@Test void shouldReturnPopularAfterPlayerUpdate() { ... }
-@Test void shouldRemoveDeletedGame() { ... }
+@Test void shouldRegisterChampion() { ... }
+@Test void shouldReturnAllChampions() { ... }
+@Test void shouldReturnNoMetaChampionsInitially() { ... }
+@Test void shouldReturnMetaAfterGamesPlayedUpdate() { ... }
+@Test void shouldRemoveDeletedChampion() { ... }
 ```
 
 **Regla:** Un test hauria de tenir un sol motiu per fallar. Si falla, el nom del test t'ha de dir què ha anat malament sense obrir el codi.
 
 ---
 
-## 10. Aplicació a GamePulse: La Suite Completa
+## 10. Aplicació a EsportsPulse: La Suite Completa
 
-Al final de S6 (i del Bloc 1), GamePulse hauria de tenir aquesta estructura de tests:
+Al final de S6 (i del Bloc 1), EsportsPulse hauria de tenir aquesta estructura de tests:
 
 ```
-gamepulse-engine/
+esportspulse-engine/
 ├── src/
-│   ├── main/java/com/gamepulse/
-│   │   ├── GameRecord.java              (@Entity, de S5)
-│   │   ├── GameJpaRepository.java       (JpaRepository, de S5)
-│   │   ├── GameManagementService.java   (Service, de S2-S5)
-│   │   └── GameDTO.java                 (record, de S2)
-│   └── test/java/com/gamepulse/
+│   ├── main/java/com/esportspulse/
+│   │   ├── ChampionRecord.java              (@Entity, de S5)
+│   │   ├── ChampionJpaRepository.java       (JpaRepository, de S5)
+│   │   ├── ChampionManagementService.java   (Service, de S2-S5)
+│   │   └── ChampionDTO.java                 (record, de S2)
+│   └── test/java/com/esportspulse/
 │       ├── unit/
-│       │   └── GameManagementServiceTest.java    ← @Mock + @InjectMocks
-│       │       ├── shouldRegisterGame()
-│       │       ├── shouldRejectNegativePrice()
-│       │       ├── shouldReturnPopularGamesOnly()
-│       │       ├── shouldReturnEmptyWhenNoPopular()
-│       │       ├── shouldThrowWhenGameNotFound()
-│       │       └── shouldValidatePrice() [parametrized]
+│       │   └── ChampionManagementServiceTest.java    ← @Mock + @InjectMocks
+│       │       ├── shouldRegisterChampion()
+│       │       ├── shouldRejectInvalidWinRate()
+│       │       ├── shouldReturnMetaChampionsOnly()
+│       │       ├── shouldReturnEmptyWhenNoMeta()
+│       │       ├── shouldThrowWhenChampionNotFound()
+│       │       └── shouldValidateWinRate() [parametrized]
 │       ├── repository/
-│       │   └── GameJpaRepositoryTest.java        ← @DataJpaTest
-│       │       ├── shouldFindByTitleContaining()
-│       │       ├── shouldFindByActivePlayerCountGreaterThan()
+│       │   └── ChampionJpaRepositoryTest.java        ← @DataJpaTest
+│       │       ├── shouldFindByNameContaining()
+│       │       ├── shouldFindByGamesPlayedGreaterThan()
 │       │       └── shouldReturnEmptyForNonExistent()
 │       └── integration/
-│           └── GameManagementServiceIT.java       ← @SpringBootTest
-│               ├── shouldRegisterAndRetrieveGame()
-│               └── shouldFindPopularGamesEndToEnd()
+│           └── ChampionManagementServiceIT.java       ← @SpringBootTest
+│               ├── shouldRegisterAndRetrieveChampion()
+│               └── shouldFindMetaChampionsEndToEnd()
 │
 ├── python/
-│   ├── gamepulse/
-│   │   ├── game_repository.py            (SqliteGameRepository, de S5)
-│   │   └── game_service.py
+│   ├── esportspulse/
+│   │   ├── champion_repository.py            (SqliteChampionRepository, de S5)
+│   │   └── champion_service.py
 │   ├── tests/
 │   │   ├── conftest.py                    (fixtures compartides)
-│   │   ├── test_game_repository.py        (fixtures + parametrize)
-│   │   └── test_game_service.py           (monkeypatch)
+│   │   ├── test_champion_repository.py    (fixtures + parametrize)
+│   │   └── test_champion_service.py       (monkeypatch)
 │   └── pytest.ini                         (coverage config)
 │
 ├── pom.xml                                (JaCoCo plugin amb 70% mínim)
@@ -1121,7 +1121,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pytest pytest-cov
-      - run: pytest --cov=gamepulse --cov-fail-under=70
+      - run: pytest --cov=esportspulse --cov-fail-under=70
 ```
 
 Si un test falla o el coverage baixa del 70%, el CI es posa vermell i no es pot fer merge.
@@ -1143,4 +1143,4 @@ Si un test falla o el coverage baixa del 70%, el CI es posa vermell i no es pot 
 | **Mutation testing** | Canvia el codi, mira si els tests ho detecten — la prova de foc |
 | **Anti-patrons** | Test sense assert, test del mock, test fràgil, over-mocking, test gegant |
 
-**Objectiu setmana:** Que cada línia de GamePulse tingui un test que la protegeix, que el CI ho verifiqui, i que sàpigues distingir un test que aporta valor d'un que només fa bulto.
+**Objectiu setmana:** Que cada línia d'EsportsPulse tingui un test que la protegeix, que el CI ho verifiqui, i que sàpigues distingir un test que aporta valor d'un que només fa bulto.

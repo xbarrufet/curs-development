@@ -2,7 +2,7 @@
 
 ## 1. Introducció: Per Què SOLID?
 
-Imagina el codi de GamePulse sense SOLID:
+Imagina el codi de EsportsPulse sense SOLID:
 
 ```java
 // ❌ SENSE SOLID - pesadilla de manteniment
@@ -49,7 +49,7 @@ public class GameService {
 
 **Definició:** Una classe hauria de tenir una **única raó per canviar**.
 
-**Aplicat a GamePulse:**
+**Aplicat a EsportsPulse:**
 
 ```java
 // ✅ BIEN - Cada classe té una responsabilitat
@@ -63,14 +63,14 @@ public class GameRecordFactory {
 }
 
 // 2. Persistència
-public interface GameRepository {
+public interface ChampionRepository {
     void save(GameRecord g);
     GameRecord findById(String appId);
 }
 
 // 3. Lógica de negoci
-public class GameManagementService {
-    private GameRepository repo;
+public class ChampionManagementService {
+    private ChampionRepository repo;
     private GameRecordFactory factory;
     
     public void registerGame(String appId, String title, BigDecimal price) {
@@ -89,8 +89,8 @@ public class GameRegistrationNotifier {
 
 **Raó per canviar:**
 - `GameRecordFactory`: si la lógica de parsing Steam cambia
-- `GameRepository`: si canviem BD (in-memory → SQL)
-- `GameManagementService`: si la regla de negoci canvia
+- `ChampionRepository`: si canviem BD (in-memory → SQL)
+- `ChampionManagementService`: si la regla de negoci canvia
 - `GameRegistrationNotifier`: si canviem el canal de notificació
 
 **Cada classe canvia per una única raó.**
@@ -102,7 +102,7 @@ public class GameRegistrationNotifier {
 **Mal (violar OCP):**
 
 ```java
-public class GameRepository {
+public class ChampionRepository {
     public void save(GameRecord g) {
         if (this.type.equals("memory")) {
             this.list.add(g);
@@ -113,36 +113,36 @@ public class GameRepository {
         }
     }
 }
-// Cada vegada que afegim un backend, hem de modificar GameRepository!
+// Cada vegada que afegim un backend, hem de modificar ChampionRepository!
 ```
 
 **Bien (complir OCP):**
 
 ```java
 // Interfície (abstracció)
-public interface GameRepository {
+public interface ChampionRepository {
     void save(GameRecord g);
 }
 
 // Implementacions concretes (closed per modifications)
-public class InMemoryGameRepository implements GameRepository {
+public class InMemoryChampionRepository implements ChampionRepository {
     private List<GameRecord> list = new ArrayList<>();
     public void save(GameRecord g) { list.add(g); }
 }
 
-public class SqlGameRepository implements GameRepository {
+public class SqlChampionRepository implements ChampionRepository {
     private Database db;
     public void save(GameRecord g) { db.insert(g); }
 }
 
-public class MongoGameRepository implements GameRepository {
+public class MongoChampionRepository implements ChampionRepository {
     private MongoClient mongo;
     public void save(GameRecord g) { mongo.insert(g); }
 }
 
-// GameManagementService no canvia NUNCA
-public class GameManagementService {
-    private GameRepository repo;  // Accepta qualsevol implementació
+// ChampionManagementService no canvia NUNCA
+public class ChampionManagementService {
+    private ChampionRepository repo;  // Accepta qualsevol implementació
     
     public void registerGame(String appId, String title, BigDecimal price) {
         GameRecord g = factory.create(appId, title, price);
@@ -151,10 +151,10 @@ public class GameManagementService {
 }
 ```
 
-**Aplicat a GamePulse:**
-- S2-4: `InMemoryGameRepository` implementa `GameRepository`
-- S5: `SqlGameRepository` implementa `GameRepository` (sense tocar `GameManagementService`)
-- Futura: `MongoGameRepository` → **extensió sense modificació**
+**Aplicat a EsportsPulse:**
+- S2-4: `InMemoryChampionRepository` implementa `ChampionRepository`
+- S5: `SqlChampionRepository` implementa `ChampionRepository` (sense tocar `ChampionManagementService`)
+- Futura: `MongoChampionRepository` → **extensió sense modificació**
 
 ### L - Liskov Substitution Principle (LSP)
 
@@ -163,27 +163,27 @@ public class GameManagementService {
 **Mal (violar LSP):**
 
 ```java
-public class GameRepository {
+public class ChampionRepository {
     public void save(GameRecord g) { /* guarda */ }
     public GameRecord findById(String id) { /* cerca */ }
 }
 
-public class ReadOnlyGameRepository extends GameRepository {
+public class ReadOnlyChampionRepository extends ChampionRepository {
     public void save(GameRecord g) {
         throw new UnsupportedOperationException("Read-only!");
     }
     public GameRecord findById(String id) { /* funciona */ }
 }
 
-// A GameManagementService:
-GameRepository repo = new ReadOnlyGameRepository();
+// A ChampionManagementService:
+ChampionRepository repo = new ReadOnlyChampionRepository();
 repo.save(game);  // ¡CRASH! Violació de contract.
 ```
 
 **Bien (complir LSP):**
 
 ```java
-public interface GameRepository {
+public interface ChampionRepository {
     void save(GameRecord g);
     GameRecord findById(String id);
 }
@@ -197,18 +197,18 @@ public interface GameWriteRepository {
     void save(GameRecord g);
 }
 
-public class ReadOnlyGameRepository implements GameReadRepository {
+public class ReadOnlyChampionRepository implements GameReadRepository {
     // Implementa només findById
 }
 
-// GameManagementService sabia que necessita escriure:
-public class GameManagementService {
+// ChampionManagementService sabia que necessita escriure:
+public class ChampionManagementService {
     private GameWriteRepository writeRepo;  // Espera poder guardar
     private GameReadRepository readRepo;    // Espera poder cercar
 }
 ```
 
-**A GamePulse:** `GameRepository` sempre pot `save()` i `findById()`. No fem subclasses que trenquin el contract.
+**A EsportsPulse:** `ChampionRepository` sempre pot `save()` i `findById()`. No fem subclasses que trenquin el contract.
 
 ### I - Interface Segregation Principle (ISP)
 
@@ -254,7 +254,7 @@ public interface GameWriteService {
     void delete(String id);
 }
 
-public interface GameManagementService {
+public interface ChampionManagementService {
     void updatePrice(String id, BigDecimal price);
     void applyDiscount(String id, double percentage);
 }
@@ -278,7 +278,7 @@ public class SimpleGameViewer {
 }
 ```
 
-**A GamePulse (S2):** `GameRepository` té només `save()`, `findById()`, `delete()`. No afegim mètodes de moderació o recomanacions aquí.
+**A EsportsPulse (S2):** `ChampionRepository` té només `save()`, `findById()`, `delete()`. No afegim mètodes de moderació o recomanacions aquí.
 
 ### D - Dependency Inversion Principle (DIP)
 
@@ -287,47 +287,47 @@ public class SimpleGameViewer {
 **Mal (violar DIP):**
 
 ```java
-public class GameManagementService {
-    private InMemoryGameRepository repo = new InMemoryGameRepository();  // ❌ Concrete
+public class ChampionManagementService {
+    private InMemoryChampionRepository repo = new InMemoryChampionRepository();  // ❌ Concrete
     private GameRecordFactory factory = new GameRecordFactory();
     
     public void registerGame(String appId, String title) {
         GameRecord g = factory.create(appId, title);
-        repo.save(g);  // Acopla a InMemoryGameRepository
+        repo.save(g);  // Acopla a InMemoryChampionRepository
     }
 }
-// Si vull canviar a BD, he de modificar GameManagementService
+// Si vull canviar a BD, he de modificar ChampionManagementService
 ```
 
 **Bien (complir DIP):**
 
 ```java
-public class GameManagementService {
-    private GameRepository repo;  // ✅ Abstracció (interfície)
+public class ChampionManagementService {
+    private ChampionRepository repo;  // ✅ Abstracció (interfície)
     private GameRecordFactory factory;
     
     // Constructor injection
-    public GameManagementService(GameRepository repo, GameRecordFactory factory) {
+    public ChampionManagementService(ChampionRepository repo, GameRecordFactory factory) {
         this.repo = repo;
         this.factory = factory;
     }
     
     public void registerGame(String appId, String title) {
         GameRecord g = factory.create(appId, title);
-        repo.save(g);  // Funciona amb qualsevol GameRepository
+        repo.save(g);  // Funciona amb qualsevol ChampionRepository
     }
 }
 
 // Ús:
-GameRepository inMemoryRepo = new InMemoryGameRepository();
-GameManagementService service = new GameManagementService(inMemoryRepo, factory);
+ChampionRepository inMemoryRepo = new InMemoryChampionRepository();
+ChampionManagementService service = new ChampionManagementService(inMemoryRepo, factory);
 
-// Més tard (S5): canvia a SQL sense tocar GameManagementService
-GameRepository sqlRepo = new SqlGameRepository(dataSource);
-GameManagementService service = new GameManagementService(sqlRepo, factory);
+// Més tard (S5): canvia a SQL sense tocar ChampionManagementService
+ChampionRepository sqlRepo = new SqlChampionRepository(dataSource);
+ChampionManagementService service = new ChampionManagementService(sqlRepo, factory);
 ```
 
-**A GamePulse:** `GameManagementService` rep `GameRepository` per constructor. No crea ni tria implementació.
+**A EsportsPulse:** `ChampionManagementService` rep `ChampionRepository` per constructor. No crea ni tria implementació.
 
 ---
 
@@ -386,7 +386,7 @@ GameRecord updatedG = new GameRecord(
 2. **Predictible:** Els datos no canvien
 3. **Cache-friendly:** El compilador pot optimizar
 
-### Records a GamePulse
+### Records a EsportsPulse
 
 ```java
 // Immutable DTO
@@ -448,7 +448,7 @@ public record GameRecord(
 
 ---
 
-## 5. Patterns at GamePulse
+## 5. Patterns at EsportsPulse
 
 ### Factory Pattern (S2)
 
@@ -476,7 +476,7 @@ public class GameRecordFactory {
 
 **S2 (In-Memory):**
 ```java
-public class InMemoryGameRepository implements GameRepository {
+public class InMemoryChampionRepository implements ChampionRepository {
     private Map<String, GameRecord> storage = new ConcurrentHashMap<>();
     
     public void save(GameRecord g) {
@@ -494,7 +494,7 @@ public class InMemoryGameRepository implements GameRepository {
 public interface GameJpaRepository extends JpaRepository<GameEntity, String> {}
 ```
 
-**Aplicació:** `GameManagementService` no sap on guardamos. S'ajusta automàticament.
+**Aplicació:** `ChampionManagementService` no sap on guardamos. S'ajusta automàticament.
 
 ---
 
@@ -516,17 +516,17 @@ public class GameRecordFactory {
 }
 
 // Single Responsibility: guardar
-public interface GameRepository {
+public interface ChampionRepository {
     void save(GameRecord g);
     Optional<GameRecord> findById(String id);
 }
 
 // Single Responsibility: lógica
-public class GameManagementService {
-    private final GameRepository repo;
+public class ChampionManagementService {
+    private final ChampionRepository repo;
     private final GameRecordFactory factory;
     
-    public GameManagementService(GameRepository repo, GameRecordFactory factory) {
+    public ChampionManagementService(ChampionRepository repo, GameRecordFactory factory) {
         this.repo = repo;
         this.factory = factory;
     }
@@ -539,9 +539,9 @@ public class GameManagementService {
 ```
 
 **Resultats:**
-- ✅ Fàcil de testejar (mock `GameRepository`)
+- ✅ Fàcil de testejar (mock `ChampionRepository`)
 - ✅ Thread-safe (records immutables)
-- ✅ Extensible (implementa altres `GameRepository`)
+- ✅ Extensible (implementa altres `ChampionRepository`)
 - ✅ Mantenible (cada classe una raó)
 
 ---
@@ -556,13 +556,13 @@ public class GameManagementService {
 
 ## Resum
 
-| Concepte | Problemes que soluciona | Exemple GamePulse |
+| Concepte | Problemes que soluciona | Exemple EsportsPulse |
 |----------|-------------------------|-------------------|
-| **SRP** | Classes amb moltes responsabilitats | `GameRecordFactory` (crear), `GameRepository` (guardar), `GameManagementService` (lógica) |
-| **OCP** | Modificacions constants | Interfície `GameRepository` + múltiples implementacions (In-Memory, SQL, MongoDB) |
-| **LSP** | Comportament impredictible de subclasses | Totes les `GameRepository` impl. cumpleixen el contract |
-| **ISP** | Dependències innecessàries | `GameRepository` és mínima (save, findById) |
-| **DIP** | Acoplament a concrecions | `GameManagementService` depèn de `GameRepository` (interfície) |
+| **SRP** | Classes amb moltes responsabilitats | `GameRecordFactory` (crear), `ChampionRepository` (guardar), `ChampionManagementService` (lógica) |
+| **OCP** | Modificacions constants | Interfície `ChampionRepository` + múltiples implementacions (In-Memory, SQL, MongoDB) |
+| **LSP** | Comportament impredictible de subclasses | Totes les `ChampionRepository` impl. cumpleixen el contract |
+| **ISP** | Dependències innecessàries | `ChampionRepository` és mínima (save, findById) |
+| **DIP** | Acoplament a concrecions | `ChampionManagementService` depèn de `ChampionRepository` (interfície) |
 | **Immutability** | Race conditions en multithreading | Records de Java 21: `GameRecord` no es pot modificar |
 
 **Objectiu setmana:** Implementar SOLID amb records immutables; veure que els tests vells passen quan canviem persistència.

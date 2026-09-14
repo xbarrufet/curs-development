@@ -61,18 +61,18 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Problema real:** GamePulse ha de consultar l'API de Steam (300ms) i l'API d'IGDB (400ms) per obtenir dades d'un joc. Si ho fem seqüencial: 700ms. Si ho fem en paral·lel: ~400ms (el màxim de les dues).
+* **Problema real:** EsportsPulse ha de consultar Riot API (300ms) i Data Dragon (100ms) per obtenir dades d'un champion. Si ho fem seqüencial: 400ms. Si ho fem en paral·lel: ~300ms (el màxim de les dues).
 * **Exercici seqüencial:**
-  * Crea `SteamApiClient` amb un mètode `fetchGameData(String appId)` que simula una crida HTTP amb `Thread.sleep(300)` i retorna un `SteamGameData` record.
-  * Crea `IgdbApiClient` amb un mètode similar amb `Thread.sleep(400)`.
-  * Crida ambdós seqüencialment i mesura el temps total (~700ms).
+  * Crea `RiotApiClient` amb un mètode `fetchChampionData(String championId)` que simula una crida HTTP amb `Thread.sleep(300)` i retorna un `RiotChampionData` record.
+  * Crea `DataDragonClient` amb un mètode similar amb `Thread.sleep(100)`.
+  * Crida ambdós seqüencialment i mesura el temps total (~400ms).
 * **Exercici paral·lel amb `CompletableFuture`:**
   * Usa `CompletableFuture.supplyAsync()` per llançar les dues crides en paral·lel.
   * `CompletableFuture.allOf()` per esperar que ambdues acabin.
-  * Mesura el temps total (~400ms).
+  * Mesura el temps total (~300ms).
   * Combina els resultats en un sol `GameRecord` amb `thenCombine()`.
 * **Exercici amb `@Async` de Spring:**
-  * Anota els mètodes de fetch amb `@Async` i retorna `CompletableFuture<SteamGameData>`.
+  * Anota els mètodes de fetch amb `@Async` i retorna `CompletableFuture<RiotChampionData>`.
   * Configura `@EnableAsync` a l'aplicació.
   * Crida des del service i combina resultats.
 * **Lliçó pràctica:** Cada cop que un service ha de cridar més d'una API externa, has de pensar: "Puc fer-ho en paral·lel?" Això és el que es fa cada dia a una empresa amb microserveis.
@@ -94,7 +94,7 @@
   * Discussió del GIL: "El GIL no protegeix contra race conditions en operacions compostes." `count += 1` és LOAD + ADD + STORE, i el GIL pot canviar de thread entre ells.
   * Solució amb `threading.Lock()` — l'equivalent de `synchronized`.
 * **I/O paral·lel amb `asyncio`:**
-  * Replicar l'exercici de dimecres (crides a Steam + IGDB) en Python amb `asyncio` + `aiohttp`.
+  * Replicar l'exercici de dimecres (crides a Riot API + Data Dragon) en Python amb `asyncio` + `aiohttp`.
   * Comparar patrons: `CompletableFuture.supplyAsync()` ↔ `asyncio.create_task()`, `.allOf()` ↔ `asyncio.gather()`, `.thenCombine()` ↔ `await`.
 * **Exercici: Extractor concurrent en Python.**
   * Implementar `GameDataExtractor` amb `asyncio`: 50 crides simulades (`asyncio.sleep(0.3)`) en paral·lel.
@@ -118,7 +118,7 @@
   * Test que `AtomicInteger` versió passa amb múltiples threads.
   * Test que `CompletableFuture` paral·lel retorna els mateixos resultats que la versió seqüencial (consistència).
 * **Tests d'integració de l'extractor (`GameDataExtractorTests`):**
-  * Mock de `SteamApiClient` amb delays simulats.
+  * Mock de `RiotApiClient` amb delays simulats.
   * Test que la versió paral·lela és almenys 3x més ràpida que la seqüencial per a 20 jocs.
   * Test que gestiona errors parcials: si 2 de 20 crides fallen, l'extractor retorna 18 resultats + 2 errors (no es perd tot).
 * **Tests Python (`test_concurrency.py`):**

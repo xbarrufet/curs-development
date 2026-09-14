@@ -83,17 +83,17 @@ Thread-N ──→ requests.get(java_api) ──→ esperant... esperant... espe
 import requests
 
 # MAI fer això:
-response = requests.get(f"{JAVA_API_URL}/games/{game_id}")  # timeout = infinit!
+response = requests.get(f"{JAVA_API_URL}/champions/{champion_id}")  # timeout = infinit!
 
 # SEMPRE fer això:
 response = requests.get(
-    f"{JAVA_API_URL}/games/{game_id}",
+    f"{JAVA_API_URL}/champions/{champion_id}",
     timeout=5  # connect + read timeout en segons
 )
 
 # O separar connect i read:
 response = requests.get(
-    f"{JAVA_API_URL}/games/{game_id}",
+    f"{JAVA_API_URL}/champions/{champion_id}",
     timeout=(3, 5)  # connect=3s, read=5s
 )
 ```
@@ -183,12 +183,12 @@ import time
 import random
 import requests
 
-def call_java_api_with_retry(game_id: str, max_retries: int = 3) -> dict:
+def call_java_api_with_retry(champion_id: str, max_retries: int = 3) -> dict:
     """Crida l'API Java amb retry i backoff exponencial."""
     for attempt in range(max_retries):
         try:
             response = requests.get(
-                f"{JAVA_API_URL}/games/{game_id}",
+                f"{JAVA_API_URL}/champions/{champion_id}",
                 timeout=5
             )
             response.raise_for_status()
@@ -199,7 +199,7 @@ def call_java_api_with_retry(game_id: str, max_retries: int = 3) -> dict:
             wait = (2 ** attempt) + random.uniform(0, 1)  # backoff + jitter
             logger.warning(
                 "retry_scheduled",
-                game_id=game_id,
+                champion_id=champion_id,
                 attempt=attempt + 1,
                 wait_seconds=round(wait, 2),
                 error=str(e)
@@ -230,10 +230,10 @@ import requests
     wait=wait_exponential_jitter(initial=1, max=10, jitter=2),
     retry=retry_if_exception_type((requests.ConnectionError, requests.Timeout)),
 )
-def call_java_api(game_id: str) -> dict:
+def call_java_api(champion_id: str) -> dict:
     """Crida l'API Java. tenacity gestiona retry i backoff."""
     response = requests.get(
-        f"{JAVA_API_URL}/games/{game_id}",
+        f"{JAVA_API_URL}/champions/{champion_id}",
         timeout=5
     )
     response.raise_for_status()
@@ -254,16 +254,16 @@ public class PythonApiClient {
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000, multiplier = 2, maxDelay = 8000)
     )
-    public GameAnalysis fetchAnalysis(String gameId) {
+    public ChampionAnalysis fetchAnalysis(String championId) {
         return restTemplate.getForObject(
-            pythonApiUrl + "/analyze/" + gameId,
-            GameAnalysis.class
+            pythonApiUrl + "/analyze/" + championId,
+            ChampionAnalysis.class
         );
     }
 
     @Recover
-    public GameAnalysis fallback(Exception e, String gameId) {
-        logger.error("All retries failed for game {}", gameId, e);
+    public ChampionAnalysis fallback(Exception e, String championId) {
+        logger.error("All retries failed for champion {}", championId, e);
         throw new ExternalServiceUnavailableException(
             "Python analysis service unavailable after 3 retries"
         );
@@ -340,12 +340,12 @@ Eines reals: Resilience4j (Java), pybreaker (Python), Istio/Envoy (a nivell de x
 
 Quan el teu servei Python actua com a proxy de Java, els status codes han de reflectir **on** ha passat el problema:
 
-| Code | Significat            | Exemple GamePulse                                              |
+| Code | Significat            | Exemple EsportsPulse                                              |
 |------|-----------------------|----------------------------------------------------------------|
-| 400  | Bad Request           | `POST /games` amb JSON malformat o camp `title` buit           |
-| 404  | Not Found             | `GET /games/APP-999` — el joc no existeix a la BD              |
-| 409  | Conflict              | `POST /games` amb un `appId` que ja existeix                   |
-| 422  | Unprocessable Entity  | `POST /games` amb `price: -5.00` — format correcte, valor invàlid |
+| 400  | Bad Request           | `POST /champions` amb JSON malformat o camp `name` buit           |
+| 404  | Not Found             | `GET /champions/Zzzrot` — el campió no existeix a la BD              |
+| 409  | Conflict              | `POST /champions` amb un `championId` que ja existeix                   |
+| 422  | Unprocessable Entity  | `POST /champions` amb `winRate: 150.0` — format correcte, valor invàlid |
 | 500  | Internal Server Error | Bug al teu codi Python (NullPointer, TypeError)                |
 | 502  | Bad Gateway           | Java ha retornat un error 500 (el problema és upstream)        |
 | 503  | Service Unavailable   | El teu servei està sobrecarregat o en mode manteniment         |
@@ -374,10 +374,10 @@ Sense estàndard, cada API inventa el seu format:
 {"error": "not found"}
 
 // API B:
-{"message": "Game not found", "code": 404}
+{"message": "Champion not found", "code": 404}
 
 // API C:
-{"errors": [{"field": "title", "msg": "required"}]}
+{"errors": [{"field": "name", "msg": "required"}]}
 ```
 
 El client ha d'escriure lògica de parsing diferent per cada API. RFC 7807 defineix un format únic:
@@ -386,11 +386,11 @@ El client ha d'escriure lògica de parsing diferent per cada API. RFC 7807 defin
 
 ```json
 {
-    "type": "https://gamepulse.dev/errors/game-not-found",
-    "title": "Game Not Found",
+    "type": "https://esportspulse.dev/errors/champion-not-found",
+    "title": "Champion Not Found",
     "status": 404,
-    "detail": "No game found with appId APP-999",
-    "instance": "/games/APP-999"
+    "detail": "No champion found with championId Zzzrot",
+    "instance": "/champions/Zzzrot"
 }
 ```
 
@@ -406,14 +406,14 @@ Pots afegir camps extra:
 
 ```json
 {
-    "type": "https://gamepulse.dev/errors/validation-failed",
+    "type": "https://esportspulse.dev/errors/validation-failed",
     "title": "Validation Failed",
     "status": 422,
     "detail": "One or more fields failed validation",
-    "instance": "/games",
+    "instance": "/champions",
     "errors": [
-        {"field": "title", "message": "must not be blank"},
-        {"field": "price", "message": "must be >= 0"}
+        {"field": "name", "message": "must not be blank"},
+        {"field": "winRate", "message": "must be between 0 and 100"}
     ]
 }
 ```
@@ -424,17 +424,17 @@ Spring Boot 3 té suport natiu per Problem Details:
 
 ```java
 @ControllerAdvice
-public class GamePulseExceptionHandler extends ResponseEntityExceptionHandler {
+public class EsportsPulseExceptionHandler extends ResponseEntityExceptionHandler {
 
-    @ExceptionHandler(GameNotFoundException.class)
-    public ProblemDetail handleGameNotFound(GameNotFoundException ex) {
+    @ExceptionHandler(ChampionNotFoundException.class)
+    public ProblemDetail handleChampionNotFound(ChampionNotFoundException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.NOT_FOUND,
             ex.getMessage()
         );
-        problem.setTitle("Game Not Found");
-        problem.setType(URI.create("https://gamepulse.dev/errors/game-not-found"));
-        problem.setProperty("gameId", ex.getGameId());
+        problem.setTitle("Champion Not Found");
+        problem.setType(URI.create("https://esportspulse.dev/errors/champion-not-found"));
+        problem.setProperty("championId", ex.getChampionId());
         return problem;
     }
 
@@ -445,7 +445,7 @@ public class GamePulseExceptionHandler extends ResponseEntityExceptionHandler {
             ex.getMessage()
         );
         problem.setTitle("External Service Unavailable");
-        problem.setType(URI.create("https://gamepulse.dev/errors/external-service-unavailable"));
+        problem.setType(URI.create("https://esportspulse.dev/errors/external-service-unavailable"));
         return problem;
     }
 }
@@ -457,9 +457,9 @@ public class GamePulseExceptionHandler extends ResponseEntityExceptionHandler {
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-class GameNotFoundException(Exception):
-    def __init__(self, game_id: str):
-        self.game_id = game_id
+class ChampionNotFoundException(Exception):
+    def __init__(self, champion_id: str):
+        self.champion_id = champion_id
 
 class ExternalServiceUnavailableException(Exception):
     def __init__(self, service: str, detail: str):
@@ -468,17 +468,17 @@ class ExternalServiceUnavailableException(Exception):
 
 app = FastAPI()
 
-@app.exception_handler(GameNotFoundException)
-async def game_not_found_handler(request: Request, exc: GameNotFoundException):
+@app.exception_handler(ChampionNotFoundException)
+async def champion_not_found_handler(request: Request, exc: ChampionNotFoundException):
     return JSONResponse(
         status_code=404,
         content={
-            "type": "https://gamepulse.dev/errors/game-not-found",
-            "title": "Game Not Found",
+            "type": "https://esportspulse.dev/errors/champion-not-found",
+            "title": "Champion Not Found",
             "status": 404,
-            "detail": f"No game found with appId {exc.game_id}",
+            "detail": f"No champion found with championId {exc.champion_id}",
             "instance": str(request.url),
-            "gameId": exc.game_id,
+            "championId": exc.champion_id,
         },
         media_type="application/problem+json",
     )
@@ -488,7 +488,7 @@ async def external_service_handler(request: Request, exc: ExternalServiceUnavail
     return JSONResponse(
         status_code=502,
         content={
-            "type": "https://gamepulse.dev/errors/external-service-unavailable",
+            "type": "https://esportspulse.dev/errors/external-service-unavailable",
             "title": "External Service Unavailable",
             "status": 502,
             "detail": exc.detail,
@@ -508,10 +508,10 @@ async def external_service_handler(request: Request, exc: ExternalServiceUnavail
 Un log de text típic:
 
 ```
-2024-03-15 10:23:45.123 ERROR c.g.GameService - Failed to fetch game APP-123 from Java API: Connection refused
+2024-03-15 10:23:45.123 ERROR c.g.ChampionService - Failed to fetch champion Yasuo from Java API: Connection refused
 2024-03-15 10:23:45.456 WARN  c.g.RetryHandler - Retrying request to Java API, attempt 2/3
-2024-03-15 10:23:47.789 ERROR c.g.GameService - Failed to fetch game APP-123 from Java API: Connection refused
-2024-03-15 10:23:47.801 ERROR c.g.GameController - Request failed for /games/APP-123: External service unavailable
+2024-03-15 10:23:47.789 ERROR c.g.ChampionService - Failed to fetch champion Yasuo from Java API: Connection refused
+2024-03-15 10:23:47.801 ERROR c.g.ChampionController - Request failed for /champions/Yasuo: External service unavailable
 ```
 
 Ara imagina que tens 50.000 requests per hora i el PM et diu: "el client amb IP 10.0.1.42 ha tingut un error fa 20 minuts, quin?". Bona sort fent grep per trobar-ho.
@@ -519,10 +519,10 @@ Ara imagina que tens 50.000 requests per hora i el PM et diu: "el client amb IP 
 ### La solució: logs JSON
 
 ```json
-{"timestamp":"2024-03-15T10:23:45.123Z","level":"ERROR","service":"gamepulse-python","correlation_id":"f47ac10b-58cc","game_id":"APP-123","error_type":"ConnectionError","message":"game_fetch_failed","target_service":"gamepulse-java","client_ip":"10.0.1.42"}
-{"timestamp":"2024-03-15T10:23:45.456Z","level":"WARN","service":"gamepulse-python","correlation_id":"f47ac10b-58cc","attempt":2,"max_attempts":3,"message":"retry_scheduled","wait_seconds":2.3}
-{"timestamp":"2024-03-15T10:23:47.789Z","level":"ERROR","service":"gamepulse-python","correlation_id":"f47ac10b-58cc","game_id":"APP-123","error_type":"ConnectionError","message":"game_fetch_failed","target_service":"gamepulse-java"}
-{"timestamp":"2024-03-15T10:23:47.801Z","level":"ERROR","service":"gamepulse-python","correlation_id":"f47ac10b-58cc","path":"/games/APP-123","status_code":502,"message":"request_completed"}
+{"timestamp":"2024-03-15T10:23:45.123Z","level":"ERROR","service":"esportspulse-python","correlation_id":"f47ac10b-58cc","champion_id":"Yasuo","error_type":"ConnectionError","message":"champion_fetch_failed","target_service":"esportspulse-java","client_ip":"10.0.1.42"}
+{"timestamp":"2024-03-15T10:23:45.456Z","level":"WARN","service":"esportspulse-python","correlation_id":"f47ac10b-58cc","attempt":2,"max_attempts":3,"message":"retry_scheduled","wait_seconds":2.3}
+{"timestamp":"2024-03-15T10:23:47.789Z","level":"ERROR","service":"esportspulse-python","correlation_id":"f47ac10b-58cc","champion_id":"Yasuo","error_type":"ConnectionError","message":"champion_fetch_failed","target_service":"esportspulse-java"}
+{"timestamp":"2024-03-15T10:23:47.801Z","level":"ERROR","service":"esportspulse-python","correlation_id":"f47ac10b-58cc","path":"/champions/Yasuo","status_code":502,"message":"request_completed"}
 ```
 
 Ara pots:
@@ -537,8 +537,8 @@ cat logs.json | jq 'select(.correlation_id == "f47ac10b-58cc")'
 # Comptar errors per servei en l'última hora:
 cat logs.json | jq 'select(.level == "ERROR") | .service' | sort | uniq -c
 
-# Trobar els game_id que més fallen:
-cat logs.json | jq 'select(.message == "game_fetch_failed") | .game_id' | sort | uniq -c | sort -rn
+# Trobar els champion_id que més fallen:
+cat logs.json | jq 'select(.message == "champion_fetch_failed") | .champion_id' | sort | uniq -c | sort -rn
 ```
 
 ### Comparativa
@@ -568,7 +568,7 @@ Python logs:
 
 Java logs:
   10:23:45 ERROR - Database query failed
-  10:23:45 ERROR - NullPointerException at GameService.java:42  ← De quina request?
+  10:23:45 ERROR - NullPointerException at ChampionService.java:42  ← De quina request?
 ```
 
 ### La solució: Correlation ID
@@ -585,13 +585,13 @@ Request flow amb correlation_id:
                                                 │                                       │
                                           LOG:                                    LOG:
                                           correlation_id=abc-123           correlation_id=abc-123
-                                          message=request_received         message=game_fetched
-                                          path=/games/APP-1                game_id=APP-1
+                                          message=request_received         message=champion_fetched
+                                          path=/champions/Jinx                champion_id=Jinx
 
                                           LOG:                                    LOG:
                                           correlation_id=abc-123           correlation_id=abc-123
                                           message=java_api_called          message=db_query_executed
-                                          target=/games/APP-1              query_time_ms=12
+                                          target=/champions/Jinx              query_time_ms=12
 
                                           LOG:
                                           correlation_id=abc-123
@@ -622,7 +622,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             correlation_id=correlation_id,
-            service="gamepulse-python",
+            service="esportspulse-python",
         )
 
         logger = structlog.get_logger()
@@ -640,9 +640,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         return response
 
 # Quan Python crida Java, propagar el correlation_id:
-def call_java_api(game_id: str, correlation_id: str) -> dict:
+def call_java_api(champion_id: str, correlation_id: str) -> dict:
     response = requests.get(
-        f"{JAVA_API_URL}/games/{game_id}",
+        f"{JAVA_API_URL}/champions/{champion_id}",
         headers={"X-Correlation-ID": correlation_id},
         timeout=5,
     )
@@ -721,19 +721,19 @@ logger = structlog.get_logger()
 
 # Log simple
 logger.info("server_started", port=8000, environment="development")
-# → {"timestamp":"2024-03-15T10:00:00Z","level":"info","service":"gamepulse-python","event":"server_started","port":8000,"environment":"development"}
+# → {"timestamp":"2024-03-15T10:00:00Z","level":"info","service":"esportspulse-python","event":"server_started","port":8000,"environment":"development"}
 
 # Log amb error
 try:
-    game = call_java_api(game_id)
+    champion = call_java_api(champion_id)
 except requests.Timeout as e:
-    logger.error("java_api_timeout", game_id=game_id, timeout_seconds=5)
-    # → {"timestamp":"...","level":"error","correlation_id":"abc-123","event":"java_api_timeout","game_id":"APP-1","timeout_seconds":5}
+    logger.error("java_api_timeout", champion_id=champion_id, timeout_seconds=5)
+    # → {"timestamp":"...","level":"error","correlation_id":"abc-123","event":"java_api_timeout","champion_id":"Jinx","timeout_seconds":5}
 
 # Log amb context addicional
 logger.info(
-    "game_analysis_completed",
-    game_id=game_id,
+    "champion_analysis_completed",
+    champion_id=champion_id,
     model="claude-sonnet-4-20250514",
     tokens_used=1523,
     duration_ms=3200,
@@ -759,7 +759,7 @@ Configurar `src/main/resources/logback-spring.xml`:
 <configuration>
     <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <customFields>{"service":"gamepulse-java"}</customFields>
+            <customFields>{"service":"esportspulse-java"}</customFields>
             <includeMdcKeyName>correlation_id</includeMdcKeyName>
         </encoder>
     </appender>
@@ -789,20 +789,20 @@ Configurar `src/main/resources/logback-spring.xml`:
 
 ```java
 @Service
-public class GameManagementService {
-    private static final Logger logger = LoggerFactory.getLogger(GameManagementService.class);
+public class ChampionManagementService {
+    private static final Logger logger = LoggerFactory.getLogger(ChampionManagementService.class);
 
-    public GameDTO findGame(String appId) {
-        logger.info("Fetching game from database", kv("game_id", appId));
+    public ChampionDTO findChampion(String championId) {
+        logger.info("Fetching champion from database", kv("champion_id",championId));
 
-        return gameRepository.findByAppId(appId)
-            .map(game -> {
-                logger.info("Game found", kv("game_id", appId), kv("title", game.getTitle()));
-                return mapper.toDTO(game);
+        return championRepository.findByChampionId(championId)
+            .map(champion -> {
+                logger.info("Champion found", kv("champion_id",championId), kv("name", champion.getName()));
+                return mapper.toDTO(champion);
             })
             .orElseThrow(() -> {
-                logger.warn("Game not found", kv("game_id", appId));
-                return new GameNotFoundException(appId);
+                logger.warn("Champion not found", kv("champion_id",championId));
+                return new ChampionNotFoundException(championId);
             });
     }
 }
@@ -811,7 +811,7 @@ public class GameManagementService {
 Output JSON:
 
 ```json
-{"@timestamp":"2024-03-15T10:23:45.123Z","level":"INFO","logger_name":"c.g.GameManagementService","message":"Game found","service":"gamepulse-java","correlation_id":"abc-123","game_id":"APP-1","title":"League of Legends"}
+{"@timestamp":"2024-03-15T10:23:45.123Z","level":"INFO","logger_name":"c.g.ChampionManagementService","message":"Champion found","service":"esportspulse-java","correlation_id":"abc-123","champion_id":"Jinx","name":"Jinx"}
 ```
 
 ---
@@ -820,13 +820,13 @@ Output JSON:
 
 ### El canvi de perspectiva
 
-A S8 vas connectar MCP servers que altres havien creat (filesystem, brave-search). Ara **tu** ets el creador. El teu MCP server és la interfície entre un LLM (via Cursor) i el teu sistema GamePulse.
+A S8 vas connectar MCP servers que altres havien creat (filesystem, brave-search). Ara **tu** ets el creador. El teu MCP server és la interfície entre un LLM (via Cursor) i el teu sistema EsportsPulse.
 
 ```
 S8: Consumidor                         S9: Creador
 
 ┌────────┐    ┌──────────────┐         ┌────────┐    ┌──────────────────┐    ┌──────────┐
-│ Cursor │───→│ MCP Server   │         │ Cursor │───→│ GamePulse MCP    │───→│ GamePulse│
+│ Cursor │───→│ MCP Server   │         │ Cursor │───→│ EsportsPulse MCP    │───→│ EsportsPulse│
 │        │    │ (d'altri)    │         │        │    │ Server (teu!)    │    │ REST API │
 └────────┘    └──────────────┘         └────────┘    └──────────────────┘    └──────────┘
                                                             │ stdio              │ HTTP
@@ -839,74 +839,74 @@ S8: Consumidor                         S9: Creador
 ```
 ┌─────────────────────────────────────────────────┐
 │                  Cursor (IDE)                     │
-│  "Quin és el joc més popular?"                   │
+│  "Quin és el campió més jugat?"                   │
 └────────────────────┬────────────────────────────┘
                      │ stdio (JSON-RPC)
                      v
 ┌─────────────────────────────────────────────────┐
-│            gamepulse_mcp_server.py                │
+│            esportspulse_mcp_server.py                │
 │                                                   │
-│  FastMCP("gamepulse")                            │
+│  FastMCP("esportspulse")                            │
 │                                                   │
 │  @mcp.tool()                                     │
-│  ├── get_game(game_id) → GameRecord              │
-│  ├── search_games(query, limit) → list           │
-│  ├── get_game_analysis(game_id) → Analysis       │
-│  └── get_player_stats() → Stats                  │
+│  ├── get_champion(champion_id) → ChampionRecord          │
+│  ├── search_champions(query, limit) → list           │
+│  ├── get_champion_analysis(champion_id) → Analysis       │
+│  └── get_champion_stats() → Stats                  │
 │                                                   │
-│  @mcp.resource("gamepulse://games/top10")        │
-│  └── top10_games() → str                         │
+│  @mcp.resource("esportspulse://champions/top10")        │
+│  └── top10_champions() → str                         │
 │                                                   │
 │  @mcp.prompt()                                   │
-│  └── analyze_game(game_id) → str                 │
+│  └── analyze_champion(champion_id) → str                 │
 └────────────────────┬────────────────────────────┘
                      │ HTTP (requests)
                      v
 ┌─────────────────────────────────────────────────┐
-│         GamePulse REST API (Java, S7)            │
-│         http://localhost:8080/games/...           │
+│         EsportsPulse REST API (Java, S7)            │
+│         http://localhost:8080/champions/...           │
 └─────────────────────────────────────────────────┘
 ```
 
 ### Codi complet del MCP server
 
 ```python
-"""GamePulse MCP Server — exposa GamePulse com a tools per a LLMs."""
+"""EsportsPulse MCP Server — exposa EsportsPulse com a tools per a LLMs."""
 import requests
 from mcp.server.fastmcp import FastMCP
 
 JAVA_API_URL = "http://localhost:8080"
 
 mcp = FastMCP(
-    "gamepulse",
-    description="Accés a les dades i anàlisis de GamePulse (catàleg de videojocs)",
+    "esportspulse",
+    description="Accés a les dades i anàlisis de EsportsPulse (plataforma d'anàlisi d'eSports - League of Legends)",
 )
 
 @mcp.tool()
-async def get_game(game_id: str) -> dict:
-    """Obté les dades completes d'un joc per ID (format APP-XXX).
+async def get_champion(champion_id: str) -> dict:
+    """Obté les dades completes d'un campió per ID (nom del campió).
 
-    Retorna: títol, preu, jugadors actius.
-    Exemple: get_game("APP-1") → dades de League of Legends.
+    Retorna: nom, winRate, partides jugades.
+    Exemple: get_champion("Jinx") → dades de Jinx.
     """
-    response = requests.get(f"{JAVA_API_URL}/games/{game_id}", timeout=5)
+    response = requests.get(f"{JAVA_API_URL}/champions/{champion_id}", timeout=5)
     response.raise_for_status()
     return response.json()
 
 
 @mcp.tool()
-async def search_games(query: str, limit: int = 10) -> list[dict]:
-    """Cerca jocs per títol (cerca parcial, case-insensitive).
+async def search_champions(query: str, limit: int = 10) -> list[dict]:
+    """Cerca campions per nom (cerca parcial, case-insensitive).
 
     Args:
-        query: Text a buscar al títol del joc.
+        query: Text a buscar al nom del campió.
         limit: Nombre màxim de resultats (per defecte 10).
 
-    Retorna: Llista de jocs que coincideixen.
+    Retorna: Llista de campions que coincideixen.
     """
     response = requests.get(
-        f"{JAVA_API_URL}/games",
-        params={"title": query, "size": limit},
+        f"{JAVA_API_URL}/champions",
+        params={"name": query, "size": limit},
         timeout=5,
     )
     response.raise_for_status()
@@ -914,8 +914,8 @@ async def search_games(query: str, limit: int = 10) -> list[dict]:
 
 
 @mcp.tool()
-async def get_game_analysis(game_id: str) -> dict:
-    """Analitza el balanç d'un joc usant un LLM.
+async def get_champion_analysis(champion_id: str) -> dict:
+    """Analitza les estadístiques d'un campió usant un LLM.
 
     Crida el servei d'anàlisi Python (FastAPI) que al seu torn
     usa Claude/OpenAI per generar l'anàlisi (configurat a S8).
@@ -923,7 +923,7 @@ async def get_game_analysis(game_id: str) -> dict:
     Pot trigar 10-30 segons per la crida al LLM.
     """
     response = requests.post(
-        f"http://localhost:8001/analyze/{game_id}",
+        f"http://localhost:8001/analyze/{champion_id}",
         timeout=30,
     )
     response.raise_for_status()
@@ -931,51 +931,51 @@ async def get_game_analysis(game_id: str) -> dict:
 
 
 @mcp.tool()
-async def get_player_stats() -> dict:
-    """Retorna estadístiques agregades de tots els jocs:
-    total de jocs, mitjana de jugadors actius, joc més popular.
+async def get_champion_stats() -> dict:
+    """Retorna estadístiques agregades de tots els campions:
+    total de campions, mitjana de partides jugades, campió més jugat.
     """
-    response = requests.get(f"{JAVA_API_URL}/games", timeout=5)
+    response = requests.get(f"{JAVA_API_URL}/champions", timeout=5)
     response.raise_for_status()
-    games = response.json()
-    if not games:
-        return {"totalGames": 0, "averagePlayers": 0, "mostPopular": None}
+    champions = response.json()
+    if not champions:
+        return {"totalChampions": 0, "averagePlayers": 0, "mostPopular": None}
 
-    total = len(games)
-    avg_players = sum(g["activePlayerCount"] for g in games) / total
-    top_game = max(games, key=lambda g: g["activePlayerCount"])
+    total = len(champions)
+    avg_players = sum(g["gamesPlayed"] for g in champions) / total
+    top_champion = max(champions, key=lambda g: g["gamesPlayed"])
     return {
-        "totalGames": total,
+        "totalChampions": total,
         "averagePlayers": round(avg_players),
-        "mostPopular": top_game["title"],
+        "mostPopular": top_champion["name"],
     }
 
 
-@mcp.resource("gamepulse://games/top10")
-async def top10_games() -> str:
-    """Els 10 jocs més populars per jugadors actius."""
+@mcp.resource("esportspulse://champions/top10")
+async def top10_champions() -> str:
+    """Els 10 campions més jugats per partides."""
     response = requests.get(
-        f"{JAVA_API_URL}/games",
-        params={"sort": "activePlayerCount,desc", "size": 10},
+        f"{JAVA_API_URL}/champions",
+        params={"sort": "gamesPlayed,desc", "size": 10},
         timeout=5,
     )
     response.raise_for_status()
-    games = response.json()
-    lines = [f"{i+1}. {g['title']} — {g['activePlayerCount']:,} jugadors"
-             for i, g in enumerate(games)]
+    champions = response.json()
+    lines = [f"{i+1}. {g['name']} — {g['gamesPlayed']:,} partides"
+             for i, g in enumerate(champions)]
     return "\n".join(lines)
 
 
 @mcp.prompt()
-async def analyze_game(game_id: str) -> str:
-    """Prompt pre-definit per analitzar el balanç d'un joc."""
-    return f"""Analitza el balanç del joc amb ID {game_id}.
+async def analyze_champion(champion_id: str) -> str:
+    """Prompt pre-definit per analitzar les estadístiques d'un campió."""
+    return f"""Analitza les estadístiques del campió amb ID {champion_id}.
 
-Pas 1: Usa el tool get_game per obtenir les dades bàsiques.
-Pas 2: Usa el tool get_game_analysis per obtenir l'anàlisi detallada.
+Pas 1: Usa el tool get_champion per obtenir les dades bàsiques.
+Pas 2: Usa el tool get_champion_analysis per obtenir l'anàlisi detallada.
 Pas 3: Presenta els resultats amb:
-  - Dades bàsiques del joc
-  - Punts forts del balanç
+  - Dades bàsiques del campió
+  - Punts forts del campió
   - Punts febles o àrees de millora
   - Recomanació general"""
 
@@ -1004,10 +1004,10 @@ async def get_data(id: str) -> dict:
 
 # Bona — el model entén exactament què fa i quan usar-la
 @mcp.tool()
-async def get_game(game_id: str) -> dict:
-    """Obté les dades completes d'un joc per ID (format APP-XXX).
-    Retorna: títol, preu, jugadors actius.
-    Exemple: get_game("APP-1") → dades de League of Legends."""
+async def get_champion(champion_id: str) -> dict:
+    """Obté les dades completes d'un campió per ID (nom del campió).
+    Retorna: nom, winRate, partides jugades.
+    Exemple: get_champion("Jinx") → dades de Jinx."""
 ```
 
 Això connecta directament amb el que véiem a S8 sobre tool_use: el model necessita bons noms i bones descripcions per decidir quina eina usar.
@@ -1022,16 +1022,16 @@ El conjunt de tools, resources i prompts del teu MCP server és, de facto, una *
 
 ```
 Tools disponibles:
-  - get_game(game_id: str) → dict
-  - search_games(query: str, limit: int) → list[dict]
-  - get_game_analysis(game_id: str) → dict
-  - get_player_stats() → dict
+  - get_champion(champion_id: str) → dict
+  - search_champions(query: str, limit: int) → list[dict]
+  - get_champion_analysis(champion_id: str) → dict
+  - get_champion_stats() → dict
 
 Resources disponibles:
-  - gamepulse://games/top10
+  - esportspulse://champions/top10
 
 Prompts disponibles:
-  - analyze_game(game_id: str)
+  - analyze_champion(champion_id: str)
 ```
 
 Això és una spec. I a diferència d'un document Markdown, aquesta spec **s'executa**. Si canvies un tool, el comportament canvia immediatament.
@@ -1041,7 +1041,7 @@ Això és una spec. I a diferència d'un document Markdown, aquesta spec **s'exe
 Quan l'LLM no fa el que esperes, el problema pot ser:
 
 1. **Descripció del tool** — poc clara o ambigua.
-2. **Nom del tool** — confús (`get_data` vs `get_game`).
+2. **Nom del tool** — confús (`get_data` vs `get_champion`).
 3. **Paràmetres** — el model no sap quin valor passar.
 4. **Falta un tool** — la pregunta de l'usuari no encaixa amb cap tool existent.
 5. **Falta context** — el model no té prou informació per decidir.
@@ -1049,13 +1049,13 @@ Quan l'LLM no fa el que esperes, el problema pot ser:
 La solució no és millorar el prompt de l'usuari — és millorar el **server**:
 
 ```
-Pregunta: "Quins jocs free-to-play tenim?"
-Model: crida search_games(query="free")  ← No funciona, search_games busca per títol
+Pregunta: "Quins campions tenen winRate superior al 55%?"
+Model: crida search_champions(query="55")  ← No funciona, search_champions busca per nom
 
 Solució: afegir un nou tool
 @mcp.tool()
-async def search_free_games(max_results: int = 10) -> list[dict]:
-    """Cerca jocs gratuïts (price = 0.00). Retorna fins a max_results."""
+async def search_high_winrate_champions(max_results: int = 10) -> list[dict]:
+    """Cerca campions amb winRate > 55%. Retorna fins a max_results."""
     ...
 ```
 

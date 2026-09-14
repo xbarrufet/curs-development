@@ -2,18 +2,18 @@
 
 ## Bàsics (has de saber fer-ho)
 
-### 1. Construir una API CRUD de jocs
-Crea una API REST per `Game` amb els endpoints:
-- `GET /games/{appId}`
-- `GET /games`
-- `POST /games`
-- `PUT /games/{appId}`
-- `DELETE /games/{appId}`
+### 1. Construir una API CRUD de champions
+Crea una API REST per `Champion` amb els endpoints:
+- `GET /champions/{championId}`
+- `GET /champions`
+- `POST /champions`
+- `PUT /champions/{championId}`
+- `DELETE /champions/{championId}`
 
 Requisits:
 - DTOs separats del model de persistència
-- validació d’input (`title` no buit, `price` >= 0)
-- `404` si el joc no existeix
+- validació d’input (`name` no buit, `winRate` entre 0 i 100)
+- `404` si el champion no existeix
 - `201` en creació
 - `204` en eliminació
 
@@ -49,7 +49,7 @@ en una resposta JSON estructurada amb `status` i `error`.
 ## Avançats (si vas sobrat)
 
 ### 4. Virtual Threads i benchmark simple
-Crea una versió de prova de `GameExtractor` que executi 20 crides concurrentes a una API externa o un endpoint local simulant espera.
+Crea una versió de prova de `ChampionDataExtractor` que executi 20 crides concurrentes a la Riot API o un endpoint local simulant espera.
 
 Compara:
 - `Executors.newFixedThreadPool(10)`
@@ -61,9 +61,9 @@ Mesura temps i anota la diferència.
 
 ### 5. CLI Python que consumeix l’API REST
 Crea una mini CLI en Python amb `requests` que permeti:
-- llistar jocs,
-- consultar un joc per ID,
-- crear un joc nou,
+- llistar champions,
+- consultar un champion per ID,
+- crear un champion nou,
 - i mostrar resultats en format legible.
 
 **Fet quan:** la CLI pot interactuar amb l’API Java i la sortida és clara per a un usuari de terminal.

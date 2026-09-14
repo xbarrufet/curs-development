@@ -12,38 +12,38 @@
 
 * **Activitat i Què s'espera programar:**
 * **Més enllà de @Test — Organització i cicle de vida:**
-  * `@BeforeEach`: preparar dades de test (crear un `GameManagementService` fresh amb dependències).
+  * `@BeforeEach`: preparar dades de test (crear un `ChampionManagementService` fresh amb dependències).
   * `@AfterEach`: netejar si cal (normalment no amb tests unitaris, però sí amb recursos externs).
   * `@BeforeAll` / `@AfterAll` (static): per a setup costós que es comparteix entre tests (ex: carregar un fitxer de configuració).
 * **@Nested per organitzar tests per context:**
   ```java
-  class GameManagementServiceTest {
+  class ChampionManagementServiceTest {
       @Nested
-      class WhenRegisteringAGame {
+      class WhenRegisteringAChampion {
           @Test void shouldSaveToRepository() { ... }
-          @Test void shouldRejectNullTitle() { ... }
+          @Test void shouldRejectNullName() { ... }
       }
       @Nested
-      class WhenSearchingGames {
-          @Test void shouldReturnMatchingGames() { ... }
-          @Test void shouldReturnEmptyForUnknownTitle() { ... }
+      class WhenSearchingChampions {
+          @Test void shouldReturnMatchingChampions() { ... }
+          @Test void shouldReturnEmptyForUnknownName() { ... }
       }
   }
   ```
 * **@ParameterizedTest per testejar múltiples inputs:**
-  * `@CsvSource` per inputs simples: testejar validació de preu amb valors límit.
+  * `@CsvSource` per inputs simples: testejar validació de winRate amb valors límit.
     ```java
     @ParameterizedTest
     @CsvSource({
-        "0.00, true",    // Free-to-play és vàlid
-        "59.99, true",   // Preu normal
-        "-1.00, false",  // Preu negatiu no és vàlid
-        "999.99, true"   // Preu alt però vàlid
+        "0.00, true",    // WinRate zero (sense dades)
+        "52.30, true",   // WinRate normal
+        "-1.00, false",  // WinRate negatiu no és vàlid
+        "101.00, false"  // WinRate > 100 no és vàlid
     })
-    void shouldValidatePrice(BigDecimal price, boolean expected) { ... }
+    void shouldValidateWinRate(BigDecimal winRate, boolean expected) { ... }
     ```
-  * `@MethodSource` per inputs complexos: testejar amb objectes `GameRecord` complets.
-* **@DisplayName per output llegible:** `@DisplayName("Hauria de rebutjar un joc amb títol buit")` transforma l'output de Maven en documentació viva.
+  * `@MethodSource` per inputs complexos: testejar amb objectes `ChampionRecord` complets.
+* **@DisplayName per output llegible:** `@DisplayName("Hauria de rebutjar un champion amb nom buit")` transforma l'output de Maven en documentació viva.
 * **Lliçó clau:** "Un test ha de ser una documentació viva del teu codi. Si algú llegeix els noms dels tests, ha d'entendre què fa el servei."
 
 
@@ -61,24 +61,24 @@
 * **Setup de Mockito amb JUnit 5:**
   ```java
   @ExtendWith(MockitoExtension.class)
-  class GameManagementServiceTest {
-      @Mock GameJpaRepository repository;
-      @InjectMocks GameManagementService service;
+  class ChampionManagementServiceTest {
+      @Mock ChampionJpaRepository repository;
+      @InjectMocks ChampionManagementService service;
   }
   ```
 * **when/thenReturn — Simular comportament:**
-  * Quan el repository rep `findById("APP-1")`, retorna un `GameRecord` predefinit.
-  * Quan el repository rep `findAll()`, retorna una llista de 3 jocs.
-  * Testejar que `getPopularGames()` filtra correctament (la lògica del servei, no del repository).
+  * Quan el repository rep `findById("jinx")`, retorna un `ChampionRecord` predefinit.
+  * Quan el repository rep `findAll()`, retorna una llista de 3 champions.
+  * Testejar que `getMetaChampions()` filtra correctament (la lògica del servei, no del repository).
 * **verify — Confirmar que es va cridar el que tocava:**
-  * `verify(repository).save(any(GameRecord.class))` — el servei ha guardat al repo?
+  * `verify(repository).save(any(ChampionRecord.class))` — el servei ha guardat al repo?
   * `verify(repository, never()).delete(any())` — el servei NO ha esborrat res?
 * **ArgumentCaptor per verificacions complexes:**
   ```java
-  ArgumentCaptor<GameRecord> captor = ArgumentCaptor.forClass(GameRecord.class);
+  ArgumentCaptor<ChampionRecord> captor = ArgumentCaptor.forClass(ChampionRecord.class);
   verify(repository).save(captor.capture());
-  GameRecord saved = captor.getValue();
-  assertThat(saved.getTitle()).isEqualTo("League of Legends");
+  ChampionRecord saved = captor.getValue();
+  assertThat(saved.getName()).isEqualTo("Jinx");
   ```
 * **Anti-patró de S4 (Snippet 4): el test que testeja el mock.** Recorda: si el teu test fa `when(repo.findAll()).thenReturn(list)` i després asserta `assertEquals(list, service.getAll())`, no estàs testejant res. Estàs verificant que Mockito funciona.
 * **Regla d'or:** "Mock les dependències externes, no la lògica que vols testejar."
@@ -100,30 +100,30 @@
   ```python
   @pytest.fixture
   def repo():
-      return SqliteGameRepository(":memory:")
+      return SqliteChampionRepository(":memory:")
 
   @pytest.fixture
-  def sample_games(repo):
-      games = [
-          GameRecord("APP-1", "League of Legends", 0.0, 5_000_000),
-          GameRecord("APP-2", "Stardew Valley", 14.99, 90_000),
+  def sample_champions(repo):
+      champions = [
+          ChampionRecord("jinx", "Jinx", 51.5, 5_000_000),
+          ChampionRecord("yasuo", "Thresh", 49.8, 90_000),
       ]
-      for g in games:
-          repo.save(g)
-      return games
+      for c in champions:
+          repo.save(c)
+      return champions
   ```
 * **`@pytest.mark.parametrize` per múltiples inputs:**
   ```python
-  @pytest.mark.parametrize("price,valid", [
-      (0.0, True), (59.99, True), (-1.0, False),
+  @pytest.mark.parametrize("win_rate,valid", [
+      (0.0, True), (52.30, True), (-1.0, False),
   ])
-  def test_validate_price(price, valid):
-      assert validate_game_price(price) == valid
+  def test_validate_win_rate(win_rate, valid):
+      assert validate_win_rate(win_rate) == valid
   ```
 * **`monkeypatch` per simular errors externs:**
   * Substituir `sqlite3.connect` per llançar un error i verificar que el servei gestiona l'error correctament.
   * Equivalent conceptual de `@Mock` en Mockito: aïllar dependències.
-* **`conftest.py` per fixtures compartides:** Col·loca les fixtures comunes (repo, sample_games) a `conftest.py` perquè tots els fitxers de test les puguin usar.
+* **`conftest.py` per fixtures compartides:** Col·loca les fixtures comunes (repo, sample_champions) a `conftest.py` perquè tots els fitxers de test les puguin usar.
 * **Comparativa d'estructures:**
 
   | Concepte | JUnit 5 | pytest |
@@ -153,15 +153,15 @@
   * Si el coverage és <70%, escriure els tests que falten (no codi sense sentit per augmentar-lo).
 * **Configurar pytest-cov:**
   * `pip install pytest-cov`
-  * Executar `pytest --cov=gamepulse --cov-report=html`
+  * Executar `pytest --cov=esportspulse --cov-report=html`
   * Revisar l'informe: quines línies no estan cobertes? Són importants?
 * **Afegir coverage gates al CI de S4:**
   * Al `ci.yml` de GitHub Actions: `mvn verify` (que inclou JaCoCo check) en lloc de `mvn test`.
-  * Afegir step per Python: `pytest --cov=gamepulse --cov-fail-under=70`.
+  * Afegir step per Python: `pytest --cov=esportspulse --cov-fail-under=70`.
   * El CI ha de fallar si el coverage baixa del 70%.
 * **Mutation testing conceptual (sense eines):**
-  * Modifica manualment 3 línies del codi de `GameManagementService`:
-    1. Canvia un `>` per `>=` en `getPopularGames()`.
+  * Modifica manualment 3 línies del codi de `ChampionManagementService`:
+    1. Canvia un `>` per `>=` en `getMetaChampions()`.
     2. Elimina un `null` check.
     3. Canvia un return value.
   * Executa els tests. Si tots passen, els tests son febles i cal millorar-los.
@@ -178,10 +178,10 @@
 
 
 * **Activitat i Què s'espera programar:**
-* **Assegurar que GamePulse té una suite de tests completa:**
-  * **Unit tests (servei amb mocks):** `GameManagementServiceTest` amb `@Mock` per `GameJpaRepository`. Tests: registrar joc, buscar per ID, buscar per títol, llistar populars, gestió d'errors.
-  * **Integration tests:** `GameManagementServiceIT` amb `@SpringBootTest` i H2. Tests: el flux complet registrar → buscar → verificar.
-  * **Repository tests:** `GameJpaRepositoryTest` amb `@DataJpaTest`. Tests: queries derivades, JPQL custom.
+* **Assegurar que EsportsPulse té una suite de tests completa:**
+  * **Unit tests (servei amb mocks):** `ChampionManagementServiceTest` amb `@Mock` per `ChampionJpaRepository`. Tests: registrar champion, buscar per ID, buscar per nom, llistar meta champions, gestió d'errors.
+  * **Integration tests:** `ChampionManagementServiceIT` amb `@SpringBootTest` i H2. Tests: el flux complet registrar → buscar → verificar.
+  * **Repository tests:** `ChampionJpaRepositoryTest` amb `@DataJpaTest`. Tests: queries derivades, JPQL custom.
 * **Tots els tests passen, CI verd:**
   * `mvn verify` passa (tests + JaCoCo check).
   * `pytest --cov-fail-under=70` passa.

@@ -12,23 +12,24 @@ El SDK d'Anthropic, el d'OpenAI, FastAPI, pandas, scikit-learn, langchain, la ma
 
 De S1 a S6, has fet exercicis "mirall" en Python: el mateix concepte implementat en ambdós llenguatges. Has après la sintaxi, els tests amb pytest, els patrons bàsics. A S7, Python va fer de consumidor: una CLI amb typer que cridava l'API Java.
 
-Ara Python puja de categoria. Deixa de ser el mirall i passa a tenir les seves pròpies responsabilitats dins GamePulse.
+Ara Python puja de categoria. Deixa de ser el mirall i passa a tenir les seves pròpies responsabilitats dins EsportsPulse.
 
-### Qui fa què a GamePulse
+### Qui fa què a EsportsPulse
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     GamePulse                            │
+│                    EsportsPulse                           │
 │                                                          │
 │  ┌─────────────────────┐    ┌──────────────────────────┐ │
 │  │   Java / Spring     │    │   Python / FastAPI       │ │
 │  │                     │    │                          │ │
-│  │ - REST API (CRUD)   │    │ - Anàlisi amb LLMs      │ │
-│  │ - Persistència (JPA)│    │ - Validació (Pydantic)  │ │
-│  │ - Lògica de negoci  │◄──┤ - Endpoints d'anàlisi   │ │
-│  │ - Transaccions      │    │ - MCP servers           │ │
-│  │ - Tests (JUnit)     │    │ - Tests (pytest)        │ │
-│  └─────────────────────┘    └──────────────────────────┘ │
+│  │ - REST API (CRUD)   │    │ - Anàlisi de champions   │ │
+│  │ - Persistència (JPA)│    │   amb LLMs              │ │
+│  │ - Lògica de negoci  │◄──┤ - Validació (Pydantic)  │ │
+│  │ - Transaccions      │    │ - Endpoints d'anàlisi   │ │
+│  │ - Tests (JUnit)     │    │ - MCP servers           │ │
+│  └─────────────────────┘    │ - Tests (pytest)        │ │
+│                              └──────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -57,58 +58,69 @@ Pydantic és una llibreria de Python que fa validació de dades usant type hints
 3. Generar schemas JSON.
 4. Serialitzar/deserialitzar a/des de JSON.
 
-### El primer model: GameAnalysis
+### El primer model: ChampionAnalysis
 
 ```python
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 from datetime import date
 
-class PlayerTrend(BaseModel):
-    current_players: int = Field(ge=0, description="Jugadors actius ara")
-    peak_players: int = Field(ge=0, description="Pic de jugadors històric")
+class ChampionTrend(BaseModel):
+    current_win_rate: float = Field(ge=0, le=100, description="Win rate actual del champion")
+    previous_win_rate: float = Field(ge=0, le=100, description="Win rate del patch anterior")
     trend_direction: Literal["up", "down", "stable"] = Field(
         description="Direcció de la tendència"
     )
+    games_analyzed: int = Field(ge=0, description="Nombre de partides analitzades")
 
-class GameAnalysis(BaseModel):
-    game_id: str = Field(description="Identificador del joc", examples=["APP-123"])
-    title: str = Field(min_length=1, description="Nom del joc")
-    sentiment: Literal["positive", "negative", "mixed"] = Field(
-        description="Sentiment general dels jugadors"
+class ChampionAnalysis(BaseModel):
+    champion_id: str = Field(description="Nom del champion", examples=["Jinx"])
+    name: str = Field(min_length=1, description="Nom complet del champion")
+    role: Literal["top", "jungle", "mid", "adc", "support"] = Field(
+        description="Rol principal del champion"
     )
-    player_trend: PlayerTrend
+    strengths: list[str] = Field(min_length=1, description="Punts forts del champion")
+    counters: list[str] = Field(min_length=1, description="Champions que el contraresten")
+    patch_tier: Literal["S", "A", "B", "C", "D"] = Field(
+        description="Tier del champion al patch actual"
+    )
+    champion_trend: ChampionTrend
     summary: str = Field(min_length=10, description="Resum de l'anàlisi")
 
-    @field_validator("game_id")
+    @field_validator("champion_id")
     @classmethod
-    def game_id_must_start_with_app(cls, v: str) -> str:
-        if not v.startswith("APP-"):
-            raise ValueError("game_id ha de començar per 'APP-'")
+    def champion_id_must_be_valid(cls, v: str) -> str:
+        if len(v) < 2:
+            raise ValueError("champion_id ha de ser un nom de champion vàlid")
         return v
 
 class PatchSummary(BaseModel):
-    version: str = Field(description="Versió del patch", examples=["1.2.3"])
+    version: str = Field(description="Versió del patch", examples=["14.10"])
     date: date = Field(description="Data del patch")
-    changes: list[str] = Field(min_length=1, description="Llista de canvis")
-    impact_score: float = Field(ge=0, le=10, description="Impacte del 0 al 10")
+    champion_changes: list[str] = Field(min_length=1, description="Canvis a champions")
+    meta_impact: str = Field(min_length=5, description="Impacte en el meta del joc")
 ```
 
 ### Validació en acció
 
 ```python
 # Dades vàlides
-analysis = GameAnalysis(
-    game_id="APP-42", title="League of Legends", sentiment="positive",
-    player_trend=PlayerTrend(current_players=5_000_000, peak_players=8_000_000, trend_direction="up"),
-    summary="Joc free-to-play amb tendència positiva i comunitat activa."
+analysis = ChampionAnalysis(
+    champion_id="Jinx", name="Jinx", role="adc",
+    strengths=["high damage", "late game scaling"],
+    counters=["Draven", "Nautilus"],
+    patch_tier="S",
+    champion_trend=ChampionTrend(current_win_rate=52.3, previous_win_rate=50.1, trend_direction="up", games_analyzed=150000),
+    summary="Champion ADC amb tendència positiva al patch actual."
 )
 print(analysis.model_dump_json(indent=2))
 
 # Dades invàlides → ValidationError (mostra TOTS els errors de cop)
 try:
-    bad = GameAnalysis(game_id="WRONG-1", title="", sentiment="meh",
-        player_trend=PlayerTrend(current_players=-1, peak_players=0, trend_direction="up"),
+    bad = ChampionAnalysis(champion_id="X", name="", role="jungler",
+        strengths=[], counters=[],
+        patch_tier="F",
+        champion_trend=ChampionTrend(current_win_rate=-1, previous_win_rate=200, trend_direction="up", games_analyzed=-5),
         summary="curt")
 except ValidationError as e:
     print(e)
@@ -118,7 +130,7 @@ except ValidationError as e:
 
 ```python
 import json
-schema = GameAnalysis.model_json_schema()
+schema = ChampionAnalysis.model_json_schema()
 print(json.dumps(schema, indent=2))
 ```
 
@@ -128,20 +140,20 @@ Això genera un schema JSON estàndard que pots donar a un LLM, a un frontend, o
 
 **Java (S2 + S7):**
 ```java
-public record GameAnalysis(@NotBlank String gameId, @NotBlank String title,
-    @NotNull Sentiment sentiment, @Valid PlayerTrend playerTrend, @Size(min=10) String summary) {
-    public GameAnalysis { if (!gameId.startsWith("APP-")) throw new IllegalArgumentException("..."); }
+public record ChampionAnalysis(@NotBlank String championId, @NotBlank String name,
+    @NotNull Role role, @Valid ChampionTrend championTrend, @Size(min=10) String summary) {
+    public ChampionAnalysis { if (name.length() < 2) throw new IllegalArgumentException("..."); }
 }
-public enum Sentiment { POSITIVE, NEGATIVE, MIXED }
+public enum Role { TOP, JUNGLE, MID, ADC, SUPPORT }
 ```
 
 **Pydantic (Python):**
 ```python
-class GameAnalysis(BaseModel):
-    game_id: str = Field(pattern=r"^APP-\d+$")
-    title: str = Field(min_length=1)
-    sentiment: Literal["positive", "negative", "mixed"]
-    player_trend: PlayerTrend
+class ChampionAnalysis(BaseModel):
+    champion_id: str = Field(min_length=2)
+    name: str = Field(min_length=1)
+    role: Literal["top", "jungle", "mid", "adc", "support"]
+    champion_trend: ChampionTrend
     summary: str = Field(min_length=10)
 ```
 
@@ -174,9 +186,9 @@ Sense schema:                           Amb schema:
 │  (text)   │     └─────┘   lliure      │  (text)   │     └─────┘     │  validat │
 └──────────┘                            │ + schema  │                  └──────────┘
                                         └──────────┘
-"El LoL té molts                        { "game_id": "APP-1",
- jugadors i és                            "sentiment": "positive",
- bastant popular..."                      "player_trend": { ... } }
+"Jinx té un winrate                     { "champion_id": "Jinx",
+ del 52% i és                             "role": "adc",
+ molt bona al patch..."                   "champion_trend": { ... } }
 ```
 
 ### Per què importa l'output estructurat?
@@ -193,10 +205,10 @@ Totes les APIs de LLM modernes segueixen el patró de "conversa amb rols":
 
 ```python
 messages = [
-    {"role": "system", "content": "Ets un analista de videojocs expert."},
-    {"role": "user", "content": "Analitza League of Legends."},
-    {"role": "assistant", "content": "D'acord, analitzaré el LoL..."},
-    {"role": "user", "content": "Ara fes-ho per Valorant."},
+    {"role": "system", "content": "Ets un analista d'eSports expert en League of Legends."},
+    {"role": "user", "content": "Analitza el champion Jinx."},
+    {"role": "assistant", "content": "D'acord, analitzaré Jinx..."},
+    {"role": "user", "content": "Ara fes-ho per Yasuo."},
 ]
 ```
 
@@ -216,16 +228,16 @@ response = client.messages.create(
     model="claude-sonnet-4-20250514",
     max_tokens=1024,
     temperature=0.2,
-    system="Ets un analista de videojocs. Respon sempre en JSON.",
+    system="Ets un analista d'eSports expert en League of Legends. Respon sempre en JSON.",
     messages=[
-        {"role": "user", "content": "Analitza el joc League of Legends."}
+        {"role": "user", "content": "Analitza el champion Jinx."}
     ]
 )
 
 print(response.content[0].text)
 ```
 
-| Paràmetre      | Què fa                                    | Valor típic per GamePulse |
+| Paràmetre      | Què fa                                    | Valor típic per EsportsPulse |
 |:---------------|:------------------------------------------|:--------------------------|
 | `model`        | Quin model usar                           | `claude-sonnet-4-20250514` |
 | `max_tokens`   | Màxim de tokens a la resposta             | 1024                      |
@@ -236,7 +248,7 @@ print(response.content[0].text)
 
 Gestiona tres tipus d'error: `RateLimitError` (massa requests -- espera i reintenta), `APIStatusError` (error HTTP -- logeja status i message), `APIConnectionError` (xarxa -- reintenta o falla).
 
-**Cost:** Cada crida costa tokens. Per a tests, usa sempre mocks (S6). Un prompt de GameAnalysis amb few-shot costa aprox. 500-800 tokens d'input i 200-400 de output.
+**Cost:** Cada crida costa tokens. Per a tests, usa sempre mocks (S6). Un prompt de ChampionAnalysis amb few-shot costa aprox. 500-800 tokens d'input i 200-400 de output.
 
 ---
 
@@ -258,17 +270,17 @@ import anthropic
 from pydantic import BaseModel
 
 # 1. Definir el model Pydantic
-class GameAnalysis(BaseModel):
-    game_id: str
-    title: str
-    sentiment: str
+class ChampionAnalysis(BaseModel):
+    champion_id: str
+    name: str
+    role: str
     summary: str
 
 # 2. Crear la definició del tool a partir del schema
 tool_definition = {
-    "name": "submit_game_analysis",
-    "description": "Retorna l'anàlisi estructurada d'un videojoc.",
-    "input_schema": GameAnalysis.model_json_schema()
+    "name": "submit_champion_analysis",
+    "description": "Retorna l'anàlisi estructurada d'un champion de LoL.",
+    "input_schema": ChampionAnalysis.model_json_schema()
 }
 
 # 3. Cridar l'API amb el tool
@@ -277,11 +289,11 @@ response = client.messages.create(
     model="claude-sonnet-4-20250514",
     max_tokens=1024,
     tools=[tool_definition],
-    tool_choice={"type": "tool", "name": "submit_game_analysis"},
+    tool_choice={"type": "tool", "name": "submit_champion_analysis"},
     messages=[
         {
             "role": "user",
-            "content": "Analitza el joc League of Legends (APP-1) amb 5M jugadors actius i preu 0€."
+            "content": "Analitza el champion Jinx: 52.3% win rate, 150K partides analitzades."
         }
     ]
 )
@@ -290,7 +302,7 @@ response = client.messages.create(
 tool_use_block = next(
     block for block in response.content if block.type == "tool_use"
 )
-analysis = GameAnalysis.model_validate(tool_use_block.input)
+analysis = ChampionAnalysis.model_validate(tool_use_block.input)
 print(analysis.model_dump_json(indent=2))
 ```
 
@@ -298,7 +310,7 @@ print(analysis.model_dump_json(indent=2))
 
 ```
 ┌──────────┐    ┌────────┐    ┌──────────┐    ┌──────────┐
-│ Prompt + │───►│  LLM   │───►│  JSON    │───►│ Pydantic │───► GameAnalysis
+│ Prompt + │───►│  LLM   │───►│  JSON    │───►│ Pydantic │───► ChampionAnalysis
 │ Schema   │    │        │    │  (raw)   │    │ validate │    (objecte vàlid)
 └──────────┘    └────────┘    └──────────┘    └──────────┘
                                                    │
@@ -313,7 +325,7 @@ El LLM no és perfecte. De vegades retorna dades que no compleixen el schema. Py
 
 ```python
 try:
-    analysis = GameAnalysis.model_validate(tool_use_block.input)
+    analysis = ChampionAnalysis.model_validate(tool_use_block.input)
 except ValidationError as e:
     # Opcions:
     # 1. Reintentar la crida (amb el missatge d'error al prompt)
@@ -336,42 +348,48 @@ Few-shot prompting és incloure 2-3 exemples complets al prompt perquè el LLM s
 
 Els LLMs són excel·lents imitant patrons. Si li dones exemples del que esperes, la resposta s'ajustarà molt millor al teu format.
 
-### Exemple per GamePulse
+### Exemple per EsportsPulse
 
 ```python
-prompt = """Ets un analista de videojocs. Analitza el joc que et doni l'usuari.
+prompt = """Ets un analista d'eSports expert en League of Legends. Analitza el champion que et doni l'usuari.
 
 ## Exemples
 
-Joc: League of Legends | Jugadors: 5,000,000 | Preu: 0€
+Champion: Jinx | Win Rate: 52.3% | Partides: 150,000 | Rol: ADC
 Anàlisi: {
-  "game_id": "APP-1",
-  "title": "League of Legends",
-  "sentiment": "positive",
-  "summary": "Free-to-play MOBA amb base de jugadors massiva i creixent. Model de monetització basat en skins no afecta el gameplay."
+  "champion_id": "Jinx",
+  "name": "Jinx",
+  "role": "adc",
+  "strengths": ["high damage", "late game scaling"],
+  "counters": ["Draven", "Nautilus"],
+  "patch_tier": "S",
+  "summary": "ADC amb win rate elevat i tendència positiva. Excel·leix en late game amb un scaling excepcional."
 }
 
-Joc: Cyberpunk 2077 | Jugadors: 200,000 | Preu: 59.99€
+Champion: Ryze | Win Rate: 44.8% | Partides: 80,000 | Rol: Mid
 Anàlisi: {
-  "game_id": "APP-42",
-  "title": "Cyberpunk 2077",
-  "sentiment": "mixed",
-  "summary": "RPG amb llançament problemàtic però recuperat amb patches. Base de jugadors estable post-DLC."
+  "champion_id": "Ryze",
+  "name": "Ryze",
+  "role": "mid",
+  "strengths": ["wave clear", "roaming with ult"],
+  "counters": ["Cassiopeia", "Syndra"],
+  "patch_tier": "D",
+  "summary": "Midlaner amb win rate baix històricament. Difícil de dominar amb poc reward en solo queue."
 }
 
 ## Ara analitza:
-Joc: {title} | Jugadors: {player_count} | Preu: {price}
+Champion: {name} | Win Rate: {win_rate}% | Partides: {games_played} | Rol: {role}
 """
 ```
 
 ### Amb i sense exemples
 
-Sense few-shot, el LLM retorna text narratiu ("Elden Ring és un joc d'acció RPG desenvolupat per...") -- impossible de parsejar. Amb 2 exemples, segueix el format exacte i retorna JSON estructurat.
+Sense few-shot, el LLM retorna text narratiu ("Jinx és un champion ADC desenvolupat per Riot Games...") -- impossible de parsejar. Amb 2 exemples, segueix el format exacte i retorna JSON estructurat.
 
 ### Regles pràctiques
 
 1. **2-3 exemples** són suficients. Més de 5 rarament millora la qualitat i augmenta el cost.
-2. **Exemples diversos:** inclou cas positiu, negatiu i mixt.
+2. **Exemples diversos:** inclou cas positiu (win rate alt) i negatiu (win rate baix).
 3. **Exemples realistes:** usa dades plausibles, no "test123".
 4. **Format consistent:** tots els exemples han de seguir exactament el mateix format.
 
@@ -391,28 +409,28 @@ FastAPI destaca per quatre raons: Pydantic integrat (validació automàtica), do
 from fastapi import FastAPI, HTTPException
 import httpx
 
-app = FastAPI(title="GamePulse Analysis Service")
+app = FastAPI(title="EsportsPulse Analysis Service")
 
-@app.get("/analyze/{game_id}", response_model=GameAnalysis)
-async def analyze_game(game_id: str):
-    # 1. Fetch del joc des de l'API Java (S7)
+@app.get("/analyze/{champion_id}", response_model=ChampionAnalysis)
+async def analyze_champion(champion_id: str):
+    # 1. Fetch del champion des de l'API Java (S7)
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"http://localhost:8080/games/{game_id}")
+        resp = await client.get(f"http://localhost:8080/champions/{champion_id}")
         if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
-        game_data = resp.json()
+            raise HTTPException(status_code=404, detail=f"Champion {champion_id} not found")
+        champion_data = resp.json()
 
     # 2. Cridar LLM amb tool_use
-    analysis_data = await call_llm_analysis(game_data)
+    analysis_data = await call_llm_analysis(champion_data)
 
     # 3. Validar amb Pydantic i retornar
-    return GameAnalysis.model_validate(analysis_data)
+    return ChampionAnalysis.model_validate(analysis_data)
 
-@app.post("/batch-analyze", response_model=list[GameAnalysis])
-async def batch_analyze(game_ids: list[str]):
+@app.post("/batch-analyze", response_model=list[ChampionAnalysis])
+async def batch_analyze(champion_ids: list[str]):
     results = []
-    for gid in game_ids:
-        analysis = await analyze_game(gid)
+    for cid in champion_ids:
+        analysis = await analyze_champion(cid)
         results.append(analysis)
     return results
 
@@ -423,17 +441,17 @@ def health():
 
 ### Comparativa Spring Boot (S7) vs FastAPI
 
-| Aspecte                | Spring Boot                                 | FastAPI                              |
-|:-----------------------|:--------------------------------------------|:-------------------------------------|
-| Definir ruta           | `@GetMapping("/games/{id}")`                | `@app.get("/games/{id}")`            |
-| Path parameter         | `@PathVariable String id`                   | `def f(id: str)`                     |
-| Request body           | `@RequestBody @Valid CreateGameRequest req`  | `def f(req: CreateGameRequest)`      |
-| Response model         | Retorna el DTO                              | `response_model=GameDTO`             |
-| Validació              | `@Valid` + Bean Validation                   | Pydantic automàtic                   |
-| Error handling         | `@ControllerAdvice`                          | `HTTPException`                      |
-| Docs                   | SpringDoc + `@Operation`                     | Automàtic a `/docs`                  |
-| Server                 | `mvn spring-boot:run` (Tomcat)               | `uvicorn main:app --reload`          |
-| Port per defecte       | 8080                                         | 8000                                 |
+| Aspecte                | Spring Boot                                       | FastAPI                                |
+|:-----------------------|:--------------------------------------------------|:---------------------------------------|
+| Definir ruta           | `@GetMapping("/champions/{id}")`                  | `@app.get("/champions/{id}")`          |
+| Path parameter         | `@PathVariable String id`                         | `def f(id: str)`                       |
+| Request body           | `@RequestBody @Valid CreateChampionRequest req`    | `def f(req: CreateChampionRequest)`    |
+| Response model         | Retorna el DTO                                    | `response_model=ChampionDTO`           |
+| Validació              | `@Valid` + Bean Validation                         | Pydantic automàtic                     |
+| Error handling         | `@ControllerAdvice`                                | `HTTPException`                        |
+| Docs                   | SpringDoc + `@Operation`                           | Automàtic a `/docs`                    |
+| Server                 | `mvn spring-boot:run` (Tomcat)                     | `uvicorn main:app --reload`            |
+| Port per defecte       | 8080                                               | 8000                                   |
 
 ### Executar i provar
 
@@ -441,7 +459,7 @@ def health():
 pip install fastapi uvicorn httpx anthropic pydantic
 uvicorn main:app --reload
 curl http://localhost:8000/health
-curl http://localhost:8000/analyze/APP-1
+curl http://localhost:8000/analyze/Jinx
 open http://localhost:8000/docs    # Swagger auto-generat amb "Try it out"
 ```
 
@@ -460,7 +478,7 @@ Cada eina d'IA (Cursor, ChatGPT, Copilot, Claude Desktop) té el seu propi forma
 │  MCP Client (Cursor, Claude Desktop, IDE...)                    │
 │                                                                 │
 │  L'usuari fa una pregunta:                                      │
-│  "Quants jugadors té el League of Legends?"                     │
+│  "Quants champions tenen winrate > 52%?"                        │
 │                                                                 │
 │  El client detecta que necessita dades                          │
 │  → crida el MCP Server via stdio                                │
@@ -471,12 +489,12 @@ Cada eina d'IA (Cursor, ChatGPT, Copilot, Claude Desktop) té el seu propi forma
 │  MCP Server (el teu codi Python)                                │
 │                                                                 │
 │  Exposa:                                                        │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐          │
-│  │  Tools   │  │  Resources   │  │  Prompts         │          │
-│  │          │  │              │  │                  │          │
-│  │ get_game │  │ games://list │  │ analyze_game     │          │
-│  │ search   │  │ games://top  │  │ compare_patches  │          │
-│  └──────────┘  └──────────────┘  └──────────────────┘          │
+│  ┌──────────────────┐  ┌───────────────────┐  ┌──────────────┐ │
+│  │  Tools           │  │  Resources        │  │  Prompts     │ │
+│  │                  │  │                   │  │              │ │
+│  │ get_champion     │  │ champions://list  │  │ analyze_champ│ │
+│  │ search_champions │  │ champions://top   │  │ compare_patch│ │
+│  └──────────────────┘  └───────────────────┘  └──────────────┘ │
 │                                                                 │
 │  El server consulta l'API Java, la BD, fitxers...               │
 └─────────────────────────────────────────────────────────────────┘
@@ -489,9 +507,9 @@ Funcions que la IA pot cridar. Equivalen a les funcions de tool_use/function_cal
 
 ```python
 @server.tool()
-async def get_game(game_id: str) -> str:
-    """Obté les dades d'un joc per ID."""
-    resp = httpx.get(f"http://localhost:8080/games/{game_id}")
+async def get_champion(champion_id: str) -> str:
+    """Obté les dades d'un champion per ID."""
+    resp = httpx.get(f"http://localhost:8080/champions/{champion_id}")
     return resp.text
 ```
 
@@ -499,10 +517,10 @@ async def get_game(game_id: str) -> str:
 Dades que la IA pot llegir, com fitxers o taules. Són read-only.
 
 ```python
-@server.resource("gamepulse://games/top10")
-async def top_games() -> str:
-    """Els 10 jocs amb més jugadors actius."""
-    resp = httpx.get("http://localhost:8080/games?sort=players&limit=10")
+@server.resource("esportspulse://champions/top10")
+async def top_champions() -> str:
+    """Els 10 champions amb més winrate."""
+    resp = httpx.get("http://localhost:8080/champions?sort=winrate&limit=10")
     return resp.text
 ```
 
@@ -514,7 +532,7 @@ Templates reutilitzables amb paràmetres per tasques comunes.
 Crea `.cursor/mcp.json` al projecte. Cursor detectarà el server i podrà cridar els tools des del chat:
 
 ```json
-{ "mcpServers": { "gamepulse": { "command": "python", "args": ["mcp_server.py"] } } }
+{ "mcpServers": { "esportspulse": { "command": "python", "args": ["mcp_server.py"] } } }
 ```
 
 ### L'analogia REST
@@ -534,17 +552,17 @@ MCP és per a eines IA el que REST és per a apps web: un contracte estàndard q
 
 ## 9. El Bridge Java i Python
 
-Amb S8, GamePulse passa de ser una app monolítica Java a tenir dos serveis comunicats per HTTP:
+Amb S8, EsportsPulse passa de ser una app monolítica Java a tenir dos serveis comunicats per HTTP:
 
 ```
-  Usuari → curl /analyze/APP-1
+  Usuari → curl /analyze/Jinx
               │
               ▼
-  ┌─────────────────────┐     GET /games/APP-1     ┌───────────────┐
+  ┌─────────────────────┐   GET /champions/Jinx    ┌───────────────┐
   │ Python (FastAPI)    │─────────────────────────►│ Java (Spring) │
   │ :8000               │◄─────────────────────────│ :8080         │
-  │ /analyze, /batch    │     JSON response         │ /games (CRUD) │
-  └────────┬────────────┘                           │ H2 DB         │
+  │ /analyze, /batch    │     JSON response         │ /champions    │
+  └────────┬────────────┘                           │ (CRUD) H2 DB │
            │ anthropic SDK                          └───────────────┘
            ▼
   ┌─────────────────────┐
@@ -552,7 +570,7 @@ Amb S8, GamePulse passa de ser una app monolítica Java a tenir dos serveis comu
   └─────────────────────┘
 ```
 
-El flux complet: FastAPI rep la request, fa fetch a l'API Java, construeix el prompt amb les dades del joc, crida el LLM amb tool_use, valida amb Pydantic, i retorna el `GameAnalysis`.
+El flux complet: FastAPI rep la request, fa fetch a l'API Java, construeix el prompt amb les dades del champion, crida el LLM amb tool_use, valida amb Pydantic, i retorna el `ChampionAnalysis`.
 
 ### Per què dos serveis?
 
@@ -562,9 +580,9 @@ El flux complet: FastAPI rep la request, fa fetch a l'API Java, construeix el pr
 
 ---
 
-## 10. Aplicació a GamePulse: L'Agent Analista
+## 10. Aplicació a EsportsPulse: L'Agent Analista de Champions
 
-Aquesta setmana, l'"agent" és un script lineal que: rep un `game_id`, fa fetch a l'API Java, crida el LLM amb tool_use, valida amb Pydantic, i retorna un `GameAnalysis`. No és un agent autònom (això vindrà a S16) -- es un pipeline determinista amb un pas no-determinista (el LLM).
+Aquesta setmana, l'"agent" és un script lineal que: rep un `champion_id`, fa fetch a l'API Java, crida el LLM amb tool_use, valida amb Pydantic, i retorna un `ChampionAnalysis`. No és un agent autònom (això vindrà a S16) -- es un pipeline determinista amb un pas no-determinista (el LLM).
 
 ### El codi complet
 
@@ -572,36 +590,36 @@ Aquesta setmana, l'"agent" és un script lineal que: rep un `game_id`, fa fetch 
 # agent_analyst.py
 import httpx
 import anthropic
-from models import GameAnalysis
+from models import ChampionAnalysis
 
 JAVA_API = "http://localhost:8080"
 client = anthropic.Anthropic()
 
-def analyze_game(game_id: str) -> GameAnalysis:
-    # 1. Fetch dades del joc
-    resp = httpx.get(f"{JAVA_API}/games/{game_id}")
+def analyze_champion(champion_id: str) -> ChampionAnalysis:
+    # 1. Fetch dades del champion
+    resp = httpx.get(f"{JAVA_API}/champions/{champion_id}")
     resp.raise_for_status()
-    game = resp.json()
+    champion = resp.json()
 
     # 2. Prompt amb few-shot + tool_use
     tool_def = {
-        "name": "submit_analysis",
-        "description": "Retorna l'anàlisi del joc.",
-        "input_schema": GameAnalysis.model_json_schema()
+        "name": "submit_champion_analysis",
+        "description": "Retorna l'anàlisi del champion.",
+        "input_schema": ChampionAnalysis.model_json_schema()
     }
-    prompt = f"""Analitza {game["title"]} ({game["activePlayerCount"]} jugadors, {game["price"]}€).
-    Exemples: LoL, 5M, free → positive, up | Cyberpunk, 200K, 59.99€ → mixed, stable"""
+    prompt = f"""Analitza el champion {champion["name"]} ({champion["gamesPlayed"]} partides, {champion["winRate"]}% win rate).
+    Exemples: Jinx, 150K partides, 52.3% → tier S, up | Ryze, 80K partides, 44.8% → tier D, down"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514", max_tokens=1024, temperature=0.2,
         tools=[tool_def],
-        tool_choice={"type": "tool", "name": "submit_analysis"},
+        tool_choice={"type": "tool", "name": "submit_champion_analysis"},
         messages=[{"role": "user", "content": prompt}]
     )
 
     # 3. Validar amb Pydantic
     tool_block = next(b for b in response.content if b.type == "tool_use")
-    return GameAnalysis.model_validate(tool_block.input)
+    return ChampionAnalysis.model_validate(tool_block.input)
 ```
 
 ### Testing (sense gastar tokens)
@@ -610,12 +628,15 @@ def analyze_game(game_id: str) -> GameAnalysis:
 # test_agent.py
 from unittest.mock import MagicMock
 
-def test_analyze_returns_valid_game_analysis(monkeypatch):
+def test_analyze_returns_valid_champion_analysis(monkeypatch):
     # Mock LLM
     mock_block = MagicMock(type="tool_use", input={
-        "game_id": "APP-1", "title": "LoL", "sentiment": "positive",
-        "player_trend": {"current_players": 5000000, "peak_players": 8000000, "trend_direction": "up"},
-        "summary": "Free-to-play MOBA amb tendència positiva."
+        "champion_id": "Jinx", "name": "Jinx", "role": "adc",
+        "strengths": ["high damage", "late game scaling"],
+        "counters": ["Draven", "Nautilus"],
+        "patch_tier": "S",
+        "champion_trend": {"current_win_rate": 52.3, "previous_win_rate": 50.1, "trend_direction": "up", "games_analyzed": 150000},
+        "summary": "Champion ADC amb tendència positiva al patch actual."
     })
     mock_client = MagicMock()
     mock_client.messages.create.return_value = MagicMock(content=[mock_block])
@@ -623,14 +644,14 @@ def test_analyze_returns_valid_game_analysis(monkeypatch):
 
     # Mock API Java
     mock_resp = MagicMock(status_code=200)
-    mock_resp.json.return_value = {"appId": "APP-1", "title": "LoL", "price": 0.0, "activePlayerCount": 5000000}
+    mock_resp.json.return_value = {"championId": "Jinx", "name": "Jinx", "winRate": 52.3, "gamesPlayed": 150000}
     mock_resp.raise_for_status = MagicMock()
     monkeypatch.setattr("httpx.get", lambda url: mock_resp)
 
-    from agent_analyst import analyze_game
-    result = analyze_game("APP-1")
-    assert result.game_id == "APP-1"
-    assert result.sentiment == "positive"
+    from agent_analyst import analyze_champion
+    result = analyze_champion("Jinx")
+    assert result.champion_id == "Jinx"
+    assert result.role == "adc"
 ```
 
 ### Cap a agents reals (S16)
