@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Entendre com un servidor web gestiona centenars de peticions simultanees: el model thread-per-request. Veure amb els teus propis ulls com dos threads accedint a la mateixa variable produeixen resultats incorrectes (race condition), i aprendre les dues solucions fonamentals — `synchronized` i `AtomicInteger`. Al final del dia sabras per que les aplicacions web tenen bugs de concurrencia i com evitar-los amb mecanismes de Java.
+Entendre què passa quan el teu codi s'executa en múltiples fils alhora. Veure amb els teus propis ulls com dos threads accedint a la mateixa variable produeixen resultats incorrectes (race condition), i aprendre les dues solucions fonamentals — `synchronized` i `AtomicInteger`. Al final del dia sabras per que la concurrencia causa bugs subtils i com evitar-los amb mecanismes de Java.
 
 ---
 
@@ -10,20 +10,13 @@ Entendre com un servidor web gestiona centenars de peticions simultanees: el mod
 
 ### Per Que la Concurrencia es el Teu Problema
 
-A les setmanes anteriors has escrit codi Java i Python, has apres SOLID i has treballat amb el terminal. Tot aixo era codi que s'executava en un sol fil. Pero a la vida real, quan el teu backend rep 200 peticions simultanees, **el teu codi s'executa 200 vegades alhora**. I aqui comencen els problemes.
+A les setmanes anteriors has escrit codi Java i Python, has apres SOLID i has treballat amb el terminal. Tot aixo era codi que s'executava en un sol fil. Pero a la vida real, sovint necessites que el teu codi faci **múltiples coses alhora**:
 
-```
-500 usuaris simultanis:
-Usuari A → GET  /champions/Ahri
-Usuari B → POST /champions           (crear campió)
-Usuari C → PUT  /champions/Ahri      (canviar estadístiques)
-Usuari D → GET  /champions/Ahri
-...500 peticions al mateix temps
-```
+- Descarregar dades de 170 campions de l'API de Riot — un per un triga minuts, en paral·lel segons
+- Processar 100.000 registres de jugadors amb múltiples fils per aprofitar tots els nuclis de la CPU
+- Més endavant (S9), quan tinguis un servidor web, cada petició d'un usuari s'executarà en un fil diferent — 200 peticions simultànies = 200 fils executant el teu codi alhora
 
-**Pregunta:** Com gestiona Spring Boot 500 peticions alhora si el teu codi es un sol fitxer `ChampionController.java`?
-
-**Resposta:** Amb **threads**. Cada peticio s'executa en un thread diferent, en paral-lel.
+**El problema:** quan múltiples fils accedeixen a les mateixes dades al mateix temps, passen coses estranyes. Avui ho veuràs amb els teus propis ulls.
 
 ### Que es un Thread?
 
@@ -56,25 +49,15 @@ Procés Java (JVM):
 
 **La clau:** Les variables locals (stack) son privades. Pero el heap (objectes, services, repositoris) es **compartit**. Quan dos threads modifiquen el mateix objecte al heap, tens una race condition.
 
-### El Model Thread-per-Request
+### Quan Apareix la Concurrencia a la Vida Real
 
-Quan arrenques Spring Boot, Tomcat crea un **pool de 200 threads** (per defecte). Cada peticio HTTP agafa un thread del pool, executa el teu codi (Controller - Service - Repository - BD), i retorna el thread al pool.
+La concurrencia no es un tema acadèmic — t'hi trobaras constantment:
 
-```
-                    ┌──────────────────────────────────┐
-                    │         Tomcat (Spring Boot)      │
-                    │                                   │
-Client A ────────── │ ──→ Thread-1 → Controller →       │
-Client B ────────── │ ──→ Thread-2 → Controller →       │ ──→ Base de Dades
-Client C ────────── │ ──→ Thread-3 → Controller →       │
-                    │         ...                       │
-Client N ────────── │ ──→ Thread-N → Controller →       │
-                    │                                   │
-                    │  Thread Pool: 200 threads (defecte)│
-                    └──────────────────────────────────┘
-```
+- **Servidors web (S9+):** Cada peticio d'un usuari s'executa en un thread diferent. 200 usuaris simultanis = 200 threads executant el teu codi alhora, compartint els mateixos objectes en memoria.
+- **Processat de dades:** Si has de descarregar dades de 170 campions d'una API, fer-ho en paral·lel amb 10 threads es 10x mes rapid que fer-ho un per un.
+- **Qualsevol programa amb estat compartit:** Si dos fils modifiquen la mateixa variable, tens un bug esperant a passar.
 
-**Implicacio practica:** El teu `ChampionService` es un singleton — una sola instancia compartida per tots els threads. Si el service te estat mutable (una variable que es modifica), tens un bug esperant a passar.
+Avui ens centrem en el problema fonamental: **què passa quan dos threads toquen les mateixes dades alhora?**
 
 ### Race Conditions: El Bug Invisible
 
@@ -162,7 +145,7 @@ public class AtomicCounter {
 
 ### Connexio amb S2: Per Que la Immutabilitat Importa
 
-A S2 vam insistir que `GameRecord` fos un `record` (immutable). Ara entens per que: si un objecte no es pot modificar despres de crear-lo, no hi ha race condition possible. **La immutabilitat es una estrategia de concurrencia.**
+A S1 i S2 vam insistir que `PlayerRecord` i `ChampionRecord` fossin records (immutables). Ara entens per que: si un objecte no es pot modificar despres de crear-lo, no hi ha race condition possible. **La immutabilitat es una estrategia de concurrencia.**
 
 ```java
 // record és immutable per disseny → thread-safe automàticament
@@ -332,11 +315,11 @@ public class CounterBenchmark {
 
 ### 3. Demostrar Race Condition amb ArrayList (15 min)
 
-Els `@Service` de Spring son singletons. Si tenen estat mutable, el bug es inevitable:
+Un objecte compartit entre múltiples threads amb estat mutable es un bug esperant a passar. `ArrayList` no es thread-safe:
 
 ```java
 // SharedStateDemo.java
-// Demostra per què MAI has de tenir estat mutable en un @Service
+// Demostra per què MAI has de tenir estat mutable compartit entre threads
 // ArrayList NO és thread-safe — amb múltiples threads, es corromp
 
 import java.util.ArrayList;
@@ -344,7 +327,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class SharedStateDemo {
-    // Simula un @Service amb estat mutable — ANTIPATRÓ
+    // Objecte compartit amb estat mutable — ANTIPATRÓ
     private static final List<String> recentSearches = new ArrayList<>();
 
     public static void main(String[] args) throws InterruptedException {
@@ -402,6 +385,6 @@ Executa'l 5 vegades. Respon:
 - [ ] Has executat `UnsafeCounter` 5 vegades i has vist que el resultat varia
 - [ ] Has implementat `SafeCounter` (synchronized) i `AtomicCounter` (AtomicInteger) i ambdos donen el resultat correcte
 - [ ] Has mesurat el rendiment de les tres versions i pots explicar per que AtomicInteger es mes rapid
-- [ ] Has demostrat la race condition amb ArrayList i entens per que els @Service no han de tenir estat mutable
+- [ ] Has demostrat la race condition amb ArrayList i entens per que els objectes compartits no han de tenir estat mutable
 - [ ] Has fet l'exercici de Prompt Engineering i has evaluat la resposta de l'IA
-- [ ] Pots explicar: que es un thread, que es el model thread-per-request, i per que `count++` no es atomic
+- [ ] Pots explicar: que es un thread, per que la concurrencia causa bugs, i per que `count++` no es atomic

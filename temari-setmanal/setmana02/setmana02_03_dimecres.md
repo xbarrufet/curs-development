@@ -1,4 +1,4 @@
-# Setmana 2 — Dimecres: Dependency Injection, Factory i Capa de Servei
+# Setmana 2 — Dimecres: SOLID, Dependency Injection i Capa de Servei
 
 ## Objectiu del Dia
 
