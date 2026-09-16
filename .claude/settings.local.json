@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:neetcode.io)",
+      "WebFetch(domain:www.youtube.com)",
+      "WebFetch(domain:www.baeldung.com)",
+      "WebFetch(domain:junit.org)",
+      "WebFetch(domain:www.conventionalcommits.org)",
+      "Bash(curl -sL \"https://www.youtube.com/results?search_query=midudev+curso+git+github+desde+cero\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(curl -sL \"https://www.youtube.com/results?search_query=mouredev+estructuras+datos+algoritmos\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(curl -sL \"https://www.youtube.com/watch?v=2LZanU8UC_A\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(grep -A2 \"Host\" ~/.ssh/config 2>&1 | head -40)",
+      "Read(//Users/barrufex/.ssh/**)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(git push *)"
+    ]
+  }
+}

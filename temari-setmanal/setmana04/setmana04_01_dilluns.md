@@ -88,7 +88,7 @@ Resultat: count = 43 (hauria de ser 44). Un increment s'ha perdut.
 
 ### Solucio 1: `synchronized` (Exclusio Mutua)
 
-`synchronized` posa un lock al metode: quan un thread hi entra, la resta esperen fora.
+Un **lock** (bloqueig) és un mecanisme que garanteix que només un thread a la vegada pot accedir a un tros de codi. Funciona com la porta d'un lavabo: quan algú entra, tanca amb clau — la resta esperen fora fins que surti. `synchronized` és la manera més senzilla de posar un lock a Java: quan un thread entra a un mètode `synchronized`, la resta esperen fora fins que acabi.
 
 ```java
 public class SafeCounter {

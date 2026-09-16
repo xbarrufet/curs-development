@@ -224,6 +224,7 @@ El material inclou links a recursos externs (articles, vídeos, documentació, l
 - **Articles:** Baeldung, Atlassian, Google Engineering Practices (accés públic gratuït).
 - **Vídeos:** YouTube (Midudev, MoureDev, i altres — contingut públic dels creadors).
 - **Llibres:** *Pro Git* (Scott Chacon, CC BY-NC-SA 3.0), *Clean Code* (Robert C. Martin, Prentice Hall). Es referencien per títol i autor; no es reprodueix contingut.
+- **Plataformes d'exercicis:** LeetCode (problemes d'algorítmica i estructures de dades — accés públic gratuït).
 - **Documentació:** Oracle Java, Spring, JUnit, GitHub (documentació oficial pública).
 
 Si ets autor d'algun recurs referenciat i prefereixes que eliminem el link, obre un issue.
