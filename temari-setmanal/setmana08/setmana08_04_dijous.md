@@ -1,444 +1,471 @@
-# Setmana 8 — Dijous: Volums, Health Checks i Variables d'Entorn
+# Setmana 08 — Dijous: Cobertura de Codi amb JaCoCo i CI amb pytest + ruff
 
 ## Objectiu del Dia
 
-Fer que l'stack de Docker Compose sigui robust: les dades de PostgreSQL sobreviuen a reinicis, els serveis no arranquen fins que les seves dependències estiguin realment llestes, i tota la configuració sensible està externalitzada en variables d'entorn. Al final del dia, `docker-compose up` ha d'arrencar l'stack de forma fiable i ordenada.
+Configurar JaCoCo per mesurar la cobertura de codi a Java i pytest-cov a Python. Actualitzar el pipeline de GitHub Actions perquè falli si la cobertura baixa del 70%. Afegir ruff com a linter de Python. Al final del dia, el teu CI protegirà la qualitat del codi automàticament.
 
 ---
 
 ## Teoria
 
-### Volums: Per Què les Dades Desapareixen
+### Què és la Cobertura de Codi?
 
-Un contenidor Docker és **efímer**: quan el destrueixes (`docker rm`), tot el que hi havia dins desapareix. Això inclou les dades de PostgreSQL. Si fas `docker-compose down` i després `docker-compose up`, la base de dades tornarà a estar buida.
+La cobertura de codi mesura **quin percentatge del teu codi s'executa durant els tests**. Hi ha dos tipus principals:
 
+**Cobertura de línies (line coverage):** quantes línies s'han executat.
+
+**Cobertura de branques (branch coverage):** quantes decisions if/else s'han explorat.
+
+```java
+// Exemple: mètode amb una branca if/else
+// Per tenir 100% de cobertura de branques, necessitem 2 tests
+public String classifyWinRate(double winRate) {
+    if (winRate >= 52.0) {           // Branca 1: winRate alt
+        return "META";               // Línia coberta si testem winRate >= 52
+    } else {                         // Branca 2: winRate normal
+        return "STANDARD";           // Línia coberta si testem winRate < 52
+    }
+}
 ```
-Sense volum:
-┌──────────────────┐
-│   Contenidor     │
-│   PostgreSQL     │  ← docker rm → 💀 Dades perdudes!
-│   /var/lib/      │
-│   postgresql/data│
-└──────────────────┘
 
-Amb volum:
-┌──────────────────┐       ┌───────────────┐
-│   Contenidor     │       │  Volum Docker  │
-│   PostgreSQL     │──────▶│   "pgdata"     │  ← Dades segures!
-│   (efímer)       │       │  (persistent)  │
-└──────────────────┘       └───────────────┘
+| Test                          | Line coverage | Branch coverage |
+|-------------------------------|--------------|-----------------|
+| Només `classifyWinRate(55.0)` | 75%          | 50% (falta else) |
+| `classifyWinRate(55.0)` + `classifyWinRate(48.0)` | 100% | 100% |
+
+---
+
+### Què Mesura la Cobertura (i Què NO)
+
+**El que SÍ mesura:**
+- Quines línies de codi s'han executat durant els tests
+- Quines branques (if/else, switch) s'han explorat
+- Quins mètodes s'han cridat
+
+**El que NO mesura:**
+- Si el codi és **correcte**
+- Si els tests tenen **asserts** adequats
+- Si la **lògica de negoci** funciona bé
+
+#### Anti-patró: 100% Cobertura, 0% Valor
+
+```java
+// PERILL: Aquest test té 100% cobertura del mètode
+// però NO VERIFICA RES — no té cap assert!
+@Test
+void testWithNoAssertions() {
+    // Executem el mètode (cobertura de línia: 100%)
+    service.register(new ChampionRecord("jinx", "Marksman", 51.5));
+    // ... i ja? No comprovem si s'ha guardat correctament!
+    // JaCoCo dirà 100% coverage, però el test és inútil
+}
+
+// BÉ: Menys cobertura potser, però verifica comportament
+@Test
+void shouldSaveAndRetrieveChampion() {
+    service.register(new ChampionRecord("jinx", "Marksman", 51.5));
+
+    // VERIFICAR que realment s'ha guardat
+    Optional<ChampionRecord> found = service.findById("jinx");
+    assertTrue(found.isPresent());
+    assertEquals("Marksman", found.get().role());
+}
 ```
 
-### Tipus de Volums
+> **Regla:** La cobertura és un **indicador**, no un **objectiu**. 70-80% és un bon llindar. 100% sol indicar tests artificials.
 
-Hi ha dues maneres principals de persistir dades:
+---
 
-**1. Volums amb nom (Named Volumes):**
-Docker gestiona on s'emmagatzemen al host. Ideals per a bases de dades.
+### JaCoCo: Configuració a pom.xml
 
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    volumes:
-      # Sintaxi: nom_volum:ruta_dins_contenidor
-      # Docker decideix on guarda "pgdata" al sistema host
-      - pgdata:/var/lib/postgresql/data
+JaCoCo (Java Code Coverage) s'integra amb Maven com un plugin. Afegeix-lo al `pom.xml`:
 
-volumes:
-  pgdata:    # Declarar el volum a nivell superior
+```xml
+<build>
+    <plugins>
+        <!-- JaCoCo: mesura la cobertura de codi durant els tests -->
+        <!-- S'activa automàticament amb 'mvn verify' -->
+        <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>0.8.12</version>
+            <executions>
+                <!-- 1. prepare-agent: instrumenta el codi abans dels tests -->
+                <!-- Afegeix un agent JVM que registra quines línies s'executen -->
+                <execution>
+                    <id>prepare-agent</id>
+                    <goals>
+                        <goal>prepare-agent</goal>
+                    </goals>
+                </execution>
+
+                <!-- 2. report: genera l'informe HTML després dels tests -->
+                <!-- Es pot obrir a target/site/jacoco/index.html -->
+                <execution>
+                    <id>report</id>
+                    <phase>test</phase>
+                    <goals>
+                        <goal>report</goal>
+                    </goals>
+                </execution>
+
+                <!-- 3. check: falla el build si la cobertura és insuficient -->
+                <!-- Aquesta és la part que integrem al CI -->
+                <execution>
+                    <id>check</id>
+                    <goals>
+                        <goal>check</goal>
+                    </goals>
+                    <configuration>
+                        <rules>
+                            <rule>
+                                <!-- Aplica a tot el bundle (projecte) -->
+                                <element>BUNDLE</element>
+                                <limits>
+                                    <limit>
+                                        <!-- Mínim 70% de cobertura de línies -->
+                                        <!-- Si baixa del 70%, 'mvn verify' FALLA -->
+                                        <counter>LINE</counter>
+                                        <value>COVEREDRATIO</value>
+                                        <minimum>0.70</minimum>
+                                    </limit>
+                                </limits>
+                            </rule>
+                        </rules>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
 ```
+
+#### Executar i Veure l'Informe
 
 ```bash
-# Veure els volums creats per Docker
-docker volume ls
+# Compila, executa tests i verifica cobertura
+# Si la cobertura < 70%, el build FALLA
+mvn verify
 
-# Inspeccionar un volum (veure on s'emmagatzema al host)
-docker volume inspect esportspulse-engine_pgdata
+# L'informe HTML es genera a:
+# target/site/jacoco/index.html
+# Obre'l al navegador per veure detalls per classe i mètode
+open target/site/jacoco/index.html
 ```
 
-**2. Bind Mounts:**
-Muntes un directori concret del host dins del contenidor. Útils per al desenvolupament (veure canvis en temps real).
+**Exemple de sortida quan falla:**
+
+```
+[ERROR] Rule violated for bundle esportspulse-engine:
+  lines covered ratio is 0.58, but expected minimum is 0.70
+[ERROR] BUILD FAILURE
+```
+
+---
+
+### pytest-cov: Cobertura en Python
+
+Instal·la el plugin de cobertura per a pytest:
+
+```bash
+# Instal·lar pytest-cov (afegir també a requirements.txt)
+pip install pytest-cov
+```
+
+Afegeix-lo a `requirements.txt`:
+
+```
+pytest>=8.0.0
+pytest-cov>=5.0.0
+```
+
+#### Executar amb Cobertura
+
+```bash
+# Executar tests amb cobertura del mòdul esportspulse
+# --cov: quin mòdul mesurar
+# --cov-report=html: generar informe HTML
+# --cov-report=term-missing: mostrar línies no cobertes a la terminal
+# --cov-fail-under=70: fallar si la cobertura < 70%
+pytest --cov=esportspulse \
+       --cov-report=html \
+       --cov-report=term-missing \
+       --cov-fail-under=70
+```
+
+**Exemple de sortida:**
+
+```
+---------- coverage: platform linux, python 3.12 ----------
+Name                                Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------
+esportspulse/__init__.py                0      0   100%
+esportspulse/champion_record.py        12      0   100%
+esportspulse/champion_service.py       35      4    89%   42-45
+esportspulse/in_memory_repository.py   20      2    90%   31-32
+esportspulse/sqlite_repository.py      45     15    67%   58-72
+-----------------------------------------------------------------
+TOTAL                                 112     21    81%
+
+FAIL Required test coverage of 70% reached. Total coverage: 81.25%
+```
+
+#### Configuració a pyproject.toml
+
+```toml
+# pyproject.toml
+# Configuració centralitzada per a pytest i cobertura
+
+[tool.pytest.ini_options]
+# Opcions per defecte de pytest
+# Així no cal recordar els flags cada cop
+testpaths = ["tests"]
+addopts = """
+    -v
+    --cov=esportspulse
+    --cov-report=term-missing
+    --cov-fail-under=70
+"""
+```
+
+---
+
+### ruff: Linter de Python (com Checkstyle per a Java)
+
+ruff és un linter ultra-ràpid per a Python. Detecta errors d'estil, imports no usats, variables mortes i problemes comuns:
+
+```bash
+# Instal·lar ruff
+pip install ruff
+```
+
+#### Configuració a pyproject.toml
+
+```toml
+# pyproject.toml
+
+[tool.ruff]
+# Versió de Python del projecte
+target-version = "py312"
+
+# Amplada màxima de línia
+line-length = 100
+
+[tool.ruff.lint]
+# Regles activades:
+# E = errors d'estil (PEP 8)
+# F = errors lògics (pyflakes)
+# I = imports desordenats
+# N = convencions de nomenclatura
+# UP = suggeriments de modernització
+select = ["E", "F", "I", "N", "UP"]
+
+# Regles ignorades:
+# E501 = línia massa llarga (ja controlat per line-length)
+ignore = ["E501"]
+```
+
+#### Executar ruff
+
+```bash
+# Comprovar errors (sense corregir)
+ruff check .
+
+# Corregir errors automàticament (imports, format)
+ruff check . --fix
+
+# Exemple de sortida:
+# esportspulse/champion_service.py:3:1: F401 'os' imported but unused
+# esportspulse/sqlite_repository.py:15:5: N806 variable 'Champions' should be lowercase
+```
+
+---
+
+### Actualitzar GitHub Actions CI
+
+Actualitzem el workflow de CI per incloure cobertura i linting:
 
 ```yaml
-services:
-  ai-service:
-    build: ./ai-python
-    volumes:
-      # Sintaxi: ./ruta_host:ruta_contenidor
-      # El codi del host es munta dins del contenidor
-      # Qualsevol canvi al host es reflecteix instantàniament
-      - ./ai-python/src:/app/src
+# .github/workflows/ci.yml
+name: CI - EsportsPulse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Job 1: Java — compilar, testejar, verificar cobertura
+  java-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Configurar Java 21
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # mvn verify executa: compile → test → JaCoCo check
+      # Si la cobertura < 70%, el step FALLA i el CI es posa vermell
+      - name: Build and verify with Maven
+        run: mvn verify --batch-mode
+        working-directory: backend-java
+
+      # Pujar l'informe JaCoCo com a artefacte
+      # Permet descarregar-lo des de la pàgina del workflow
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend-java/target/site/jacoco/
+
+  # Job 2: Python — testejar, cobertura, linting
+  python-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Configurar Python 3.12
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Instal·lar dependències
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        working-directory: ai-python
+
+      # Executar ruff primer: si l'estil és incorrecte, no cal executar tests
+      # Falla ràpid: millor saber que tens un import no usat ABANS de córrer tests
+      - name: Lint with ruff
+        run: ruff check .
+        working-directory: ai-python
+
+      # Executar tests amb cobertura
+      # --cov-fail-under=70: falla si la cobertura < 70%
+      - name: Test with pytest and coverage
+        run: |
+          pytest --cov=esportspulse \
+                 --cov-report=html \
+                 --cov-report=term-missing \
+                 --cov-fail-under=70
+        working-directory: ai-python
+
+      # Pujar l'informe de cobertura Python
+      - name: Upload Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: ai-python/htmlcov/
 ```
 
-> **Quan usar cada un?**
-> - **Volums amb nom** per a dades de bases de dades (PostgreSQL, Qdrant) i dades que no necessites editar directament.
-> - **Bind mounts** per al codi durant el desenvolupament (hot-reload sense reconstruir la imatge).
+---
 
-### Variables d'Entorn: Configuració Flexible
+### Mutation Testing: Concepte (Manual)
 
-Les variables d'entorn permeten configurar l'aplicació **sense modificar el codi ni la imatge**. La mateixa imatge pot executar-se en desenvolupament, staging o producció canviant només les variables.
+El mutation testing verifica que els tests realment **detecten errors**. La idea:
 
-Recordes les variables d'entorn del terminal (S3)? En Docker funcionen exactament igual, però les passem de tres maneres:
+1. **Canvia** una línia del codi (crea un "mutant")
+2. **Executa** els tests
+3. Si els tests **fallen** → el mutant ha estat **detectat** (bé)
+4. Si els tests **passen** → el mutant ha **sobreviscut** (els tests són febles)
 
-**1. Directament al `docker-compose.yml`:**
+#### Exemples de Mutacions Manuals
 
-```yaml
-services:
-  backend:
-    environment:
-      # Llista de variables (format amb guió)
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
-      - SPRING_DATASOURCE_PASSWORD=secret
+```java
+// ORIGINAL: filtra campions amb winRate >= mínim
+public List<ChampionRecord> findByMinWinRate(double minRate) {
+    return repository.findAll().stream()
+        .filter(c -> c.winRate() >= minRate)  // Original: >=
+        .toList();
+}
+
+// MUTANT 1: canviar >= per >
+// Si els tests no fallen, no testegem el cas límit (winRate == minRate)
+        .filter(c -> c.winRate() > minRate)   // Mutant: >
+
+// MUTANT 2: eliminar el filtre
+// Si els tests no fallen, no estem comprovant que el filtre funciona
+    return repository.findAll();              // Mutant: retorna tot
+
+// MUTANT 3: canviar el return
+// Si els tests no fallen, no comprovem el resultat
+    return List.of();                         // Mutant: retorna buit
 ```
 
-**2. Amb un fitxer `.env`:**
+#### Com fer-ho manualment
 
-Crea un fitxer `.env` a l'arrel del projecte (al costat de `docker-compose.yml`):
+```bash
+# 1. Canvia una línia del codi (>= per >)
+# 2. Executa els tests
+mvn test
 
-```env
-# .env — Variables d'entorn per a Docker Compose
-# ATENCIÓ: NO PUGIS AQUEST FITXER A GIT (afegir-lo a .gitignore)
+# 3. Si els tests FALLEN → El mutant ha estat detectat (els tests són bons)
+# 4. Si els tests PASSEN → Tens un forat! Afegeix un test pel cas límit
 
-# PostgreSQL
-POSTGRES_USER=esportspulse
-POSTGRES_PASSWORD=super_secret_dev_password
-POSTGRES_DB=esportspulse_db
-
-# Backend Java
-SPRING_PROFILES_ACTIVE=dev
-
-# Servei Python
-LOG_LEVEL=DEBUG
-QDRANT_HOST=qdrant
+# 5. IMPORTANT: reverteix el canvi!
+git checkout -- src/main/java/com/esportspulse/engine/ChampionManagementService.java
 ```
 
-I referencia-les al `docker-compose.yml`:
-
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      # ${VARIABLE} agafa el valor del fitxer .env
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-```
-
-**3. Amb `env_file`:**
-
-```yaml
-services:
-  backend:
-    # Carrega TOTES les variables del fitxer especificat
-    env_file:
-      - .env
-```
-
-> **Connexió amb S5 (CI/CD):** En producció, les variables sensibles (passwords, API keys) es guarden en un gestor de secrets (GitHub Secrets, AWS Secrets Manager, etc.) i s'injecten com a variables d'entorn. El patró que aprenem avui amb `.env` és el mateix: l'aplicació llegeix la configuració de l'entorn, mai del codi.
-
-**Crea un fitxer `.env.example`** amb valors d'exemple (SENSE secrets reals) i puja'l a Git. Serveix de documentació per a qui cloni el projecte:
-
-```env
-# .env.example — Copia aquest fitxer a .env i omple els valors reals
-POSTGRES_USER=esportspulse
-POSTGRES_PASSWORD=change_me
-POSTGRES_DB=esportspulse_db
-SPRING_PROFILES_ACTIVE=dev
-LOG_LEVEL=INFO
-QDRANT_HOST=qdrant
-```
-
-### Health Checks: Saber si un Servei Està Realment Llest
-
-Dimecres vam veure que `depends_on` només espera que el **contenidor** arrenqui, no que l'**aplicació** estigui llesta. Això causa errors:
-
-```
-backend    | Connection refused: postgres:5432
-backend    | Retrying in 5 seconds...
-```
-
-PostgreSQL pot trigar 5-10 segons a estar llest. El backend intenta connectar-se immediatament i falla.
-
-**Solució: Health checks.** Definim una comanda que Docker executa periòdicament per verificar si el servei funciona. I amb `depends_on: condition: service_healthy`, el servei dependent espera fins que la dependència estigui sana.
-
-**Health check al Dockerfile:**
-
-```dockerfile
-# Dins del Dockerfile de PostgreSQL (o com a override al compose)
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD pg_isready -U esportspulse -d esportspulse_db || exit 1
-# --interval: cada quant comprova (10 segons)
-# --timeout: temps màxim per a la comprovació (5 segons)
-# --retries: quantes vegades ha de fallar abans de marcar-lo "unhealthy" (3)
-# pg_isready: comanda pròpia de PostgreSQL per comprovar si accepta connexions
-```
-
-**Health check al `docker-compose.yml`:**
-
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    healthcheck:
-      # pg_isready: comanda pròpia de PostgreSQL
-      test: ["CMD-SHELL", "pg_isready -U esportspulse -d esportspulse_db"]
-      interval: 10s       # Comprova cada 10 segons
-      timeout: 5s         # Si no respon en 5 segons, falla
-      retries: 3          # Després de 3 fallades, estat "unhealthy"
-      start_period: 30s   # Dona 30 segons d'arrencada abans de començar a comprovar
-
-  backend:
-    depends_on:
-      postgres:
-        condition: service_healthy   # Espera fins que PostgreSQL estigui "healthy"
-```
-
-**Estats d'un contenidor amb health check:**
-
-```
-starting → healthy → (si falla 3 cops) → unhealthy
-                ↑                             │
-                └─────────────────────────────┘
-                     (si torna a funcionar)
-```
-
-> **Connexió amb producció:** En un entorn real, els orquestradors (Kubernetes, ECS) utilitzen health checks per reiniciar automàticament serveis que fallen. El que aprenem aquí és el mateix patró, però a escala local.
+> **Consell:** Fes 3-5 mutacions manuals avui. Si algun mutant sobreviu, afegeix un test que el mati.
 
 ---
 
 ## Activitat
 
-### Part 1: Externalitzar Configuració amb .env
+### Exercici: Configurar Cobertura + CI
 
-**1.1. Crea el fitxer `.env` a l'arrel del projecte:**
+1. **Configura JaCoCo a `pom.xml`:**
+   - Afegeix el plugin amb els 3 goals: `prepare-agent`, `report`, `check`
+   - Estableix mínim 70% de cobertura de línies
+   - Executa `mvn verify` i obre l'informe HTML
 
-```env
-# ===================================================================
-# Variables d'entorn per al desenvolupament local
-# NO PUGIS AQUEST FITXER A GIT — conté secrets
-# ===================================================================
+2. **Configura pytest-cov:**
+   - Afegeix `pytest-cov` a `requirements.txt`
+   - Configura `pyproject.toml` amb les opcions per defecte
+   - Executa `pytest --cov-fail-under=70`
 
-# PostgreSQL
-POSTGRES_USER=esportspulse
-POSTGRES_PASSWORD=dev_secret_2024
-POSTGRES_DB=esportspulse_db
+3. **Configura ruff:**
+   - Afegeix configuració a `pyproject.toml`
+   - Executa `ruff check .` i corregeix els errors
 
-# Backend Java
-SPRING_PROFILES_ACTIVE=dev
-JAVA_OPTS=-Xmx512m
+4. **Actualitza `.github/workflows/ci.yml`:**
+   - Java job: `mvn verify` (inclou JaCoCo check)
+   - Python job: `ruff check .` + `pytest --cov-fail-under=70`
+   - Puja els informes com a artefactes
 
-# Servei Python
-LOG_LEVEL=DEBUG
-QDRANT_HOST=qdrant
-QDRANT_PORT=6333
-```
+5. **Mutation testing manual:**
+   - Fes 3 mutacions al codi Java (canvia `>=` per `>`, elimina un `null` check, canvia un return)
+   - Per a cada mutació: executa tests, anota si el mutant sobreviu
+   - Si sobreviu, escriu un test que el mati
+   - **Reverteix** totes les mutacions!
 
-**1.2. Crea el fitxer `.env.example`:**
+### Criteris d'Èxit
 
-```env
-# Copia aquest fitxer a .env i omple els valors
-POSTGRES_USER=esportspulse
-POSTGRES_PASSWORD=change_me
-POSTGRES_DB=esportspulse_db
-SPRING_PROFILES_ACTIVE=dev
-JAVA_OPTS=-Xmx512m
-LOG_LEVEL=INFO
-QDRANT_HOST=qdrant
-QDRANT_PORT=6333
-```
-
-**1.3. Afegeix `.env` al `.gitignore`:**
-
-```gitignore
-# Secrets locals — MAI pujar a Git
-.env
-```
-
-### Part 2: Afegir Health Checks a Tots els Serveis
-
-**2.1. Actualitza el `docker-compose.yml` complet:**
-
-```yaml
-# ===================================================================
-# Docker Compose amb volums, health checks i variables d'entorn
-# ===================================================================
-
-services:
-  # --- Backend Java ---
-  backend:
-    build:
-      context: ./backend-java
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
-      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
-      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
-      - JAVA_OPTS=${JAVA_OPTS}
-    depends_on:
-      postgres:
-        # El backend NO arrenca fins que PostgreSQL estigui "healthy"
-        condition: service_healthy
-    healthcheck:
-      # Spring Boot Actuator exposa /actuator/health
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 60s    # Spring Boot pot trigar a arrencar
-    restart: unless-stopped
-
-  # --- Servei Python ---
-  ai-service:
-    build:
-      context: ./ai-python
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    environment:
-      - QDRANT_HOST=${QDRANT_HOST}
-      - QDRANT_PORT=${QDRANT_PORT}
-      - LOG_LEVEL=${LOG_LEVEL}
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    healthcheck:
-      # El servei Python exposa /health
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
-
-  # --- PostgreSQL ---
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      # Volum amb nom: les dades sobreviuen a docker-compose down
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      # pg_isready: comanda nativa de PostgreSQL per comprovar l'estat
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
-
-  # --- Qdrant ---
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      # Volum amb nom per persistir els vectors
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      # Qdrant exposa /healthz per a comprovacions d'estat
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
-volumes:
-  pgdata:
-  qdrant_data:
-```
-
-### Part 3: Verificar que Tot Funciona
-
-**3.1. Arrenca l'stack i observa l'ordre d'arrencada:**
-
-```bash
-# Arrencar en primer pla per veure l'ordre
-docker-compose up --build
-
-# Hauries de veure:
-# 1. postgres i qdrant arranquen primer
-# 2. Docker espera que passin els health checks
-# 3. backend i ai-service arranquen quan les dependències estan healthy
-```
-
-**3.2. Comprova els health checks:**
-
-```bash
-# En un altre terminal, veure l'estat amb health checks
-docker-compose ps
-
-# Hauries de veure:
-# NAME         STATUS                  PORTS
-# postgres     Up (healthy)            0.0.0.0:5432->5432/tcp
-# qdrant       Up (healthy)            0.0.0.0:6333->6333/tcp
-# backend      Up (healthy)            0.0.0.0:8080->8080/tcp
-# ai-service   Up (healthy)            0.0.0.0:5000->5000/tcp
-
-# Inspeccionar el health check d'un servei concret
-docker inspect --format='{{json .State.Health}}' esportspulse-engine-postgres-1 | python3 -m json.tool
-```
-
-**3.3. Verificar la persistència de dades:**
-
-```bash
-# Crear una taula de prova a PostgreSQL
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
-CREATE TABLE IF NOT EXISTS test_persistencia (
-    id SERIAL PRIMARY KEY,
-    missatge TEXT NOT NULL,
-    creat_a TIMESTAMP DEFAULT NOW()
-);
-INSERT INTO test_persistencia (missatge) VALUES ('Dades que sobreviuen!');
-SELECT * FROM test_persistencia;
-"
-
-# Aturar i eliminar tots els contenidors (però NO els volums)
-docker-compose down
-
-# Tornar a arrencar
-docker-compose up -d
-
-# Verificar que les dades segueixen allà
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
-SELECT * FROM test_persistencia;
-"
-# Hauries de veure la fila "Dades que sobreviuen!"
-
-# ARA prova amb -v (elimina volums) — les dades es perden!
-docker-compose down -v
-docker-compose up -d
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
-SELECT * FROM test_persistencia;
-"
-# ERROR: relation "test_persistencia" does not exist
-# Les dades han desaparegut perquè hem eliminat el volum!
-```
-
-> **Lliçó important:** `docker-compose down` conserva els volums. `docker-compose down -v` els elimina. En desenvolupament, `-v` és útil per començar de zero. En producció, MAI facis `-v` sense una còpia de seguretat.
+- `mvn verify` passa amb cobertura >= 70%
+- `pytest --cov-fail-under=70` passa
+- `ruff check .` no reporta errors
+- CI actualitzat amb ambdós jobs
+- Almenys 3 mutants provats manualment
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] El fitxer `.env` existeix amb totes les variables i **NO** està a Git
-- [ ] El fitxer `.env.example` existeix i **SÍ** està a Git (sense secrets reals)
-- [ ] `.gitignore` inclou `.env`
-- [ ] Els 4 serveis del `docker-compose.yml` tenen `healthcheck` definit
-- [ ] `depends_on` amb `condition: service_healthy` per a backend i ai-service
-- [ ] PostgreSQL i Qdrant tenen volums amb nom declarats
-- [ ] `docker-compose up` arrenca els serveis en l'ordre correcte (DB primer, apps després)
-- [ ] `docker-compose ps` mostra tots els serveis com a "healthy"
-- [ ] Les dades de PostgreSQL sobreviuen a `docker-compose down` (sense `-v`)
-- [ ] Tots els canvis estan commitejats: `feat(docker): add health checks, volumes and env configuration`
+- [ ] JaCoCo configurat a `pom.xml` amb mínim 70%
+- [ ] `mvn verify` passa i genera informe HTML
+- [ ] `pytest-cov` configurat a `pyproject.toml`
+- [ ] `pytest --cov-fail-under=70` passa
+- [ ] `ruff` configurat i sense errors
+- [ ] `.github/workflows/ci.yml` actualitzat amb ambdós jobs
+- [ ] Almenys 3 mutacions manuals provades i documentades
+- [ ] Commit: `ci: add JaCoCo coverage check and Python linting with ruff`

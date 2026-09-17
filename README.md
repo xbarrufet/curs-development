@@ -8,13 +8,13 @@ Pla de formació de 24 setmanes per formar un enginyer de software junior (no no
 
 Si l'objectiu és maximitzar la inserció laboral i la capacitat d'operar software real, la seqüència ideal és:
 
-### Fase 1 — Base imprescindible (S1–S8)
-- **Fundaments reals**: Big-O, estructures, POO, SOLID, Linux/terminal, concurrència, testing, Git, CI, Docker.
-- **Per què primer**: és la base que permet a un junior ser útil en qualsevol equip tecnològic.
+### Fase 1 — Base imprescindible (S1–S9)
+- **Fundaments reals**: Big-O, estructures, POO, SOLID, Linux/terminal, persistència JPA, REST, concurrència, Git/CI, testing, Docker.
+- **Per què primer**: és la base que permet a un junior ser útil en qualsevol equip tecnològic — construeixes l'stack complet (domini→repository→service→REST) abans de professionalitzar-lo.
 - **Resultat buscats**: construir codi fiable, llegible i validable sobre infraestructura que controles.
 
-### Fase 2 — Productivitat i software operatiu (S9–S13)
-- **REST + contractes + SQL + observabilitat + autenticació + Streamlit**.
+### Fase 2 — Productivitat i software operatiu (S10–S13)
+- **LLMs estructurats + FastAPI + observabilitat + autenticació + Streamlit**.
 - **Per què ara**: són les habilitats més presents en projectes reals d'empresa i d'API/backend.
 - **Resultat buscats**: servei que funciona, s'administra, es monitoritza i es desplega sense drama.
 
@@ -54,25 +54,25 @@ La priorització ideal és:
 
 | Eina | Quan s'introdueix | Instal·lació | Per què |
 |------|-------------------|-------------|---------|
-| **Docker Desktop** | S8 (Docker, Qdrant, PostgreSQL) | [docker.com](https://www.docker.com/products/docker-desktop/) | Contenidors per BD, serveis, deploy |
-| **Postman** o **curl** | S3 / S9 | [postman.com](https://www.postman.com/downloads/) / ja instal·lat (macOS) | Testejar APIs REST manualment |
+| **Docker Desktop** | S9 (Docker, Qdrant, PostgreSQL) | [docker.com](https://www.docker.com/products/docker-desktop/) | Contenidors per BD, serveis, deploy |
+| **Postman** o **curl** | S3 / S5 | [postman.com](https://www.postman.com/downloads/) / ja instal·lat (macOS) | Testejar APIs REST manualment |
 | **Streamlit** | S13 | `pip install streamlit` | Dashboard / spec-driven UI |
 | **Qdrant** | S14 | Via Docker (`docker run qdrant/qdrant`) | Base vectorial per knowledge retrieval |
 | **Redis** | S12 (sessions), S15 (cache LLM) | Via Docker (`docker run redis:7`) | Cache de respostes, sessions, queries |
 | **PostgreSQL** | S18 | Via Docker (`docker run postgres:16`) | BD de producció (reemplaça H2) |
 | **RabbitMQ** | S19 (message queues) | Via Docker (`docker run rabbitmq:3-management`) | Events asíncrons entre serveis |
 | **Claude Code CLI** | S16+ (agents) | [claude.ai/claude-code](https://claude.ai/claude-code) | Agent de codi per terminal |
-| **Compte PandaScore** | S4 (extractor) | [pandascore.co](https://pandascore.co) (gratuït) | API de tornejos i resultats d'eSports |
+| **Compte PandaScore** | S6 (extractor) | [pandascore.co](https://pandascore.co) (gratuït) | API de tornejos i resultats d'eSports |
 
 ### Configuració Python recomanada
 
 ```bash
-# Crear entorn virtual (S6 formalment, però recomanat des de S1)
+# Crear entorn virtual (S4 formalment, però recomanat des de S1)
 python3 -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 
 # Dependències base (creixen al llarg del curs)
-pip install pytest ruff requests           # S1-S7
+pip install pytest ruff requests           # S1-S8
 pip install fastapi uvicorn pydantic       # S10-S11
 pip install structlog tenacity             # S11
 pip install streamlit plotly               # S13
@@ -92,9 +92,9 @@ mvn --version    # Ha de ser 3.9+
 
 # El projecte usa Spring Boot 3 amb Maven
 # Les dependències s'afegeixen al pom.xml progressivament:
-# S1-S5: spring-boot-starter, junit-jupiter
-# S6:    spring-boot-starter-data-jpa, h2
-# S9:    spring-boot-starter-web, springdoc-openapi
+# S1-S3: spring-boot-starter, junit-jupiter
+# S4:    spring-boot-starter-data-jpa, h2
+# S5:    spring-boot-starter-web, springdoc-openapi
 # S12:   spring-boot-starter-security
 # S18:   postgresql, flyway-core
 ```
@@ -113,8 +113,8 @@ ANTHROPIC_API_KEY=your_key_here   # S10+ (alternativa)
 
 | Bloc | Setmanes | Focus | Ratio mà/assistit |
 |------|----------|-------|-------------------|
-| **1. Fundaments** | S1–S8 | Algorítmica, POO, Linux/terminal, concurrència, testing, CI, Docker | 80% / 20% |
-| **2. APIs, Integració i Seguretat** | S9–S13 | REST, Pydantic, LLMs, error handling, auth (JWT), Streamlit, MCP | 50% / 50% |
+| **1. Fundaments i Vertical Slice** | S1–S9 | Algorítmica, POO, Linux/terminal, persistència JPA, REST, concurrència, Git/CI, testing, Docker | 80% / 20% |
+| **2. Integració IA i Seguretat** | S10–S13 | Pydantic, LLMs, error handling, auth (JWT), Streamlit, MCP | 50% / 50% |
 | **3. Knowledge, Agents i Spec-Driven** | S14–S17 | Knowledge engineering, retrieval, agents amb tool use, spec-driven dev | 30% / 70% |
 | **4. Infraestructura Avançada** | S18–S20 | SQL avançat, PostgreSQL, Redis, message queues, CI/CD, monitoring | 20% / 80% |
 | **5. Producció i Portfolio** | S21–S24 | Specs finals, deploy cloud, E2E, hardening, GitHub Pages, demo | 10% / 90% |
@@ -125,30 +125,32 @@ El curs té 5 fils que es treballen de forma progressiva cada setmana (no en blo
 
 - **Prompt Engineering** — De prompts bàsics (S1) a specs per agents (S17).
 - **Python com a Segon Llenguatge** — Exercicis mirall Java↔Python des de S1. A S10+ Python és co-protagonista.
-- **Escriptura de Specs** — `.cursorrules` (S2) → API specs (S9) → specs d'agent (S16) → spec-driven development (S17).
-- **Ecosistema d'Eines IA** — Hooks (S5) → MCP servers (S10-S11) → skills i plugins (S14, S17) → consolidació (S21).
+- **Escriptura de Specs** — `.cursorrules` (S2) → API specs (S5) → specs d'agent (S16) → spec-driven development (S17).
+- **Ecosistema d'Eines IA** — Hooks (S7) → MCP servers (S10-S11) → skills i plugins (S14, S17) → consolidació (S21).
 - **Mindset de Codi Productiu** — Observabilitat, mantenibilitat, escalabilitat, resiliència i operabilitat. Des de S1 (benchmarks + logging bàsic) fins a S23 (troubleshooting amb logs i mètriques). L'objectiu no és formar un developer que escriu codi que funciona, sinó un enginyer de SW que escriu codi que es pot operar en producció.
 
 ## Contingut per Setmana
 
-### Bloc 1: Fundaments (S1–S8)
+### Bloc 1: Fundaments i Vertical Slice (S1–S9)
+
+Setmanes 1-5: construcció de l'stack complet (Domini→Repository→Service→REST) sense interrupcions. Setmanes 6-9: professionalització d'aquest stack (concurrència, Git avançat/CI, testing, Docker) ja aplicada sobre una aplicació real i completa.
 
 | Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
 |---------|------|---------|---------|----------|--------|-----------|
 | **S1** | Rendiment i Big-O | [Entorn i Git](temari-setmanal/setmana01/setmana01_01_dilluns.md) | [Domini i Col·leccions](temari-setmanal/setmana01/setmana01_02_dimarts.md) | [Benchmark 100K](temari-setmanal/setmana01/setmana01_03_dimecres.md) | [Python Mirror](temari-setmanal/setmana01/setmana01_04_dijous.md) | [Tests i PR](temari-setmanal/setmana01/setmana01_05_divendres.md) |
 | **S2** | POO, SOLID i Immutabilitat | [SOLID i Records](temari-setmanal/setmana02/setmana02_01_dilluns.md) | [Interfaces i Repository](temari-setmanal/setmana02/setmana02_02_dimarts.md) | [Dependency Inversion](temari-setmanal/setmana02/setmana02_03_dimecres.md) | [Python Dataclasses](temari-setmanal/setmana02/setmana02_04_dijous.md) | [Integració i PR](temari-setmanal/setmana02/setmana02_05_divendres.md) |
 | **S3** | Linux, Terminal i Sistema | [SO i Terminal](temari-setmanal/setmana03/setmana03_01_dilluns.md) | [Permisos i PATH](temari-setmanal/setmana03/setmana03_02_dimarts.md) | [Pipes i Redirecció](temari-setmanal/setmana03/setmana03_03_dimecres.md) | [Bash Scripting](temari-setmanal/setmana03/setmana03_04_dijous.md) | [Xarxes, SSH i curl](temari-setmanal/setmana03/setmana03_05_divendres.md) |
-| **S4** | Concurrència Pràctica | [Threads i Race Conditions](temari-setmanal/setmana04/setmana04_01_dilluns.md) | [CompletableFuture](temari-setmanal/setmana04/setmana04_02_dimarts.md) | [Python asyncio](temari-setmanal/setmana04/setmana04_03_dimecres.md) | [Correlation IDs](temari-setmanal/setmana04/setmana04_04_dijous.md) | [Extractor Paral·lel](temari-setmanal/setmana04/setmana04_05_divendres.md) |
-| **S5** | Clean Code, Git, CI | [Anti-patrons IA](temari-setmanal/setmana05/setmana05_01_dilluns.md) | [Git Rebase](temari-setmanal/setmana05/setmana05_02_dimarts.md) | [GitHub Actions](temari-setmanal/setmana05/setmana05_03_dimecres.md) | [Specs i Hooks](temari-setmanal/setmana05/setmana05_04_dijous.md) | [Tag v0.1 i PR](temari-setmanal/setmana05/setmana05_05_divendres.md) |
-| **S6** | Patrons, Repository, JPA | [Repository Pattern](temari-setmanal/setmana06/setmana06_01_dilluns.md) | [Spring Data JPA](temari-setmanal/setmana06/setmana06_02_dimarts.md) | [SQL Fonamental](temari-setmanal/setmana06/setmana06_03_dimecres.md) | [Python SQLite](temari-setmanal/setmana06/setmana06_04_dijous.md) | [Entorn Python i PR](temari-setmanal/setmana06/setmana06_05_divendres.md) |
-| **S7** | Testing, Mocks, Qualitat | [JUnit 5 Avançat](temari-setmanal/setmana07/setmana07_01_dilluns.md) | [Mockito](temari-setmanal/setmana07/setmana07_02_dimarts.md) | [pytest i mock](temari-setmanal/setmana07/setmana07_03_dimecres.md) | [Cobertura i CI](temari-setmanal/setmana07/setmana07_04_dijous.md) | [Filosofia de Testing](temari-setmanal/setmana07/setmana07_05_divendres.md) |
-| **S8** | Docker i Docker Compose | [Què és Docker](temari-setmanal/setmana08/setmana08_01_dilluns.md) | [Dockerfile](temari-setmanal/setmana08/setmana08_02_dimarts.md) | [Docker Compose](temari-setmanal/setmana08/setmana08_03_dimecres.md) | [Volums i Health](temari-setmanal/setmana08/setmana08_04_dijous.md) | [Observabilitat](temari-setmanal/setmana08/setmana08_05_divendres.md) |
+| **S4** | Patrons, Repository, JPA | [Repository Pattern](temari-setmanal/setmana04/setmana04_01_dilluns.md) | [Spring Data JPA](temari-setmanal/setmana04/setmana04_02_dimarts.md) | [SQL Fonamental](temari-setmanal/setmana04/setmana04_03_dimecres.md) | [Python SQLite](temari-setmanal/setmana04/setmana04_04_dijous.md) | [Entorn Python i PR](temari-setmanal/setmana04/setmana04_05_divendres.md) |
+| **S5** | APIs REST, Spring Boot 3 | [Disseny REST](temari-setmanal/setmana05/setmana05_01_dilluns.md) | [CRUD i Validació](temari-setmanal/setmana05/setmana05_02_dimarts.md) | [Request Logging](temari-setmanal/setmana05/setmana05_03_dimecres.md) | [CLI Python i PR](temari-setmanal/setmana05/setmana05_04_dijous.md) | [Demo End-to-End](temari-setmanal/setmana05/setmana05_05_divendres.md) |
+| **S6** | Concurrència Pràctica | [Threads i Race Conditions](temari-setmanal/setmana06/setmana06_01_dilluns.md) | [CompletableFuture](temari-setmanal/setmana06/setmana06_02_dimarts.md) | [Virtual Threads](temari-setmanal/setmana06/setmana06_03_dimecres.md) | [Python asyncio](temari-setmanal/setmana06/setmana06_04_dijous.md) | [Correlation IDs i Extractor](temari-setmanal/setmana06/setmana06_05_divendres.md) |
+| **S7** | Clean Code, Git, CI | [Anti-patrons IA](temari-setmanal/setmana07/setmana07_01_dilluns.md) | [Git Rebase](temari-setmanal/setmana07/setmana07_02_dimarts.md) | [GitHub Actions](temari-setmanal/setmana07/setmana07_03_dimecres.md) | [Specs i Hooks](temari-setmanal/setmana07/setmana07_04_dijous.md) | [Tag v0.1 i PR](temari-setmanal/setmana07/setmana07_05_divendres.md) |
+| **S8** | Testing, Mocks, Qualitat | [JUnit 5 Avançat](temari-setmanal/setmana08/setmana08_01_dilluns.md) | [Mockito](temari-setmanal/setmana08/setmana08_02_dimarts.md) | [pytest i mock](temari-setmanal/setmana08/setmana08_03_dimecres.md) | [Cobertura i CI](temari-setmanal/setmana08/setmana08_04_dijous.md) | [Filosofia de Testing](temari-setmanal/setmana08/setmana08_05_divendres.md) |
+| **S9** | Docker i Docker Compose | [Què és Docker](temari-setmanal/setmana09/setmana09_01_dilluns.md) | [Dockerfile](temari-setmanal/setmana09/setmana09_02_dimarts.md) | [Docker Compose](temari-setmanal/setmana09/setmana09_03_dimecres.md) | [Volums i Health](temari-setmanal/setmana09/setmana09_04_dijous.md) | [Observabilitat](temari-setmanal/setmana09/setmana09_05_divendres.md) |
 
-### Bloc 2: APIs, Integració i Seguretat (S9–S13)
+### Bloc 2: Integració IA i Seguretat (S10–S13)
 
 | Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
 |---------|------|---------|---------|----------|--------|-----------|
-| **S9** | APIs REST, Spring Boot 3 | [Disseny REST](temari-setmanal/setmana09/setmana09_01_dilluns.md) | [CRUD i Validació](temari-setmanal/setmana09/setmana09_02_dimarts.md) | [Virtual Threads](temari-setmanal/setmana09/setmana09_03_dimecres.md) | [Request Logging](temari-setmanal/setmana09/setmana09_04_dijous.md) | [CLI Python i PR](temari-setmanal/setmana09/setmana09_05_divendres.md) |
 | **S10** | Pydantic, LLMs, MCP | [Pydantic Models](temari-setmanal/setmana10/setmana10_01_dilluns.md) | [API Claude/OpenAI](temari-setmanal/setmana10/setmana10_02_dimarts.md) | [FastAPI](temari-setmanal/setmana10/setmana10_03_dimecres.md) | [MCP Basics](temari-setmanal/setmana10/setmana10_04_dijous.md) | [Integració i PR](temari-setmanal/setmana10/setmana10_05_divendres.md) |
 | **S11** | Error Handling, Logging | [Excepcions](temari-setmanal/setmana11/setmana11_01_dilluns.md) | [Logging Estructurat](temari-setmanal/setmana11/setmana11_02_dimarts.md) | [Correlation IDs](temari-setmanal/setmana11/setmana11_03_dimecres.md) | [MCP Server Propi](temari-setmanal/setmana11/setmana11_04_dijous.md) | [Resiliència i PR](temari-setmanal/setmana11/setmana11_05_divendres.md) |
 | **S12** | Autenticació i Seguretat | [Auth i JWT](temari-setmanal/setmana12/setmana12_01_dilluns.md) | [Spring Security](temari-setmanal/setmana12/setmana12_02_dimarts.md) | [JWT Filter i Roles](temari-setmanal/setmana12/setmana12_03_dimecres.md) | [FastAPI JWT + Redis](temari-setmanal/setmana12/setmana12_04_dijous.md) | [Headers i OWASP](temari-setmanal/setmana12/setmana12_05_divendres.md) |
@@ -211,7 +213,7 @@ Tots els code snippets inclouen comentaris que expliquen **què fa** cada línia
 
 1. **Primer el dolor, després l'eina.** Les eines IA s'introdueixen quan l'estudiant ha viscut el problema que resolen.
 2. **Empleabilitat sobre acadèmia.** Cada tema es justifica per "això ho faràs al primer mes de feina" o "això et preguntaran a l'entrevista", no per completesa teòrica.
-3. **L'algorítmica necessària, no més.** Big-O i HashMap (S1) són suficients com a base. La resta s'integra quan el context ho demana (indexes a S6, concurrència a S4).
+3. **L'algorítmica necessària, no més.** Big-O i HashMap (S1) són suficients com a base. La resta s'integra quan el context ho demana (indexes a S4, concurrència a S6).
 4. **La IA és copilot, tu ets responsable.** L'estudiant aprèn a generar codi amb IA i a auditar-lo amb criteri: seguretat, rendiment, tests, mantenibilitat.
 5. **Java + Python des del dia 1.** Exercicis mirall en Python cada setmana per demostrar que els conceptes són universals.
 6. **Entendre la màquina.** L'estudiant aprèn Linux, terminal i conceptes de sistema (S3) perquè saber on corre el teu codi és el primer pas per operar-lo.

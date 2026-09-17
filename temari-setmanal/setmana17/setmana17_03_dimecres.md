@@ -68,7 +68,7 @@ Però **sempre** hi haurà coses a corregir. L'objectiu no és que surti perfect
 
 ### Code Review Checklist
 
-Recorda el checklist de S5 (Git i Code Review). Ara l'apliques al codi generat per un agent. La llista es divideix en categories:
+Recorda el checklist de S7 (Git i Code Review). Ara l'apliques al codi generat per un agent. La llista es divideix en categories:
 
 **Seguretat:**
 ```markdown

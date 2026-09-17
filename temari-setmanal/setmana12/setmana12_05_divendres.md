@@ -84,7 +84,7 @@ L'OWASP (Open Worldwide Application Security Project) publica les 10 vulnerabili
 |---|---|---|---|
 | A01 | Broken Access Control | Resolt | @PreAuthorize, Depends(require_role) |
 | A02 | Cryptographic Failures | Resolt | BCrypt per contrasenyes, JWT signat amb HS256 |
-| A03 | Injection | Parcialment | JPA parameterized queries (S6), pero cal revisar |
+| A03 | Injection | Parcialment | JPA parameterized queries (S4), pero cal revisar |
 | A04 | Insecure Design | Resolt | Principi deny-by-default a Spring Security |
 | A05 | Security Misconfiguration | Avui | Headers de seguretat, CORS configurat |
 | A06 | Vulnerable Components | Pendent | Cal actualitzar dependencies regularment |

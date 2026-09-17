@@ -1,416 +1,295 @@
-# Setmana 05 — Dimecres: GitHub Actions — CI Pipeline Automàtic
+# Setmana 05 — Dimecres: Middleware de Logging i Especificació de l'API
 
 ## Objectiu del Dia
 
-Configurar un pipeline de CI (Continuous Integration) amb GitHub Actions que executi els tests i el checkstyle automàticament a cada push. Al final del dia, cada cop que pugis codi a GitHub, els tests s'executaran sols i veuràs si el codi passa o falla sense haver d'executar res manualment.
+Implementar un filtre de logging que registri cada petició HTTP amb tota la informació necessària per a depuració i monitoratge. Escriure l'especificació formal de l'API de Champions. Al final del dia, cada petició quedarà registrada amb mètode, path, codi d'estat, durada i X-Request-Id.
 
 ---
 
 ## Teoria
 
-### Què és CI (Continuous Integration)?
+### Per Què Registrar Cada Petició?
 
-CI es la pràctica d'integrar el codi de tots els developers al repositori compartit **diverses vegades al dia**, amb verificació automàtica.
+En producció, quan alguna cosa falla, el log és l'única eina que tens per entendre què ha passat. Sense logs adequats, depurar un error és com buscar una agulla en un paller a les fosques.
 
-**Sense CI:**
+**Tres raons per loguejar peticions:**
 
-```
-Developer 1: "Al meu ordinador funciona" ✅
-Developer 2: "Al meu també" ✅
-Servidor de producció: Error 500 💥
+1. **Depuració**: "L'endpoint /api/champions va retornar 500 fa 5 minuts. Què va passar?"
+2. **Monitoratge**: "Quants requests per segon estem rebent? Quins endpoints són més lents?"
+3. **Auditoria**: "Qui va esborrar el campió amb ID 42? A quina hora?"
 
-Per què? Perquè les versions de Java, les dependències,
-o les configuracions eren diferents.
-```
-
-**Amb CI:**
+**Informació que necessitem per cada petició:**
 
 ```
-Developer 1: push → GitHub Actions executa tests → ✅ Passa
-Developer 2: push → GitHub Actions executa tests → ❌ Falla!
-  → Es veu immediatament quins tests fallen
-  → Es corregeix ABANS de fer merge a main
+[2024-03-15 14:32:01] INFO  --- REQUEST ---
+  Method: DELETE
+  Path: /api/champions/42
+  Status: 204
+  Duration: 23ms
+  Request-Id: 550e8400-e29b-41d4-a716-446655440000
 ```
 
-**Regla d'or:** Si el CI no passa, el codi NO es pot fer merge a main. Mai.
+### X-Request-Id: Traçabilitat entre Serveis
 
----
-
-### Anatomia d'un Workflow de GitHub Actions
-
-Un workflow és un fitxer YAML a `.github/workflows/` que defineix **què** s'executa, **quan** i **on**.
-
-```yaml
-# .github/workflows/ci.yml
-# Fitxer de configuració de CI — s'executa automàticament a cada push
-
-# 1. NOM — Descriptiu, apareix a la pestanya "Actions" de GitHub
-name: CI Pipeline
-
-# 2. TRIGGERS — Quan s'executa aquest workflow?
-on:
-  push:
-    branches: [ main ]          # A cada push a main
-  pull_request:
-    branches: [ main ]          # A cada PR que apunti a main
-
-# 3. JOBS — Què s'executa? Pot tenir múltiples jobs en paral·lel
-jobs:
-  # Nom del job — pot ser qualsevol cosa descriptiva
-  build-and-test:
-    # 4. RUNNER — On s'executa? Ubuntu és l'estàndard per CI
-    runs-on: ubuntu-latest
-
-    # 5. STEPS — Passos seqüencials dins del job
-    steps:
-      # Pas 1: Descarregar el codi del repositori
-      # 'uses' indica una "Action" pre-feta (com una llibreria)
-      - name: Checkout del codi
-        uses: actions/checkout@v4
-
-      # Pas 2: Instal·lar Java 21
-      - name: Configurar JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'    # Distribució OpenJDK gratuïta
-
-      # Pas 3: Executar els tests amb Maven
-      # 'run' executa una comanda de terminal
-      - name: Executar tests
-        run: mvn test --batch-mode
-        # --batch-mode evita output interactiu (no hi ha terminal al CI)
-```
-
----
-
-### Cada Element en Detall
-
-#### `name` — El nom del workflow
-
-```yaml
-# Apareix a la pestanya Actions de GitHub
-# Usa un nom descriptiu que expliqui QUÈ fa
-name: CI Pipeline              # ✅ Clar
-name: Build                    # ❌ Massa vague — build de què?
-```
-
-#### `on` — Triggers (quan s'executa)
-
-```yaml
-# Opció 1: A cada push i PR a main
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-# Opció 2: A QUALSEVOL push (totes les branques)
-on: push
-
-# Opció 3: Programat (cron) — per exemple, cada nit a les 2AM
-on:
-  schedule:
-    - cron: '0 2 * * *'        # Minuts Hores DiaDelMes Mes DiaDeLaSetmana
-
-# Opció 4: Manual (botó a GitHub)
-on:
-  workflow_dispatch:           # Afegeix un botó "Run workflow" a la UI
-```
-
-#### `runs-on` — El sistema operatiu del runner
-
-```yaml
-runs-on: ubuntu-latest         # Linux (el més comú per CI)
-runs-on: windows-latest        # Windows (si necessites .NET, per exemple)
-runs-on: macos-latest          # macOS (si necessites Xcode)
-```
-
-#### `uses` vs `run` — Actions pre-fetes vs comandes
-
-```yaml
-steps:
-  # 'uses' — Usa una Action del Marketplace de GitHub
-  # Format: organització/nom-action@versió
-  - name: Checkout
-    uses: actions/checkout@v4           # Descarrega el codi del repo
-
-  - name: Setup Java
-    uses: actions/setup-java@v4         # Instal·la Java
-    with:                                # Paràmetres de l'Action
-      java-version: '21'
-      distribution: 'temurin'
-
-  # 'run' — Executa comandes de terminal directament
-  - name: Compilar
-    run: mvn compile --batch-mode
-
-  # Múltiples comandes amb '|' (pipe YAML)
-  - name: Tests i cobertura
-    run: |
-      mvn test --batch-mode
-      echo "Tests completats!"
-```
-
----
-
-### Workflow Complet per EsportsPulse
-
-```yaml
-# .github/workflows/ci.yml
-# Pipeline de CI complet per al projecte EsportsPulse
-# Executa: compilació, tests, checkstyle i (opcionalment) cobertura
-
-name: EsportsPulse CI
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  # JOB 1: Compilar i executar tests de Java
-  java-build:
-    name: Java Build & Test
-    runs-on: ubuntu-latest
-
-    steps:
-      # Descarreguem el codi del repositori
-      - name: Checkout del codi
-        uses: actions/checkout@v4
-
-      # Configurem Java 21 (Temurin és una distribució gratuïta d'OpenJDK)
-      - name: Configurar JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      # Cache de Maven — evita descarregar dependències cada vegada
-      # Estalvia 2-3 minuts per execució
-      - name: Cache de dependències Maven
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      # Compilar el projecte (sense executar tests encara)
-      - name: Compilar
-        run: mvn compile --batch-mode
-        working-directory: ./java     # Si el projecte Java està en un subdirectori
-
-      # Executar tots els tests
-      - name: Executar tests
-        run: mvn test --batch-mode
-        working-directory: ./java
-
-      # Executar Checkstyle per validar l'estil del codi
-      - name: Checkstyle
-        run: mvn checkstyle:check --batch-mode
-        working-directory: ./java
-
-  # JOB 2: Lint de Python (s'executa en paral·lel amb java-build)
-  python-lint:
-    name: Python Lint & Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout del codi
-        uses: actions/checkout@v4
-
-      # Configurem Python 3.12
-      - name: Configurar Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # Instal·lem dependències de Python
-      - name: Instal·lar dependències
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ruff pytest
-        working-directory: ./python
-
-      # Ruff — linter ultra-ràpid per Python (substitueix flake8, isort, etc.)
-      - name: Lint amb ruff
-        run: ruff check .
-        working-directory: ./python
-
-      # Executar tests de Python
-      - name: Executar tests
-        run: pytest --verbose
-        working-directory: ./python
-```
-
----
-
-### Checkstyle — Estil de Codi Automàtic
-
-Checkstyle valida que el codi Java segueix un estàndard d'estil (indentació, noms, imports).
-
-#### Configuració al `pom.xml`
-
-```xml
-<!-- pom.xml — Secció de plugins -->
-<build>
-    <plugins>
-        <!-- Plugin de Checkstyle — valida l'estil del codi automàticament -->
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-checkstyle-plugin</artifactId>
-            <version>3.3.1</version>
-            <configuration>
-                <!-- Usem les regles de Google (estàndard de la indústria) -->
-                <configLocation>google_checks.xml</configLocation>
-                <!-- Si hi ha violacions, el build falla -->
-                <failOnViolation>true</failOnViolation>
-                <!-- Nivell de severitat mínim per fallar -->
-                <violationSeverity>warning</violationSeverity>
-            </configuration>
-        </plugin>
-    </plugins>
-</build>
-```
-
-Per executar-lo:
-
-```bash
-# Verificar l'estil del codi
-mvn checkstyle:check
-
-# Si falla, veuràs missatges com:
-# [ERROR] src/main/java/com/esportspulse/ChampionService.java:15:
-#   Whitespace: 'if' is not followed by whitespace. [WhitespaceAround]
-# [ERROR] src/main/java/com/esportspulse/ChampionService.java:23:
-#   Naming: Name 'winrate' must match pattern '^[a-z][a-zA-Z0-9]*$' [LocalVariableName]
-```
-
-**Per què importa l'estil automàtic?**
-- Elimina discussions inútils al code review ("hauries de posar espai aquí")
-- Tothom escriu codi amb el mateix format
-- El CI ho comprova automàticament, no cal que ho revisi un humà
-
----
-
-### Entendre els Resultats del CI
-
-Quan fas push, GitHub mostra l'estat del CI:
+Quan una petició travessa múltiples serveis (API Java -> Servei Python -> BD), necessitem un identificador únic que permeti seguir-la per tots els logs:
 
 ```
-  Commit abc1234: "feat: add champion search"
-
-  ✅ Java Build & Test — Passed (2m 15s)
-     ✅ Checkout del codi
-     ✅ Configurar JDK 21
-     ✅ Compilar
-     ✅ Executar tests (15 tests passed)
-     ✅ Checkstyle
-
-  ❌ Python Lint & Test — Failed (45s)
-     ✅ Checkout del codi
-     ✅ Configurar Python 3.12
-     ❌ Lint amb ruff
-        Error: champion_service.py:12: F841 local variable 'x' is assigned but never used
+Client
+  ↓ X-Request-Id: abc-123
+API Java (log: abc-123 → GET /api/champions)
+  ↓ X-Request-Id: abc-123
+Servei Python (log: abc-123 → analyze champion stats)
+  ↓ X-Request-Id: abc-123
+Base de Dades (log: abc-123 → SELECT * FROM champions)
 ```
 
-**Quan el CI falla:**
-1. Clica al job que ha fallat
-2. Llegeix el missatge d'error (sol ser clar)
-3. Corregeix al teu ordinador
-4. Fes commit i push — el CI es torna a executar automàticament
+**Regla**: Si el client envia `X-Request-Id`, l'usem. Si no l'envia, en generem un de nou (UUID). Sempre el retornem a la resposta.
+
+### OncePerRequestFilter: El Filtre de Spring Boot
+
+Spring Boot proporciona `OncePerRequestFilter`, que garanteix que el filtre s'executa exactament un cop per petició (important amb forwards i redirects interns):
+
+```java
+// === Filtre de logging per a totes les peticions HTTP ===
+// OncePerRequestFilter garanteix una sola execució per request
+// @Component fa que Spring el registri automàticament
+@Component
+public class RequestLoggingFilter extends OncePerRequestFilter {
+
+    // Logger estàndard de SLF4J — el framework de logging de Spring Boot
+    private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
+
+    // Nom de la capçalera que conté l'identificador únic de la petició
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+
+        // 1. Obtenim o generem el X-Request-Id
+        // Si el client l'envia, el respectem; si no, en generem un de nou
+        String requestId = request.getHeader(REQUEST_ID_HEADER);
+        if (requestId == null || requestId.isBlank()) {
+            requestId = UUID.randomUUID().toString();
+        }
+
+        // 2. Afegim el X-Request-Id a la resposta perquè el client el pugui veure
+        response.setHeader(REQUEST_ID_HEADER, requestId);
+
+        // 3. Registrem el moment d'inici per calcular la durada
+        long startTime = System.currentTimeMillis();
+
+        // 4. Guardem el requestId al MDC (Mapped Diagnostic Context)
+        // MDC és un magatzem thread-local que permet incloure dades a TOTS els logs
+        // del mateix thread sense passar-les explícitament
+        MDC.put("requestId", requestId);
+
+        try {
+            // 5. Deixem que la petició continuï cap al controller
+            // filterChain.doFilter() passa la petició al següent filtre o al controller
+            filterChain.doFilter(request, response);
+        } finally {
+            // 6. Calculem la durada total de la petició
+            long duration = System.currentTimeMillis() - startTime;
+
+            // 7. Registrem tota la informació al log
+            log.info("HTTP {} {} — Status: {} — Duration: {}ms — RequestId: {}",
+                request.getMethod(),              // GET, POST, PUT, DELETE
+                request.getRequestURI(),           // /api/champions/42
+                response.getStatus(),              // 200, 404, 500...
+                duration,                          // Temps en mil·lisegons
+                requestId                          // Identificador únic
+            );
+
+            // 8. Netegem el MDC per evitar fuites de memòria
+            // Crític amb virtual threads: el MDC és thread-local
+            MDC.clear();
+        }
+    }
+}
+```
+
+### Configuració del Format de Log
+
+Per aprofitar el MDC, configurem el format de log:
+
+```properties
+# application.properties — Format de log personalitzat
+# Incloem el requestId del MDC directament al format del log
+# %X{requestId} extreu el valor del MDC amb clau "requestId"
+logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n
+```
+
+Ara tots els logs dins de la mateixa petició (no només el del filtre) inclouran el requestId:
+
+```
+2024-03-15 14:32:01 [550e8400] INFO  RequestLoggingFilter - HTTP GET /api/champions — Status: 200 — Duration: 45ms — RequestId: 550e8400
+2024-03-15 14:32:01 [550e8400] DEBUG ChampionService - Finding all champions with filters
+2024-03-15 14:32:01 [550e8400] DEBUG ChampionRepository - SELECT * FROM champions
+```
+
+### Filtrar Paths que No Volem Loguejar
+
+No ens interessa loguejar peticions a recursos estàtics o endpoints interns:
+
+```java
+// === Dins de RequestLoggingFilter ===
+// shouldNotFilter determina quins paths NO passaran pel filtre
+@Override
+protected boolean shouldNotFilter(HttpServletRequest request) {
+    String path = request.getRequestURI();
+    // No loguegem la consola H2 ni endpoints d'actuator
+    // Aquests generen molt tràfic intern que embruta els logs
+    return path.startsWith("/h2-console")
+        || path.startsWith("/actuator")
+        || path.startsWith("/favicon.ico");
+}
+```
+
+### Testejar el Filtre
+
+```java
+// === Test unitari per al filtre de logging ===
+@WebMvcTest(ChampionController.class)
+class RequestLoggingFilterTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private ChampionService service;
+
+    @Test
+    void shouldAddRequestIdToResponse() throws Exception {
+        // Fem una petició GET sense enviar X-Request-Id
+        mockMvc.perform(get("/api/champions"))
+            // Verifiquem que la resposta inclou la capçalera X-Request-Id
+            .andExpect(header().exists("X-Request-Id"))
+            // I que és un UUID vàlid (36 caràcters amb guions)
+            .andExpect(header().string("X-Request-Id",
+                org.hamcrest.Matchers.matchesPattern(
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                )));
+    }
+
+    @Test
+    void shouldUseProvidedRequestId() throws Exception {
+        String customId = "el-meu-request-id-personalitzat";
+        // Enviem un X-Request-Id propi
+        mockMvc.perform(get("/api/champions")
+                .header("X-Request-Id", customId))
+            // Verifiquem que el servidor respecta el nostre ID
+            .andExpect(header().string("X-Request-Id", customId));
+    }
+}
+```
+
+### Especificació Formal de l'API
+
+Una bona especificació documenta tot el que un client necessita per consumir l'API:
+
+```markdown
+# EsportsPulse — Champions API Specification
+
+## Base URL
+`http://localhost:8080/api`
+
+## Headers Comuns
+| Header          | Descripció                              | Obligatori |
+|-----------------|-----------------------------------------|------------|
+| Content-Type    | `application/json` per POST i PUT       | Sí (*)     |
+| X-Request-Id    | UUID per traçabilitat. Generat si absent | No         |
+
+## Endpoints
+
+### 1. Llistar Campions
+- **URL**: `GET /champions`
+- **Query Params**: `name` (String), `role` (String), `minGames` (int)
+- **Resposta 200**:
+  ```json
+  [
+    { "id": 1, "name": "Ahri", "role": "Mage", "winRate": 52.3, "totalGames": 1200 }
+  ]
+  ```
+
+### 2. Obtenir Campió per ID
+- **URL**: `GET /champions/{id}`
+- **Resposta 200**: Un objecte ChampionDTO
+- **Resposta 404**: `{ "error": "Champion amb id 99 no trobat" }`
+
+### 3. Crear Campió
+- **URL**: `POST /champions`
+- **Cos**:
+  ```json
+  { "name": "Jinx", "role": "Marksman", "winRate": 51.8 }
+  ```
+- **Resposta 201**: ChampionDTO creat (amb id generat)
+- **Resposta 400**: `{ "name": "El nom del campió és obligatori" }`
+
+### 4. Actualitzar Campió
+- **URL**: `PUT /champions/{id}`
+- **Cos**:
+  ```json
+  { "name": "Ahri", "role": "Mage", "winRate": 53.1, "totalGames": 1500 }
+  ```
+- **Resposta 200**: ChampionDTO actualitzat
+- **Resposta 404**: Si l'ID no existeix
+
+### 5. Esborrar Campió
+- **URL**: `DELETE /champions/{id}`
+- **Resposta 204**: Sense cos
+- **Resposta 404**: Si l'ID no existeix
+```
 
 ---
 
 ## Activitat
 
-### Exercici 1: Crear el Pipeline CI des de Zero (45 min)
+### Part 1: Implementa el RequestLoggingFilter
 
-1. Crea el directori per al workflow:
+1. Crea `RequestLoggingFilter.java` al paquet `com.esportspulse.engine.filter`
+2. Implementa tot el codi del filtre: mètode, path, status, durada, X-Request-Id
+3. Configura el format de log a `application.properties`
+4. Afegeix `shouldNotFilter` per excloure paths innecessaris
 
-```bash
-# Crea el directori (ha d'estar exactament aquí, GitHub el busca aquí)
-mkdir -p .github/workflows
-```
-
-2. Crea el fitxer `.github/workflows/ci.yml` amb el contingut del workflow complet (veure secció anterior).
-
-3. Adapta els `working-directory` a l'estructura del teu projecte.
-
-4. Fes commit i push:
+### Part 2: Verifica el Funcionament
 
 ```bash
-git add .github/workflows/ci.yml
-git commit -m "ci: add GitHub Actions pipeline for Java and Python"
-git push origin main
+# Sense X-Request-Id (el servidor en genera un)
+curl -v http://localhost:8080/api/champions
+# Comprova que la resposta inclou la capçalera X-Request-Id
+
+# Amb X-Request-Id propi
+curl -v -H "X-Request-Id: test-123" http://localhost:8080/api/champions
+# Comprova que la resposta retorna X-Request-Id: test-123
+
+# Verifica el log del servidor — ha de mostrar:
+# HTTP GET /api/champions — Status: 200 — Duration: 23ms — RequestId: test-123
 ```
 
-5. Ves a la pestanya **Actions** del teu repositori a GitHub i observa l'execució.
+### Part 3: Escriu l'Especificació Completa de l'API
 
-### Exercici 2: Configurar Checkstyle (30 min)
+1. Crea `docs/api-spec.md` amb tots els endpoints, request/response bodies i codis d'error
+2. Revisa que cada endpoint del controller apareix a l'especificació
+3. Comprova que els exemples JSON coincideixen amb els DTOs reals
 
-1. Afegeix el plugin de Checkstyle al `pom.xml` (veure secció anterior).
+### Part 4: Tests del Filtre
 
-2. Executa localment:
-
-```bash
-mvn checkstyle:check
-```
-
-3. Corregeix les violacions d'estil que trobi.
-
-4. Torna a executar fins que passi sense errors.
-
-### Exercici 3: Provocar un Error al CI (15 min)
-
-1. Introdueix un error intencionat (per exemple, un test que falla).
-2. Fes push i observa com el CI detecta l'error.
-3. Corregeix l'error, fes push de nou, i verifica que el CI passa.
-4. Reflexiona: **Quant de temps t'ha estalviat el CI** respecte a trobar l'error manualment?
-
-### Exercici 4: Interpretar YAML (20 min)
-
-Llegeix el seguent workflow i respon les preguntes:
-
-```yaml
-name: Mystery Workflow
-on:
-  schedule:
-    - cron: '0 3 * * 1'
-  workflow_dispatch:
-
-jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run security audit
-        run: mvn dependency:tree | grep -i "vulnerability"
-      - name: Check for secrets
-        run: |
-          if grep -r "API_KEY\|SECRET\|PASSWORD" src/ --include="*.java"; then
-            echo "::error::Secrets trobats al codi font!"
-            exit 1
-          fi
-```
-
-**Preguntes:**
-1. Quan s'executa aquest workflow? (pista: tradueix el cron)
-2. Es pot executar manualment? Per què?
-3. Què fa el segon step? Què passaria si trobés un secret al codi?
-4. Per què l'exit code `1` és important?
+1. Crea `RequestLoggingFilterTest.java`
+2. Verifica que el X-Request-Id s'afegeix automàticament
+3. Verifica que un X-Request-Id enviat pel client es respecta
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] He creat `.github/workflows/ci.yml` amb el pipeline complet
-- [ ] El CI s'executa automàticament quan faig push
-- [ ] He configurat Checkstyle al `pom.xml` i passa localment
-- [ ] He provocat un error al CI i l'he corregit
-- [ ] He respost les preguntes de l'Exercici 4
-- [ ] Entenc la diferència entre `uses` (Actions) i `run` (comandes)
-- [ ] Commit amb missatge: `ci: add GitHub Actions pipeline with checkstyle`
+- [ ] `RequestLoggingFilter` implementat amb mètode, path, status, durada i X-Request-Id
+- [ ] Cada petició genera un log amb tota la informació
+- [ ] X-Request-Id present a totes les respostes HTTP
+- [ ] Si el client no envia X-Request-Id, el servidor en genera un (UUID)
+- [ ] Si el client envia X-Request-Id, el servidor el respecta
+- [ ] `docs/api-spec.md` complet amb tots els endpoints documentats
+- [ ] Tests del filtre passen correctament
+- [ ] Commit: `feat(logging): add request logging filter with X-Request-Id`

@@ -1,387 +1,449 @@
-# Setmana 8 — Dimecres: Docker Compose: Orquestrar Múltiples Serveis
+# Setmana 08 — Dimecres: pytest i unittest.mock — Testing en Python
 
 ## Objectiu del Dia
 
-Definir tota l'arquitectura del projecte en un sol fitxer `docker-compose.yml` i poder arrencar els quatre serveis (Java backend, Python service, PostgreSQL, Qdrant) amb una única comanda. Al final del dia, `docker-compose up` ha d'aixecar tot l'stack i els serveis han de comunicar-se entre ells per nom.
+Traslladar els patrons de testing que hem après amb JUnit 5 i Mockito al món Python amb pytest. Al final del dia tindràs una suite de tests completa per al mòdul Python d'EsportsPulse, usant fixtures, tests parametritzats i mocks.
 
 ---
 
 ## Teoria
 
-### El Problema: Massa Comandes Manuals
+### pytest vs JUnit: Mateixa Filosofia, Diferent Sintaxi
 
-Ahir vam executar dos contenidors amb `docker run`. Cadascun necessitava flags:
+Python i Java comparteixen els mateixos principis de testing, però les eines tenen personalitats molt diferents. pytest és minimalista: menys boilerplate, més convencions.
 
-```bash
-# Backend Java
-docker run -d -p 8080:8080 --name backend esportspulse-backend:latest
+### Fixtures: L'Equivalent de @BeforeEach
 
-# Servei Python
-docker run -d -p 5000:5000 --name ai-service esportspulse-ai:latest
+Una fixture és una funció decorada amb `@pytest.fixture` que prepara dades o objectes per als tests. pytest les injecta automàticament com a paràmetres:
 
-# PostgreSQL (amb variables d'entorn i volum)
-docker run -d -p 5432:5432 \
-  --name postgres \
-  -e POSTGRES_USER=esportspulse \
-  -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_DB=esportspulse_db \
-  -v pgdata:/var/lib/postgresql/data \
-  postgres:16-alpine
+```python
+# test_champion_service.py
 
-# Qdrant (base de dades vectorial per al servei d'IA)
-docker run -d -p 6333:6333 \
-  --name qdrant \
-  -v qdrant_data:/qdrant/storage \
-  qdrant/qdrant:latest
+import pytest
+from esportspulse.champion_record import ChampionRecord
+from esportspulse.champion_service import ChampionManagementService
+from esportspulse.in_memory_repository import InMemoryChampionRepository
+
+
+# Fixture: crea un repositori buit per a cada test
+# S'executa automàticament abans de cada test que la requereixi
+@pytest.fixture
+def repository():
+    """Repositori buit, equivalent a @BeforeEach en JUnit."""
+    return InMemoryChampionRepository()
+
+
+# Fixture: crea el servei injectant el repositori
+# Demostra composició de fixtures: depèn de 'repository'
+@pytest.fixture
+def service(repository):
+    """Servei amb repositori buit, llest per testejar."""
+    return ChampionManagementService(repository)
+
+
+# Fixture: repositori amb dades predefinides
+# Útil per als tests de cerca que necessiten dades existents
+@pytest.fixture
+def populated_repository(repository):
+    """Repositori amb 3 campions per a tests de cerca."""
+    repository.save(ChampionRecord("jinx", "Marksman", 51.5))
+    repository.save(ChampionRecord("lux", "Mage", 52.0))
+    repository.save(ChampionRecord("thresh", "Support", 49.8))
+    return repository
+
+
+# Fixture: servei amb dades
+# Composició: depèn de populated_repository
+@pytest.fixture
+def populated_service(populated_repository):
+    """Servei amb 3 campions registrats."""
+    return ChampionManagementService(populated_repository)
 ```
 
-Quatre comandes, cadascuna amb diversos flags. I encara no hem configurat la xarxa perquè es comuniquin entre ells. Imagina haver de recordar tot això cada cop que vulguis arrencar el projecte. **Insostenible.**
+#### conftest.py: Fixtures Compartides
 
-### Docker Compose: Un Sol Fitxer, Tot Definit
+Quan múltiples fitxers de test necessiten les mateixes fixtures, les posem a `conftest.py`:
 
-Docker Compose és una eina que permet definir i executar aplicacions multi-contenidor. Tot es descriu en un fitxer YAML (`docker-compose.yml`), i amb una sola comanda aixeques o atures tot.
+```python
+# tests/conftest.py
+# pytest detecta automàticament aquest fitxer
+# Les fixtures definides aquí estan disponibles a TOTS els tests del directori
 
-```yaml
-# docker-compose.yml és la "planta" de l'edifici.
-# Cada servei és una "habitació" amb la seva funció.
-# Docker Compose construeix l'edifici sencer amb una comanda.
+import pytest
+from esportspulse.champion_record import ChampionRecord
+
+
+@pytest.fixture
+def sample_jinx():
+    """Campió de test: Jinx (Marksman)."""
+    return ChampionRecord("jinx", "Marksman", 51.5)
+
+
+@pytest.fixture
+def sample_lux():
+    """Campió de test: Lux (Mage)."""
+    return ChampionRecord("lux", "Mage", 52.0)
+
+
+@pytest.fixture
+def sample_champions(sample_jinx, sample_lux):
+    """Llista de campions de test per a proves de col·lecció."""
+    return [
+        sample_jinx,
+        sample_lux,
+        ChampionRecord("thresh", "Support", 49.8),
+    ]
 ```
 
-### Anatomia d'un docker-compose.yml
+#### Ús en Tests
 
-```yaml
-# Cada bloc de primer nivell sota "services" defineix un contenidor.
-services:
+```python
+# test_champion_service.py
 
-  # Nom del servei. Els altres contenidors el troben amb aquest nom.
-  backend:
-    # "build" diu a Compose que construeixi la imatge des d'un Dockerfile
-    build:
-      context: ./backend-java      # Carpeta on hi ha el Dockerfile
-      dockerfile: Dockerfile        # Nom del Dockerfile (per defecte ja és "Dockerfile")
+def test_should_register_new_champion(service, sample_jinx):
+    """Registrar un campió vàlid ha de guardar-lo al repositori."""
+    # pytest injecta automàticament 'service' i 'sample_jinx'
+    # No cal instanciar res manualment
+    service.register(sample_jinx)
 
-    # Mapeig de ports: HOST:CONTENIDOR
-    # El port de l'esquerra és el del teu ordinador
-    # El port de la dreta és el de dins del contenidor
-    ports:
-      - "8080:8080"
+    found = service.find_by_id("jinx")
+    assert found is not None
+    assert found.role == "Marksman"
 
-    # Variables d'entorn que rep el contenidor
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
-      - SPRING_DATASOURCE_USERNAME=esportspulse
-      - SPRING_DATASOURCE_PASSWORD=secret
 
-    # depends_on: aquest servei s'arrencarà DESPRÉS dels serveis llistats.
-    # Atenció: "després" vol dir que el contenidor ha arrencat,
-    # NO que l'aplicació dins estigui llesta. Ho millorarem dijous.
-    depends_on:
-      - postgres
-
-  ai-service:
-    build:
-      context: ./ai-python
-    ports:
-      - "5000:5000"
-    environment:
-      - QDRANT_HOST=qdrant          # El servei Python es connecta a Qdrant pel nom
-      - QDRANT_PORT=6333
-    depends_on:
-      - qdrant
-
-  # Serveis de tercers: no cal "build", usem "image" directament
-  postgres:
-    image: postgres:16-alpine       # Imatge oficial de PostgreSQL (versió Alpine, lleugera)
-    ports:
-      - "5432:5432"                 # Exposar port per si volem connectar-nos des del host
-    environment:
-      - POSTGRES_USER=esportspulse
-      - POSTGRES_PASSWORD=secret
-      - POSTGRES_DB=esportspulse_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data   # Volum per persistir dades (ho veurem dijous)
-
-  qdrant:
-    image: qdrant/qdrant:latest     # Base de dades vectorial per a embeddings
-    ports:
-      - "6333:6333"                 # API REST de Qdrant
-      - "6334:6334"                 # API gRPC de Qdrant
-    volumes:
-      - qdrant_data:/qdrant/storage
-
-# Declaració de volums amb nom.
-# Docker els gestiona automàticament. Les dades sobreviuen a docker-compose down.
-volumes:
-  pgdata:
-  qdrant_data:
+def test_should_return_all_champions(populated_service):
+    """Ha de retornar tots els campions registrats."""
+    # 'populated_service' ja té 3 campions gràcies a la fixture
+    champions = populated_service.find_all()
+    assert len(champions) == 3
 ```
 
-### Networking: Com es Comuniquen els Contenidors
+---
 
-Quan fas `docker-compose up`, Docker Compose crea automàticament una **xarxa virtual** (bridge network) per al teu projecte. Dins d'aquesta xarxa:
+### @pytest.mark.parametrize: L'Equivalent de @ParameterizedTest
 
-- Cada servei és accessible pel **nom del servei** com a hostname
-- `localhost` dins d'un contenidor es refereix **al propi contenidor**, no al teu ordinador
-- Els contenidors es resolen entre ells per DNS intern de Docker
+```python
+# Testem validació de winRate amb múltiples valors
+# Cada tupla (winRate, expected_valid) és un cas de test independent
+@pytest.mark.parametrize(
+    "win_rate, expected_valid",
+    [
+        (0.0, True),      # Límit inferior: winRate zero és vàlid
+        (52.3, True),     # Cas normal: winRate típic
+        (100.0, True),    # Límit superior: winRate màxim
+        (-1.0, False),    # Fora de rang: negatiu no és vàlid
+        (101.0, False),   # Fora de rang: supera 100%
+    ],
+)
+def test_should_validate_win_rate(service, win_rate, expected_valid):
+    """El servei ha de validar que el winRate està entre 0 i 100."""
+    champion = ChampionRecord("test", "Mage", win_rate)
+
+    if expected_valid:
+        # No ha de llançar excepció per a valors vàlids
+        service.register(champion)
+        assert service.find_by_id("test") is not None
+    else:
+        # Ha de llançar ValueError per a valors invàlids
+        with pytest.raises(ValueError):
+            service.register(champion)
+
+
+# Parametritzar amb objectes complexos
+# Cada campió és un cas de test complet
+@pytest.mark.parametrize(
+    "champion",
+    [
+        ChampionRecord("jinx", "Marksman", 51.5),
+        ChampionRecord("lux", "Mage", 52.0),
+        ChampionRecord("thresh", "Support", 49.8),
+        ChampionRecord("garen", "Fighter", 50.1),
+    ],
+    # ids personalitzats per a la sortida de pytest
+    ids=["jinx-marksman", "lux-mage", "thresh-support", "garen-fighter"],
+)
+def test_should_register_valid_champions(service, champion):
+    """Tots els campions vàlids s'han de poder registrar correctament."""
+    service.register(champion)
+    found = service.find_by_id(champion.name)
+    assert found is not None
+    assert found.role == champion.role
+```
+
+**Sortida de pytest:**
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              Xarxa Docker (bridge)                  │
-│                                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────┐ │
-│  │ backend  │  │ai-service│  │ postgres │  │qdr.│ │
-│  │ :8080    │  │ :5000    │  │ :5432    │  │:6333│ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──┬─┘ │
-│       │              │              │            │   │
-│       └──────────────┴──────┬───────┴────────────┘   │
-│                             │                        │
-└─────────────────────────────┼────────────────────────┘
-                              │
-                    Ports exposats al host:
-                    localhost:8080 → backend
-                    localhost:5000 → ai-service
-                    localhost:5432 → postgres
+test_champion_service.py::test_should_validate_win_rate[0.0-True]     PASSED
+test_champion_service.py::test_should_validate_win_rate[52.3-True]    PASSED
+test_champion_service.py::test_should_validate_win_rate[100.0-True]   PASSED
+test_champion_service.py::test_should_validate_win_rate[-1.0-False]   PASSED
+test_champion_service.py::test_should_validate_win_rate[101.0-False]  PASSED
+test_champion_service.py::test_should_register_valid_champions[jinx-marksman]    PASSED
+test_champion_service.py::test_should_register_valid_champions[lux-mage]        PASSED
 ```
 
-**Exemple pràctic:** El backend Java es connecta a PostgreSQL amb:
+---
+
+### monkeypatch: L'Equivalent Lleuger de Mockito
+
+`monkeypatch` és una fixture built-in de pytest que permet substituir atributs, mètodes o variables d'entorn temporalment. Els canvis es reverteixen automàticament després de cada test.
+
+```python
+def test_should_handle_broken_save(service, monkeypatch, sample_jinx):
+    """Si el repositori falla al guardar, el servei ha de gestionar l'error."""
+
+    # Definim una funció que simula un error
+    def broken_save(champion):
+        raise IOError("Disc ple — no es pot guardar")
+
+    # Substituïm el mètode save() del repositori per la versió trencada
+    # monkeypatch reverteix el canvi automàticament després del test
+    monkeypatch.setattr(service.repository, "save", broken_save)
+
+    # Verifiquem que el servei gestiona l'error correctament
+    with pytest.raises(IOError):
+        service.register(sample_jinx)
+
+
+def test_should_use_test_database_path(monkeypatch):
+    """Verificar que podem canviar el path de la BD via variable d'entorn."""
+
+    # Substituïm la variable d'entorn DB_PATH
+    # Útil per testejar que el codi llegeix la configuració correctament
+    monkeypatch.setenv("DB_PATH", "/tmp/test_esportspulse.db")
+
+    import os
+    assert os.environ["DB_PATH"] == "/tmp/test_esportspulse.db"
+    # Després del test, DB_PATH torna al seu valor original
 ```
-jdbc:postgresql://postgres:5432/esportspulse_db
-                  ^^^^^^^^
-                  Nom del servei, NO localhost!
+
+---
+
+### unittest.mock: Per a Mocking Més Complex
+
+Quan necessitem funcionalitats equivalents a Mockito (`verify`, `ArgumentCaptor`), usem `unittest.mock`:
+
+```python
+from unittest.mock import MagicMock, patch, call
+
+
+def test_should_save_champion_to_repository():
+    """Equivalent a verify(repository).save() de Mockito."""
+    # MagicMock crea un objecte que accepta qualsevol crida
+    # Equivalent a @Mock de Mockito
+    mock_repository = MagicMock()
+    service = ChampionManagementService(mock_repository)
+
+    champion = ChampionRecord("jinx", "Marksman", 51.5)
+    service.register(champion)
+
+    # Verifiquem que save() s'ha cridat amb el campió correcte
+    # Equivalent a verify(repository).save(champion) de Mockito
+    mock_repository.save.assert_called_once_with(champion)
+
+
+def test_should_not_delete_when_registering():
+    """Equivalent a verify(repository, never()).delete() de Mockito."""
+    mock_repository = MagicMock()
+    service = ChampionManagementService(mock_repository)
+
+    service.register(ChampionRecord("jinx", "Marksman", 51.5))
+
+    # Verifiquem que delete() NO s'ha cridat
+    mock_repository.delete.assert_not_called()
+
+
+def test_should_call_find_all_once():
+    """Equivalent a verify(repository, times(1)).findAll() de Mockito."""
+    mock_repository = MagicMock()
+    mock_repository.find_all.return_value = []
+    service = ChampionManagementService(mock_repository)
+
+    service.find_all()
+
+    # Verifiquem el nombre exacte de crides
+    assert mock_repository.find_all.call_count == 1
 ```
 
-Des del teu ordinador (fora de Docker) sí que uses `localhost:5432` perquè el port està mapejat.
+#### side_effect: Simular Comportament Dinàmic
 
-> **Error habitual:** Configurar la connexió a la base de dades com `localhost:5432` dins del contenidor. Dins de Docker, `localhost` és el propi contenidor, que no té PostgreSQL. Has d'usar el nom del servei: `postgres`.
+```python
+def test_should_handle_intermittent_errors():
+    """side_effect permet definir comportaments dinàmics per a cada crida."""
+    mock_repository = MagicMock()
 
-### Comandes Essencials de Docker Compose
+    # Primera crida: error. Segona crida: èxit.
+    # Simula un error transitori de connexió a la BD
+    mock_repository.find_all.side_effect = [
+        IOError("Connexió perduda"),   # Primera crida: falla
+        [ChampionRecord("jinx", "Marksman", 51.5)],  # Segona: funciona
+    ]
 
-```bash
-# Arrencar tots els serveis (en segon pla)
-# --build = reconstruir imatges si el Dockerfile o el codi han canviat
-docker-compose up -d --build
+    service = ChampionManagementService(mock_repository)
 
-# Arrencar tots els serveis (en primer pla, veient logs en directe)
-docker-compose up --build
+    # Primera crida: error
+    with pytest.raises(IOError):
+        service.find_all()
 
-# Aturar i eliminar tots els contenidors (les dades dels volums es mantenen)
-docker-compose down
+    # Segona crida: èxit (si el servei implementa retry)
+    result = service.find_all()
+    assert len(result) == 1
+```
 
-# Aturar i eliminar tot, INCLOENT els volums (pèrdua de dades!)
-docker-compose down -v
+#### @patch: Substituir Mòduls Sencers
 
-# Veure els logs de tots els serveis
-docker-compose logs
+```python
+# @patch substitueix un objecte durant el test
+# Útil per a dependències que s'importen dins del mòdul
+@patch("esportspulse.sqlite_repository.sqlite3")
+def test_should_handle_sqlite_connection_error(mock_sqlite3):
+    """Simular que SQLite no pot connectar."""
+    # Quan algú cridi sqlite3.connect(), llançarà un error
+    mock_sqlite3.connect.side_effect = Exception("BD corrupta")
 
-# Veure els logs d'un servei concret, en temps real
-docker-compose logs -f backend
+    with pytest.raises(Exception):
+        SqliteChampionRepository("/path/to/broken.db")
+```
 
-# Veure l'estat dels serveis
-docker-compose ps
+---
 
-# Reconstruir una imatge concreta sense cache
-docker-compose build --no-cache backend
+### Taula Comparativa: JUnit 5 vs pytest
 
-# Arrencar només un servei (i les seves dependències)
-docker-compose up -d postgres
+| Concepte          | JUnit 5                          | pytest                                |
+|-------------------|----------------------------------|---------------------------------------|
+| Setup per test    | `@BeforeEach`                    | `@pytest.fixture`                     |
+| Setup global      | `@BeforeAll`                     | `@pytest.fixture(scope="session")`    |
+| Parametritzar     | `@ParameterizedTest + @CsvSource`| `@pytest.mark.parametrize`            |
+| Grups             | `@Nested`                        | Classes dins del fitxer de test       |
+| Mock              | `@Mock` (Mockito)                | `MagicMock` / `monkeypatch`           |
+| Verify            | `verify(mock).method()`          | `mock.method.assert_called_once()`    |
+| Excepcions        | `assertThrows(Ex.class, ()→...)` | `with pytest.raises(Ex):`             |
+| Noms descriptius  | `@DisplayName("...")`           | Docstrings o noms de funcions clars   |
+| Shared fixtures   | Herència de classes              | `conftest.py`                         |
+
+---
+
+### Testejar el SqliteChampionRepository
+
+```python
+# test_sqlite_repository.py
+import os
+import pytest
+from esportspulse.sqlite_repository import SqliteChampionRepository
+from esportspulse.champion_record import ChampionRecord
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    """Crea un path temporal per a la BD de test.
+    tmp_path és una fixture built-in de pytest que crea un directori temporal.
+    Es neteja automàticament després dels tests."""
+    return str(tmp_path / "test_champions.db")
+
+
+@pytest.fixture
+def sqlite_repo(db_path):
+    """Repositori SQLite amb BD temporal.
+    Cada test treballa amb una BD buida i aïllada."""
+    repo = SqliteChampionRepository(db_path)
+    return repo
+
+
+def test_should_save_and_retrieve_champion(sqlite_repo):
+    """Guardar un campió i recuperar-lo ha de retornar les mateixes dades."""
+    champion = ChampionRecord("jinx", "Marksman", 51.5)
+
+    sqlite_repo.save(champion)
+    found = sqlite_repo.find_by_id("jinx")
+
+    assert found is not None
+    assert found.name == "jinx"
+    assert found.role == "Marksman"
+    assert found.win_rate == 51.5
+
+
+def test_should_return_none_for_unknown_champion(sqlite_repo):
+    """Buscar un campió que no existeix ha de retornar None."""
+    found = sqlite_repo.find_by_id("champion_inexistent")
+    assert found is None
+
+
+def test_should_persist_across_repository_instances(db_path):
+    """Les dades han de persistir entre instàncies del repositori.
+    Això verifica que realment estem guardant a disc, no a memòria."""
+    # Primera instància: guardem
+    repo1 = SqliteChampionRepository(db_path)
+    repo1.save(ChampionRecord("jinx", "Marksman", 51.5))
+
+    # Segona instància: recuperem (simula reiniciar l'aplicació)
+    repo2 = SqliteChampionRepository(db_path)
+    found = repo2.find_by_id("jinx")
+
+    assert found is not None
+    assert found.name == "jinx"
+
+
+def test_should_delete_champion(sqlite_repo):
+    """Esborrar un campió ha d'eliminar-lo de la BD."""
+    sqlite_repo.save(ChampionRecord("jinx", "Marksman", 51.5))
+
+    sqlite_repo.delete("jinx")
+
+    assert sqlite_repo.find_by_id("jinx") is None
 ```
 
 ---
 
 ## Activitat
 
-### Part 1: Crear el fitxer docker-compose.yml
+### Exercici: Suite de Tests Completa en Python
 
-**1.1.** A l'arrel del projecte `esportspulse-engine/`, crea el fitxer `docker-compose.yml`:
+Escriu tests per al mòdul Python d'EsportsPulse:
 
-```yaml
-# ===================================================================
-# Docker Compose per al projecte EsportsPulse
-# Defineix tots els serveis necessaris per al desenvolupament local
-# ===================================================================
+1. **Configura les fixtures a `conftest.py`:**
+   - `repository` — repositori buit
+   - `service` — servei amb repositori buit
+   - `sample_champions` — llista de campions de test
 
-services:
-  # --- Backend Java (Spring Boot) ---
-  backend:
-    build:
-      context: ./backend-java
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    environment:
-      # Connexió a PostgreSQL: "postgres" és el nom del servei, no localhost
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
-      - SPRING_DATASOURCE_USERNAME=esportspulse
-      - SPRING_DATASOURCE_PASSWORD=secret
-      # Perfil de Spring per a desenvolupament
-      - SPRING_PROFILES_ACTIVE=dev
-    depends_on:
-      - postgres
-    # Reiniciar automàticament si el contenidor cau
-    restart: unless-stopped
+2. **Escriu tests parametritzats:**
+   - Validació de `win_rate` amb `@pytest.mark.parametrize` (5+ valors)
+   - Registre de campions vàlids parametritzat
 
-  # --- Servei Python (IA / Embeddings) ---
-  ai-service:
-    build:
-      context: ./ai-python
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    environment:
-      # Connexió a Qdrant: "qdrant" és el nom del servei
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - LOG_LEVEL=INFO
-    depends_on:
-      - qdrant
-    restart: unless-stopped
+3. **Escriu tests amb mocks:**
+   - Usa `MagicMock` per aïllar el servei del repositori
+   - Verifica interaccions amb `assert_called_once_with`
+   - Usa `monkeypatch` per simular errors del repositori
 
-  # --- PostgreSQL (base de dades relacional) ---
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=esportspulse
-      - POSTGRES_PASSWORD=secret
-      - POSTGRES_DB=esportspulse_db
-    volumes:
-      # Volum amb nom per persistir les dades de PostgreSQL
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
+4. **Testa el `SqliteChampionRepository`:**
+   - CRUD complet: save, find, find_all, delete
+   - Persistència entre instàncies (usa `tmp_path`)
 
-  # --- Qdrant (base de dades vectorial) ---
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"    # API REST
-      - "6334:6334"    # API gRPC
-    volumes:
-      # Volum amb nom per persistir els vectors
-      - qdrant_data:/qdrant/storage
-    restart: unless-stopped
+5. **Executa:**
+   ```bash
+   # Executar tots els tests amb sortida detallada
+   pytest -v
 
-# Declaració de volums
-# Docker gestiona on s'emmagatzemen físicament les dades
-volumes:
-  pgdata:
-  qdrant_data:
-```
+   # Executar només tests d'un fitxer
+   pytest tests/test_champion_service.py -v
+   ```
 
-### Part 2: Arrencar i Verificar
+### Criteris d'Èxit
 
-**2.1. Arrenca tot l'stack:**
-
-```bash
-# Des de l'arrel del projecte (on hi ha docker-compose.yml)
-cd esportspulse-engine
-
-# Arrencar tots els serveis, reconstruint les imatges
-docker-compose up -d --build
-
-# Seguir l'arrencada en temps real
-docker-compose logs -f
-# Ctrl+C per sortir dels logs (els contenidors segueixen corrent)
-```
-
-**2.2. Comprova que tot funciona:**
-
-```bash
-# Veure l'estat de tots els serveis
-docker-compose ps
-
-# Hauries de veure els 4 serveis amb estat "Up":
-# NAME              STATUS    PORTS
-# backend           Up        0.0.0.0:8080->8080/tcp
-# ai-service        Up        0.0.0.0:5000->5000/tcp
-# postgres          Up        0.0.0.0:5432->5432/tcp
-# qdrant            Up        0.0.0.0:6333->6333/tcp, 0.0.0.0:6334->6334/tcp
-
-# Verificar el backend Java
-curl http://localhost:8080/actuator/health
-
-# Verificar el servei Python
-curl http://localhost:5000/health
-
-# Verificar PostgreSQL (des del host, perquè hem exposat el port)
-# Necessites psql instal·lat, o pots fer-ho amb docker exec (ho veurem divendres)
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "SELECT 1;"
-
-# Verificar Qdrant (API REST)
-curl http://localhost:6333/healthz
-```
-
-### Part 3: Experimentar amb el Cicle de Vida
-
-**3.1. Aturar i reprendre:**
-
-```bash
-# Aturar tot (les dades dels volums es mantenen)
-docker-compose down
-
-# Verificar que no hi ha contenidors
-docker-compose ps
-
-# Tornar a arrencar (no cal --build si no has canviat codi)
-docker-compose up -d
-
-# Les dades de PostgreSQL segueixen allà gràcies als volums
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "SELECT 1;"
-```
-
-**3.2. Veure logs d'un servei concret:**
-
-```bash
-# Només els logs del backend, en temps real
-docker-compose logs -f backend
-
-# Els últims 50 logs del servei Python
-docker-compose logs --tail=50 ai-service
-```
-
-**3.3. Reconstruir un servei després de canviar codi:**
-
-```bash
-# Si canvies codi al backend Java, reconstrueix només aquell servei
-docker-compose up -d --build backend
-
-# Docker Compose detecta que la resta de serveis no han canviat
-# i no els reinicia (intel·ligent!)
-```
-
-### Part 4: Entendre la Xarxa
-
-**4.1. Comprova la resolució de noms:**
-
-```bash
-# Entra dins del contenidor del backend
-docker-compose exec backend sh
-
-# Des de dins del contenidor, resol el nom "postgres"
-# (pot ser que necessitis instal·lar eines de xarxa)
-nslookup postgres
-# Hauria de mostrar una IP interna de Docker (ex: 172.18.0.3)
-
-# Prova la connexió a PostgreSQL des de dins del backend
-# (si tens les eines instal·lades)
-ping -c 2 postgres
-
-# Surt del contenidor
-exit
-```
-
-> **Nota important sobre `depends_on`:** Per defecte, `depends_on` només espera que el **contenidor** s'hagi iniciat, no que l'**aplicació** dins estigui llesta. PostgreSQL pot trigar uns segons a arrencar, i el backend podria intentar connectar-s'hi abans que estigui llest. Dijous veurem com solucionar-ho amb **health checks**.
+- `conftest.py` amb fixtures compartides
+- Almenys 3 tests amb `@pytest.mark.parametrize`
+- Almenys 2 tests amb `MagicMock` i verificació d'interaccions
+- Tests del `SqliteChampionRepository` amb `tmp_path`
+- `pytest -v` passa al 100%
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] El fitxer `docker-compose.yml` existeix a l'arrel del projecte amb els 4 serveis definits
-- [ ] `docker-compose up -d --build` arrenca tots els serveis sense errors
-- [ ] `docker-compose ps` mostra els 4 serveis amb estat "Up"
-- [ ] El backend Java respon a `http://localhost:8080/actuator/health`
-- [ ] El servei Python respon a `http://localhost:5000/health`
-- [ ] PostgreSQL accepta connexions a `localhost:5432`
-- [ ] Qdrant respon a `http://localhost:6333/healthz`
-- [ ] `docker-compose down` i `docker-compose up -d` funcionen correctament (les dades de PostgreSQL es mantenen)
-- [ ] Tots els fitxers estan commitejats: `feat(docker): add docker-compose with all services`
+- [ ] `conftest.py` amb fixtures compartides
+- [ ] `test_champion_service.py` amb tests unitaris i parametritzats
+- [ ] `test_sqlite_repository.py` amb tests d'integració
+- [ ] Tests amb `MagicMock` per aïllar el servei
+- [ ] Tests amb `monkeypatch` per simular errors
+- [ ] Tests parametritzats amb `@pytest.mark.parametrize`
+- [ ] `pytest -v` passa al 100%
+- [ ] Commit: `test(python): add pytest suite with fixtures, mocks and parametrize`

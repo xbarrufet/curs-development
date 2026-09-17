@@ -1,274 +1,332 @@
-# Setmana 09 — Dilluns: Principis de Disseny d'APIs REST
+# Setmana 09 — Dilluns: Què és Docker i Per Què Ho Necessites
 
 ## Objectiu del Dia
 
-Entendre els fonaments del disseny d'APIs REST i aplicar-los al projecte EsportsPulse. Al final del dia tindras DTOs separats de les entitats, un mapper funcional i un controlador Spring Boot que compili i respongui peticions HTTP bàsiques.
+Entendre què és Docker, per què existeix i com funciona per dins. Al final del dia has de poder executar contenidors de PostgreSQL i Redis, connectar-t'hi des de la terminal, i inspeccionar-los com a processos del sistema.
 
 ---
 
 ## Teoria
 
-### Què és una API REST?
+### El Problema que Docker Resol
 
-REST (Representational State Transfer) és un estil d'arquitectura per a serveis web. Les seves idees clau són:
+Fins ara el teu projecte EsportsPulse utilitza H2 com a base de dades. H2 és còmode perquè s'executa dins del procés Java (in-process) — no cal instal·lar res. Però el món real no funciona així:
 
-1. **Recursos**: Tot és un recurs identificat per una URL (`/api/champions`, `/api/champions/42`)
-2. **Mètodes HTTP**: Cada operació utilitza el verb HTTP adequat
-3. **Sense estat**: Cada petició conté tota la informació necessària; el servidor no recorda peticions anteriors
+- PostgreSQL necessita una instal·lació, un usuari del sistema, configuració de ports...
+- Qdrant (la base de dades vectorial que faràs servir per al servei Python d'IA) necessita un binari compilat en Rust.
+- Cada company del teu equip pot tenir macOS, Linux o Windows — i cada SO instal·la les coses de manera diferent.
 
-### Mètodes HTTP i Significat
+Això genera el problema clàssic: **"A la meva màquina funciona."** El codi compila, els tests passen, però quan un altre dev es clona el repo, la base de dades no arrenca, li falta una versió, o el port està ocupat.
 
-| Mètode   | Acció                  | Exemple                     | Cos de la Petició? |
-|----------|------------------------|-----------------------------|---------------------|
-| `GET`    | Llegir recurs(os)      | `GET /api/champions`        | No                  |
-| `POST`   | Crear recurs nou       | `POST /api/champions`       | Sí                  |
-| `PUT`    | Actualitzar recurs     | `PUT /api/champions/42`     | Sí                  |
-| `DELETE` | Esborrar recurs        | `DELETE /api/champions/42`  | No                  |
+**Docker elimina aquest problema.** Empaqueta el programari i totes les seves dependències dins d'un contenidor aïllat que funciona igual a qualsevol màquina.
 
-### Codis d'Estat HTTP
+> **Analogia:** Pensa en un contenidor de transport marítim. No importa si el vaixell va de Barcelona a Xangai — el contenidor és estàndard, el contingut viatja intacte. Docker fa el mateix amb el programari.
 
-Els codis d'estat comuniquen el resultat de l'operació al client:
+### Contenidors vs Màquines Virtuals
+
+A la Setmana 3 vas aprendre què és el kernel del sistema operatiu — el nucli que gestiona processos, memòria i hardware. Ara necessites entendre una diferència clau:
+
+**Màquina Virtual (VM):**
+- Emula un ordinador complet (CPU, RAM, disc, kernel propi).
+- Necessita un hipervisor (VirtualBox, VMware) que simula el hardware.
+- Cada VM té el seu propi sistema operatiu complet (pot ser 2-10 GB).
+- Arrenca en minuts.
+
+**Contenidor Docker:**
+- Comparteix el kernel del sistema amfitrió (el teu macOS o Linux).
+- No emula hardware — utilitza funcionalitats del kernel de Linux (namespaces i cgroups) per aïllar processos.
+- Només conté l'aplicació i les seves dependències (pot ser 50-500 MB).
+- Arrenca en segons.
 
 ```
-// Codis d'èxit
-200 OK            → La petició s'ha processat correctament (GET, PUT)
-201 Created       → S'ha creat un recurs nou (POST)
-204 No Content    → Operació correcta sense cos de resposta (DELETE)
-
-// Codis d'error del client
-400 Bad Request   → Les dades enviades no són vàlides (validació fallida)
-404 Not Found     → El recurs sol·licitat no existeix
-
-// Codis d'error del servidor
-500 Internal Server Error → Error inesperat al servidor
+┌─────────────────────────────────────┐   ┌─────────────────────────────────────┐
+│         MÀQUINA VIRTUAL             │   │           CONTENIDOR                │
+├─────────────────────────────────────┤   ├─────────────────────────────────────┤
+│  App A     App B     App C          │   │  App A     App B     App C          │
+│  Libs A    Libs B    Libs C         │   │  Libs A    Libs B    Libs C         │
+│  Guest OS  Guest OS  Guest OS       │   │  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
+│  ───────────────────────────────    │   │  Docker Engine                      │
+│  Hipervisor                         │   │  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
+│  ───────────────────────────────    │   │  Kernel del Host (compartit)        │
+│  Hardware                           │   │  Hardware                           │
+└─────────────────────────────────────┘   └─────────────────────────────────────┘
 ```
 
-> **Regla d'or**: El client mai ha d'endevinar què ha passat. El codi d'estat i el cos de la resposta han de ser suficients per entendre el resultat.
+**Per què importa?** Un contenidor és essencialment un procés aïllat del teu sistema. Recordes `ps aux` de la Setmana 3? Els contenidors apareixen com a processos normals. Aquesta és la raó per la qual són tan lleugers.
 
-### DTOs: Separar l'Entitat del Contracte de l'API
+### Arquitectura de Docker
 
-Un error habitual és retornar directament l'entitat JPA com a resposta de l'API. Això crea un acoblament perillós: qualsevol canvi a la base de dades trenca els clients de l'API.
+Docker té quatre components principals:
 
-**Per què cal separar?**
-- L'entitat pot tenir camps interns que no volem exposar (id tècnic, timestamps d'auditoria)
-- El format de l'API pot ser diferent del de la base de dades
-- Podem evolucionar l'API i la BD independentment
+**1. Docker Daemon (`dockerd`):**
+El servei que corre en segon pla al teu sistema. Gestiona la creació, execució i destrucció de contenidors. Quan escrius `docker run`, l'ordre va al daemon.
+
+**2. Imatge (Image):**
+Una plantilla immutable amb tot el necessari per executar una aplicació: sistema de fitxers, binaris, configuració. Una imatge és com una **classe** en POO (Setmana 2) — defineix l'estructura però no fa res per si sola.
+
+**3. Contenidor (Container):**
+Una instància en execució d'una imatge. Si la imatge és la classe, el contenidor és l'**objecte**. Pots crear múltiples contenidors a partir de la mateixa imatge, cadascun amb el seu estat.
 
 ```java
-// === Entitat JPA: representa la taula a la base de dades ===
-// Aquesta classe mapeja directament a la taula "champions" de la BD
-@Entity
-@Table(name = "champions")
-public class Champion {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;              // Clau primària autogenerada
-    private String name;          // Nom del campió (ex: "Ahri")
-    private String role;          // Rol principal (ex: "Mage")
-    private double winRate;       // Percentatge de victòries (0.0 - 100.0)
-    private int totalGames;       // Nombre total de partides jugades
+// Analogia amb POO (Setmana 2):
+// La imatge és la classe
+class PostgreSQL { ... }
 
-    // Getters i setters omesos per brevetat
-}
+// El contenidor és l'objecte (instància)
+PostgreSQL dbProducció = new PostgreSQL();   // contenidor 1
+PostgreSQL dbTesting = new PostgreSQL();     // contenidor 2
 ```
 
-```java
-// === DTO de resposta: el que el client rep ===
-// Usem un "record" de Java 21 — immutable i concís
-// Només exposem els camps que el client necessita
-public record ChampionDTO(
-    Long id,           // Identificador públic del campió
-    String name,       // Nom del campió
-    String role,       // Rol principal
-    double winRate,    // Percentatge de victòries
-    int totalGames    // Total de partides registrades
-) {}
+**4. Registre (Registry):**
+Un magatzem d'imatges. **Docker Hub** és el registre públic per defecte (com GitHub però per a imatges Docker). Quan fas `docker pull postgres`, descarregues la imatge oficial de PostgreSQL des de Docker Hub.
+
+### Comandes Essencials
+
+```bash
+# Descarregar una imatge des de Docker Hub
+docker pull <imatge>
+
+# Crear i executar un contenidor a partir d'una imatge
+# -d = detached (en segon pla, com el & de bash que vas veure a S3)
+# --name = assignar un nom al contenidor
+docker run -d --name <nom> <imatge>
+
+# Llistar contenidors en execució (com ps aux per a processos normals)
+docker ps
+
+# Llistar TOTS els contenidors (inclosos els aturats)
+docker ps -a
+
+# Aturar un contenidor (envia SIGTERM, com kill -15 de S3)
+docker stop <nom_o_id>
+
+# Eliminar un contenidor aturat
+docker rm <nom_o_id>
+
+# Llistar imatges descarregades al teu sistema
+docker images
+
+# Veure els logs d'un contenidor (com tail -f d'un fitxer de log)
+docker logs <nom_o_id>
+
+# Veure els processos dins d'un contenidor (connexió directa amb ps de S3)
+docker top <nom_o_id>
 ```
 
-```java
-// === DTO de petició: el que el client envia per crear un campió ===
-// No inclou "id" perquè el servidor el genera automàticament
-// No inclou "totalGames" perquè comença a 0
-public record CreateChampionRequest(
-    String name,       // Nom del campió a crear
-    String role,       // Rol assignat
-    double winRate     // Win rate inicial
-) {}
+**Ports:** Un contenidor és aïllat — per defecte no pots accedir-hi des de fora. Necessites **mapejar ports** amb `-p`:
+
+```bash
+# -p host:contenidor — mapeja el port 5432 del teu sistema al 5432 del contenidor
+# Això és com un túnel: quan accedeixis a localhost:5432, arribes al PostgreSQL del contenidor
+docker run -d -p 5432:5432 --name pg postgres
 ```
 
-### El Patró Mapper
+**Variables d'entorn:** Moltes imatges es configuren amb variables d'entorn (`-e`):
 
-El Mapper és la classe que converteix entre entitat i DTO. Centralitzar aquesta lògica evita duplicar codi de conversió a tot arreu.
-
-```java
-// === Mapper: converteix entre entitat i DTOs ===
-// Classe utilitària amb mètodes estàtics per simplicitat
-public class ChampionMapper {
-
-    // Converteix una entitat JPA a un DTO de resposta
-    // S'usa quan retornem dades al client
-    public static ChampionDTO toDTO(Champion entity) {
-        return new ChampionDTO(
-            entity.getId(),
-            entity.getName(),
-            entity.getRole(),
-            entity.getWinRate(),
-            entity.getTotalGames()
-        );
-    }
-
-    // Converteix un DTO de creació a una entitat JPA
-    // S'usa quan el client envia dades per crear un campió
-    public static Champion toEntity(CreateChampionRequest request) {
-        Champion champion = new Champion();
-        champion.setName(request.name());       // Assignem el nom del request
-        champion.setRole(request.role());       // Assignem el rol del request
-        champion.setWinRate(request.winRate()); // Assignem el win rate inicial
-        champion.setTotalGames(0);              // Un campió nou comença amb 0 partides
-        return champion;
-    }
-}
-```
-
-### Spring Boot Controllers
-
-Spring Boot utilitza anotacions per definir endpoints HTTP:
-
-```java
-// === Controlador REST per a Champions ===
-// @RestController indica que tots els mètodes retornen dades (JSON), no vistes HTML
-// @RequestMapping estableix el prefix comú per a totes les rutes d'aquest controlador
-@RestController
-@RequestMapping("/api/champions")
-public class ChampionController {
-
-    // Injectem el servei que conté la lògica de negoci
-    private final ChampionService service;
-
-    // Constructor injection: Spring Boot injecta automàticament el servei
-    public ChampionController(ChampionService service) {
-        this.service = service;
-    }
-
-    // GET /api/champions → Retorna la llista de tots els campions
-    // ResponseEntity ens permet controlar el codi d'estat HTTP
-    @GetMapping
-    public ResponseEntity<List<ChampionDTO>> getAll() {
-        // Obtenim les entitats, les convertim a DTOs i retornem amb 200 OK
-        List<ChampionDTO> champions = service.findAll()
-            .stream()
-            .map(ChampionMapper::toDTO)    // Converteix cada entitat a DTO
-            .toList();                      // Recull en una llista
-        return ResponseEntity.ok(champions); // 200 OK amb la llista
-    }
-
-    // GET /api/champions/{id} → Retorna un campió concret pel seu ID
-    // @PathVariable extreu el valor de la URL (ex: /api/champions/42 → id=42)
-    @GetMapping("/{id}")
-    public ResponseEntity<ChampionDTO> getById(@PathVariable Long id) {
-        return service.findById(id)
-            .map(ChampionMapper::toDTO)                        // Si existeix, convertim a DTO
-            .map(ResponseEntity::ok)                           // Emboliquem amb 200 OK
-            .orElse(ResponseEntity.notFound().build());        // Si no existeix, 404
-    }
-
-    // POST /api/champions → Crea un campió nou
-    // @RequestBody indica que el cos de la petició JSON es deserialitza al record
-    @PostMapping
-    public ResponseEntity<ChampionDTO> create(@RequestBody CreateChampionRequest request) {
-        // Convertim el request a entitat, el guardem, i retornem el DTO creat
-        Champion entity = ChampionMapper.toEntity(request);
-        Champion saved = service.save(entity);
-        ChampionDTO dto = ChampionMapper.toDTO(saved);
-        // 201 Created és el codi correcte per a creació de recursos
-        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
-    }
-}
-```
-
-### Flux Complet d'una Petició
-
-```
-Client (Postman/curl)
-    ↓ POST /api/champions  { "name": "Ahri", "role": "Mage", "winRate": 52.3 }
-    ↓
-ChampionController.create()
-    ↓ Rep CreateChampionRequest
-    ↓
-ChampionMapper.toEntity()
-    ↓ Converteix request → entitat JPA
-    ↓
-ChampionService.save()
-    ↓ Lògica de negoci + persistència
-    ↓
-ChampionMapper.toDTO()
-    ↓ Converteix entitat guardada → DTO de resposta
-    ↓
-Client rep: 201 Created { "id": 1, "name": "Ahri", "role": "Mage", "winRate": 52.3, "totalGames": 0 }
+```bash
+# -e defineix variables dins del contenidor
+# POSTGRES_PASSWORD és obligatòria per a la imatge oficial de PostgreSQL
+docker run -d -e POSTGRES_PASSWORD=secret --name pg postgres
 ```
 
 ---
 
 ## Activitat
 
-### Part 1: Escriu l'especificació de l'API (api-spec.md)
+### 1. Instal·lar Docker (10 min)
 
-Abans d'escriure codi, documenta el que construiràs. Crea `docs/api-spec.md` amb:
-
-```markdown
-# Champions API — Especificació
-
-## Endpoints
-
-### GET /api/champions
-- Descripció: Retorna tots els campions
-- Resposta: 200 OK — Array de ChampionDTO
-
-### GET /api/champions/{id}
-- Descripció: Retorna un campió pel seu ID
-- Resposta: 200 OK — ChampionDTO
-- Error: 404 Not Found — si l'ID no existeix
-
-### POST /api/champions
-- Descripció: Crea un campió nou
-- Cos: CreateChampionRequest (name, role, winRate)
-- Resposta: 201 Created — ChampionDTO creat
-- Error: 400 Bad Request — si les dades no són vàlides
-```
-
-### Part 2: Implementa els DTOs i el Mapper
-
-1. Crea els fitxers `ChampionDTO.java`, `CreateChampionRequest.java` i `ChampionMapper.java`
-2. Col·loca'ls al paquet `com.esportspulse.engine.dto` (els DTOs) i `com.esportspulse.engine.mapper` (el mapper)
-
-### Part 3: Crea el Controlador
-
-1. Crea `ChampionController.java` al paquet `com.esportspulse.engine.controller`
-2. Implementa `GET /api/champions`, `GET /api/champions/{id}` i `POST /api/champions`
-3. Comprova que `mvn compile` funciona sense errors
-
-### Part 4: Verifica amb curl
+Verifica que Docker està instal·lat:
 
 ```bash
-# Arrenca l'aplicació
-mvn spring-boot:run
+# Comprova la versió de Docker (ha de ser 24.x o superior)
+docker --version
 
-# Crea un campió
-curl -X POST http://localhost:8080/api/champions \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Ahri", "role": "Mage", "winRate": 52.3}'
+# Verifica que el daemon està corrent (ha de mostrar info del sistema)
+docker info
+```
 
-# Llista tots els campions
-curl http://localhost:8080/api/champions
+Si no el tens, instal·la [Docker Desktop](https://www.docker.com/products/docker-desktop/). A macOS:
+
+```bash
+# Instal·la Docker Desktop amb Homebrew
+brew install --cask docker
+```
+
+Obre Docker Desktop un cop per acceptar les condicions. Després pots tancar la finestra — el daemon continuarà corrent en segon pla.
+
+### 2. Executar PostgreSQL amb Docker (20 min)
+
+Descarrega i executa PostgreSQL:
+
+```bash
+# Descarrega la imatge oficial de PostgreSQL 16 des de Docker Hub
+# :16 és el "tag" — indica la versió concreta (com un git tag)
+docker pull postgres:16
+
+# Executa un contenidor de PostgreSQL amb:
+# -d            → en segon pla (detached)
+# --name pg16   → li posem nom "pg16" per referir-nos-hi fàcilment
+# -p 5432:5432  → mapegem el port perquè sigui accessible des del host
+# -e            → configurem la contrasenya obligatòria
+docker run -d \
+  --name pg16 \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=esportspulse \
+  -e POSTGRES_DB=esportspulse_db \
+  postgres:16
+```
+
+Verifica que funciona:
+
+```bash
+# Llista els contenidors en execució — hauries de veure pg16
+docker ps
+
+# Mira els logs del contenidor — hauries de veure "database system is ready to accept connections"
+docker logs pg16
+```
+
+Connecta't a PostgreSQL des de la terminal:
+
+```bash
+# Executa psql dins del contenidor (com fer ssh però per a contenidors)
+# exec = executa una comanda dins d'un contenidor existent
+# -it  = interactiu + pseudo-terminal (com el -t de ssh)
+docker exec -it pg16 psql -U postgres -d esportspulse_db
+```
+
+Un cop dins de `psql`, prova algunes comandes:
+
+```sql
+-- Crea una taula de prova per verificar que la DB funciona
+CREATE TABLE equips (
+    id SERIAL PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    joc VARCHAR(50) NOT NULL
+);
+
+-- Insereix una fila de prova
+INSERT INTO equips (nom, joc) VALUES ('T1', 'League of Legends');
+
+-- Consulta les dades — hauries de veure la fila inserida
+SELECT * FROM equips;
+
+-- Surt de psql
+\q
+```
+
+### 3. Executar Redis amb Docker (15 min)
+
+Redis és una base de dades en memòria que s'utilitza com a cache. L'executaràs al costat de PostgreSQL:
+
+```bash
+# Descarrega i executa Redis 7 en un sol pas
+# Si la imatge no existeix localment, docker run fa pull automàticament
+docker run -d \
+  --name redis7 \
+  -p 6379:6379 \
+  redis:7
+
+# Verifica que els dos contenidors estan corrent
+docker ps
+```
+
+Connecta't a Redis:
+
+```bash
+# Executa el client de Redis dins del contenidor
+docker exec -it redis7 redis-cli
+```
+
+Prova comandes bàsiques de Redis:
+
+```bash
+# SET guarda un valor associat a una clau (com un HashMap de Java)
+SET jugador:1 "Faker"
+
+# GET recupera el valor d'una clau
+GET jugador:1
+
+# KEYS mostra totes les claus que coincideixen amb el patró
+KEYS *
+
+# EXIT per sortir
+EXIT
+```
+
+### 4. Contenidors com a Processos (15 min)
+
+Aquesta part connecta Docker amb el que vas aprendre a la Setmana 3 sobre processos:
+
+```bash
+# docker top mostra els processos dins del contenidor
+# Fixa't que els PIDs són visibles des del host — és un procés normal!
+docker top pg16
+
+# Compara-ho amb ps aux del host — trobaràs el procés de postgres
+# grep filtra la sortida (recordes pipes de S3?)
+ps aux | grep postgres
+
+# Mira els recursos que consumeix cada contenidor (com htop)
+# Ctrl+C per sortir
+docker stats
+```
+
+**Experiment:** atura i elimina un contenidor per veure què passa amb les dades:
+
+```bash
+# Atura PostgreSQL (les dades es perden perquè no hem configurat volums!)
+docker stop pg16
+
+# Verifica que ja no apareix a docker ps
+docker ps
+
+# Però sí que apareix com a aturat a docker ps -a
+docker ps -a
+
+# Elimina el contenidor
+docker rm pg16
+
+# Ara ja no apareix enlloc
+docker ps -a
+```
+
+> **Lliçó important:** Les dades dins d'un contenidor són **efímeres** — quan elimines el contenidor, les dades desapareixen. Demà aprendràs a usar **volums** per persistir dades.
+
+### 5. Recrea PostgreSQL i deixa'l llest (5 min)
+
+Torna a crear el contenidor per tenir-lo disponible la resta de la setmana:
+
+```bash
+# Recrea PostgreSQL amb la mateixa configuració
+docker run -d \
+  --name pg16 \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=esportspulse \
+  -e POSTGRES_DB=esportspulse_db \
+  postgres:16
+
+# Verifica que arrenca correctament
+docker logs -f pg16
+# Ctrl+C quan vegis "database system is ready to accept connections"
+```
+
+Llista totes les imatges que tens descarregades:
+
+```bash
+# Mostra les imatges locals — hauries de veure postgres:16 i redis:7
+docker images
 ```
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Fitxer `docs/api-spec.md` escrit amb tots els endpoints documentats
-- [ ] Records `ChampionDTO` i `CreateChampionRequest` creats al paquet `dto`
-- [ ] Classe `ChampionMapper` amb mètodes `toDTO()` i `toEntity()`
-- [ ] `ChampionController` amb `@RestController` i endpoints GET/POST
-- [ ] `mvn compile` passa sense errors
-- [ ] Commit: `feat(api): add champion DTOs, mapper and REST controller`
+- [ ] Docker instal·lat i funcionant (`docker info` sense errors)
+- [ ] Contenidor `pg16` executant-se amb PostgreSQL 16 al port 5432
+- [ ] Contenidor `redis7` executant-se amb Redis 7 al port 6379
+- [ ] Has connectat a PostgreSQL amb `psql` i has creat una taula
+- [ ] Has connectat a Redis amb `redis-cli` i has fet SET/GET
+- [ ] Has executat `docker top` i has vist els processos del contenidor
+- [ ] Has vist els logs del contenidor amb `docker logs`
+- [ ] Has experimentat amb aturar i eliminar un contenidor (dades efímeres)

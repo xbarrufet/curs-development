@@ -1,295 +1,444 @@
-# Setmana 09 — Dijous: Middleware de Logging i Especificació de l'API
+# Setmana 09 — Dijous: Volums, Health Checks i Variables d'Entorn
 
 ## Objectiu del Dia
 
-Implementar un filtre de logging que registri cada petició HTTP amb tota la informació necessària per a depuració i monitoratge. Escriure l'especificació formal de l'API de Champions. Al final del dia, cada petició quedarà registrada amb mètode, path, codi d'estat, durada i X-Request-Id.
+Fer que l'stack de Docker Compose sigui robust: les dades de PostgreSQL sobreviuen a reinicis, els serveis no arranquen fins que les seves dependències estiguin realment llestes, i tota la configuració sensible està externalitzada en variables d'entorn. Al final del dia, `docker-compose up` ha d'arrencar l'stack de forma fiable i ordenada.
 
 ---
 
 ## Teoria
 
-### Per Què Registrar Cada Petició?
+### Volums: Per Què les Dades Desapareixen
 
-En producció, quan alguna cosa falla, el log és l'única eina que tens per entendre què ha passat. Sense logs adequats, depurar un error és com buscar una agulla en un paller a les fosques.
-
-**Tres raons per loguejar peticions:**
-
-1. **Depuració**: "L'endpoint /api/champions va retornar 500 fa 5 minuts. Què va passar?"
-2. **Monitoratge**: "Quants requests per segon estem rebent? Quins endpoints són més lents?"
-3. **Auditoria**: "Qui va esborrar el campió amb ID 42? A quina hora?"
-
-**Informació que necessitem per cada petició:**
+Un contenidor Docker és **efímer**: quan el destrueixes (`docker rm`), tot el que hi havia dins desapareix. Això inclou les dades de PostgreSQL. Si fas `docker-compose down` i després `docker-compose up`, la base de dades tornarà a estar buida.
 
 ```
-[2024-03-15 14:32:01] INFO  --- REQUEST ---
-  Method: DELETE
-  Path: /api/champions/42
-  Status: 204
-  Duration: 23ms
-  Request-Id: 550e8400-e29b-41d4-a716-446655440000
+Sense volum:
+┌──────────────────┐
+│   Contenidor     │
+│   PostgreSQL     │  ← docker rm → 💀 Dades perdudes!
+│   /var/lib/      │
+│   postgresql/data│
+└──────────────────┘
+
+Amb volum:
+┌──────────────────┐       ┌───────────────┐
+│   Contenidor     │       │  Volum Docker  │
+│   PostgreSQL     │──────▶│   "pgdata"     │  ← Dades segures!
+│   (efímer)       │       │  (persistent)  │
+└──────────────────┘       └───────────────┘
 ```
 
-### X-Request-Id: Traçabilitat entre Serveis
+### Tipus de Volums
 
-Quan una petició travessa múltiples serveis (API Java -> Servei Python -> BD), necessitem un identificador únic que permeti seguir-la per tots els logs:
+Hi ha dues maneres principals de persistir dades:
 
-```
-Client
-  ↓ X-Request-Id: abc-123
-API Java (log: abc-123 → GET /api/champions)
-  ↓ X-Request-Id: abc-123
-Servei Python (log: abc-123 → analyze champion stats)
-  ↓ X-Request-Id: abc-123
-Base de Dades (log: abc-123 → SELECT * FROM champions)
-```
+**1. Volums amb nom (Named Volumes):**
+Docker gestiona on s'emmagatzemen al host. Ideals per a bases de dades.
 
-**Regla**: Si el client envia `X-Request-Id`, l'usem. Si no l'envia, en generem un de nou (UUID). Sempre el retornem a la resposta.
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      # Sintaxi: nom_volum:ruta_dins_contenidor
+      # Docker decideix on guarda "pgdata" al sistema host
+      - pgdata:/var/lib/postgresql/data
 
-### OncePerRequestFilter: El Filtre de Spring Boot
-
-Spring Boot proporciona `OncePerRequestFilter`, que garanteix que el filtre s'executa exactament un cop per petició (important amb forwards i redirects interns):
-
-```java
-// === Filtre de logging per a totes les peticions HTTP ===
-// OncePerRequestFilter garanteix una sola execució per request
-// @Component fa que Spring el registri automàticament
-@Component
-public class RequestLoggingFilter extends OncePerRequestFilter {
-
-    // Logger estàndard de SLF4J — el framework de logging de Spring Boot
-    private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
-
-    // Nom de la capçalera que conté l'identificador únic de la petició
-    private static final String REQUEST_ID_HEADER = "X-Request-Id";
-
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
-
-        // 1. Obtenim o generem el X-Request-Id
-        // Si el client l'envia, el respectem; si no, en generem un de nou
-        String requestId = request.getHeader(REQUEST_ID_HEADER);
-        if (requestId == null || requestId.isBlank()) {
-            requestId = UUID.randomUUID().toString();
-        }
-
-        // 2. Afegim el X-Request-Id a la resposta perquè el client el pugui veure
-        response.setHeader(REQUEST_ID_HEADER, requestId);
-
-        // 3. Registrem el moment d'inici per calcular la durada
-        long startTime = System.currentTimeMillis();
-
-        // 4. Guardem el requestId al MDC (Mapped Diagnostic Context)
-        // MDC és un magatzem thread-local que permet incloure dades a TOTS els logs
-        // del mateix thread sense passar-les explícitament
-        MDC.put("requestId", requestId);
-
-        try {
-            // 5. Deixem que la petició continuï cap al controller
-            // filterChain.doFilter() passa la petició al següent filtre o al controller
-            filterChain.doFilter(request, response);
-        } finally {
-            // 6. Calculem la durada total de la petició
-            long duration = System.currentTimeMillis() - startTime;
-
-            // 7. Registrem tota la informació al log
-            log.info("HTTP {} {} — Status: {} — Duration: {}ms — RequestId: {}",
-                request.getMethod(),              // GET, POST, PUT, DELETE
-                request.getRequestURI(),           // /api/champions/42
-                response.getStatus(),              // 200, 404, 500...
-                duration,                          // Temps en mil·lisegons
-                requestId                          // Identificador únic
-            );
-
-            // 8. Netegem el MDC per evitar fuites de memòria
-            // Crític amb virtual threads: el MDC és thread-local
-            MDC.clear();
-        }
-    }
-}
+volumes:
+  pgdata:    # Declarar el volum a nivell superior
 ```
 
-### Configuració del Format de Log
+```bash
+# Veure els volums creats per Docker
+docker volume ls
 
-Per aprofitar el MDC, configurem el format de log:
-
-```properties
-# application.properties — Format de log personalitzat
-# Incloem el requestId del MDC directament al format del log
-# %X{requestId} extreu el valor del MDC amb clau "requestId"
-logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n
+# Inspeccionar un volum (veure on s'emmagatzema al host)
+docker volume inspect esportspulse-engine_pgdata
 ```
 
-Ara tots els logs dins de la mateixa petició (no només el del filtre) inclouran el requestId:
+**2. Bind Mounts:**
+Muntes un directori concret del host dins del contenidor. Útils per al desenvolupament (veure canvis en temps real).
 
-```
-2024-03-15 14:32:01 [550e8400] INFO  RequestLoggingFilter - HTTP GET /api/champions — Status: 200 — Duration: 45ms — RequestId: 550e8400
-2024-03-15 14:32:01 [550e8400] DEBUG ChampionService - Finding all champions with filters
-2024-03-15 14:32:01 [550e8400] DEBUG ChampionRepository - SELECT * FROM champions
-```
-
-### Filtrar Paths que No Volem Loguejar
-
-No ens interessa loguejar peticions a recursos estàtics o endpoints interns:
-
-```java
-// === Dins de RequestLoggingFilter ===
-// shouldNotFilter determina quins paths NO passaran pel filtre
-@Override
-protected boolean shouldNotFilter(HttpServletRequest request) {
-    String path = request.getRequestURI();
-    // No loguegem la consola H2 ni endpoints d'actuator
-    // Aquests generen molt tràfic intern que embruta els logs
-    return path.startsWith("/h2-console")
-        || path.startsWith("/actuator")
-        || path.startsWith("/favicon.ico");
-}
+```yaml
+services:
+  ai-service:
+    build: ./ai-python
+    volumes:
+      # Sintaxi: ./ruta_host:ruta_contenidor
+      # El codi del host es munta dins del contenidor
+      # Qualsevol canvi al host es reflecteix instantàniament
+      - ./ai-python/src:/app/src
 ```
 
-### Testejar el Filtre
+> **Quan usar cada un?**
+> - **Volums amb nom** per a dades de bases de dades (PostgreSQL, Qdrant) i dades que no necessites editar directament.
+> - **Bind mounts** per al codi durant el desenvolupament (hot-reload sense reconstruir la imatge).
 
-```java
-// === Test unitari per al filtre de logging ===
-@WebMvcTest(ChampionController.class)
-class RequestLoggingFilterTest {
+### Variables d'Entorn: Configuració Flexible
 
-    @Autowired
-    private MockMvc mockMvc;
+Les variables d'entorn permeten configurar l'aplicació **sense modificar el codi ni la imatge**. La mateixa imatge pot executar-se en desenvolupament, staging o producció canviant només les variables.
 
-    @MockBean
-    private ChampionService service;
+Recordes les variables d'entorn del terminal (S3)? En Docker funcionen exactament igual, però les passem de tres maneres:
 
-    @Test
-    void shouldAddRequestIdToResponse() throws Exception {
-        // Fem una petició GET sense enviar X-Request-Id
-        mockMvc.perform(get("/api/champions"))
-            // Verifiquem que la resposta inclou la capçalera X-Request-Id
-            .andExpect(header().exists("X-Request-Id"))
-            // I que és un UUID vàlid (36 caràcters amb guions)
-            .andExpect(header().string("X-Request-Id",
-                org.hamcrest.Matchers.matchesPattern(
-                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-                )));
-    }
+**1. Directament al `docker-compose.yml`:**
 
-    @Test
-    void shouldUseProvidedRequestId() throws Exception {
-        String customId = "el-meu-request-id-personalitzat";
-        // Enviem un X-Request-Id propi
-        mockMvc.perform(get("/api/champions")
-                .header("X-Request-Id", customId))
-            // Verifiquem que el servidor respecta el nostre ID
-            .andExpect(header().string("X-Request-Id", customId));
-    }
-}
+```yaml
+services:
+  backend:
+    environment:
+      # Llista de variables (format amb guió)
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
+      - SPRING_DATASOURCE_PASSWORD=secret
 ```
 
-### Especificació Formal de l'API
+**2. Amb un fitxer `.env`:**
 
-Una bona especificació documenta tot el que un client necessita per consumir l'API:
+Crea un fitxer `.env` a l'arrel del projecte (al costat de `docker-compose.yml`):
 
-```markdown
-# EsportsPulse — Champions API Specification
+```env
+# .env — Variables d'entorn per a Docker Compose
+# ATENCIÓ: NO PUGIS AQUEST FITXER A GIT (afegir-lo a .gitignore)
 
-## Base URL
-`http://localhost:8080/api`
+# PostgreSQL
+POSTGRES_USER=esportspulse
+POSTGRES_PASSWORD=super_secret_dev_password
+POSTGRES_DB=esportspulse_db
 
-## Headers Comuns
-| Header          | Descripció                              | Obligatori |
-|-----------------|-----------------------------------------|------------|
-| Content-Type    | `application/json` per POST i PUT       | Sí (*)     |
-| X-Request-Id    | UUID per traçabilitat. Generat si absent | No         |
+# Backend Java
+SPRING_PROFILES_ACTIVE=dev
 
-## Endpoints
-
-### 1. Llistar Campions
-- **URL**: `GET /champions`
-- **Query Params**: `name` (String), `role` (String), `minGames` (int)
-- **Resposta 200**:
-  ```json
-  [
-    { "id": 1, "name": "Ahri", "role": "Mage", "winRate": 52.3, "totalGames": 1200 }
-  ]
-  ```
-
-### 2. Obtenir Campió per ID
-- **URL**: `GET /champions/{id}`
-- **Resposta 200**: Un objecte ChampionDTO
-- **Resposta 404**: `{ "error": "Champion amb id 99 no trobat" }`
-
-### 3. Crear Campió
-- **URL**: `POST /champions`
-- **Cos**:
-  ```json
-  { "name": "Jinx", "role": "Marksman", "winRate": 51.8 }
-  ```
-- **Resposta 201**: ChampionDTO creat (amb id generat)
-- **Resposta 400**: `{ "name": "El nom del campió és obligatori" }`
-
-### 4. Actualitzar Campió
-- **URL**: `PUT /champions/{id}`
-- **Cos**:
-  ```json
-  { "name": "Ahri", "role": "Mage", "winRate": 53.1, "totalGames": 1500 }
-  ```
-- **Resposta 200**: ChampionDTO actualitzat
-- **Resposta 404**: Si l'ID no existeix
-
-### 5. Esborrar Campió
-- **URL**: `DELETE /champions/{id}`
-- **Resposta 204**: Sense cos
-- **Resposta 404**: Si l'ID no existeix
+# Servei Python
+LOG_LEVEL=DEBUG
+QDRANT_HOST=qdrant
 ```
+
+I referencia-les al `docker-compose.yml`:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      # ${VARIABLE} agafa el valor del fitxer .env
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+```
+
+**3. Amb `env_file`:**
+
+```yaml
+services:
+  backend:
+    # Carrega TOTES les variables del fitxer especificat
+    env_file:
+      - .env
+```
+
+> **Connexió amb S7 (CI/CD):** En producció, les variables sensibles (passwords, API keys) es guarden en un gestor de secrets (GitHub Secrets, AWS Secrets Manager, etc.) i s'injecten com a variables d'entorn. El patró que aprenem avui amb `.env` és el mateix: l'aplicació llegeix la configuració de l'entorn, mai del codi.
+
+**Crea un fitxer `.env.example`** amb valors d'exemple (SENSE secrets reals) i puja'l a Git. Serveix de documentació per a qui cloni el projecte:
+
+```env
+# .env.example — Copia aquest fitxer a .env i omple els valors reals
+POSTGRES_USER=esportspulse
+POSTGRES_PASSWORD=change_me
+POSTGRES_DB=esportspulse_db
+SPRING_PROFILES_ACTIVE=dev
+LOG_LEVEL=INFO
+QDRANT_HOST=qdrant
+```
+
+### Health Checks: Saber si un Servei Està Realment Llest
+
+Dimecres vam veure que `depends_on` només espera que el **contenidor** arrenqui, no que l'**aplicació** estigui llesta. Això causa errors:
+
+```
+backend    | Connection refused: postgres:5432
+backend    | Retrying in 5 seconds...
+```
+
+PostgreSQL pot trigar 5-10 segons a estar llest. El backend intenta connectar-se immediatament i falla.
+
+**Solució: Health checks.** Definim una comanda que Docker executa periòdicament per verificar si el servei funciona. I amb `depends_on: condition: service_healthy`, el servei dependent espera fins que la dependència estigui sana.
+
+**Health check al Dockerfile:**
+
+```dockerfile
+# Dins del Dockerfile de PostgreSQL (o com a override al compose)
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+  CMD pg_isready -U esportspulse -d esportspulse_db || exit 1
+# --interval: cada quant comprova (10 segons)
+# --timeout: temps màxim per a la comprovació (5 segons)
+# --retries: quantes vegades ha de fallar abans de marcar-lo "unhealthy" (3)
+# pg_isready: comanda pròpia de PostgreSQL per comprovar si accepta connexions
+```
+
+**Health check al `docker-compose.yml`:**
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    healthcheck:
+      # pg_isready: comanda pròpia de PostgreSQL
+      test: ["CMD-SHELL", "pg_isready -U esportspulse -d esportspulse_db"]
+      interval: 10s       # Comprova cada 10 segons
+      timeout: 5s         # Si no respon en 5 segons, falla
+      retries: 3          # Després de 3 fallades, estat "unhealthy"
+      start_period: 30s   # Dona 30 segons d'arrencada abans de començar a comprovar
+
+  backend:
+    depends_on:
+      postgres:
+        condition: service_healthy   # Espera fins que PostgreSQL estigui "healthy"
+```
+
+**Estats d'un contenidor amb health check:**
+
+```
+starting → healthy → (si falla 3 cops) → unhealthy
+                ↑                             │
+                └─────────────────────────────┘
+                     (si torna a funcionar)
+```
+
+> **Connexió amb producció:** En un entorn real, els orquestradors (Kubernetes, ECS) utilitzen health checks per reiniciar automàticament serveis que fallen. El que aprenem aquí és el mateix patró, però a escala local.
 
 ---
 
 ## Activitat
 
-### Part 1: Implementa el RequestLoggingFilter
+### Part 1: Externalitzar Configuració amb .env
 
-1. Crea `RequestLoggingFilter.java` al paquet `com.esportspulse.engine.filter`
-2. Implementa tot el codi del filtre: mètode, path, status, durada, X-Request-Id
-3. Configura el format de log a `application.properties`
-4. Afegeix `shouldNotFilter` per excloure paths innecessaris
+**1.1. Crea el fitxer `.env` a l'arrel del projecte:**
 
-### Part 2: Verifica el Funcionament
+```env
+# ===================================================================
+# Variables d'entorn per al desenvolupament local
+# NO PUGIS AQUEST FITXER A GIT — conté secrets
+# ===================================================================
 
-```bash
-# Sense X-Request-Id (el servidor en genera un)
-curl -v http://localhost:8080/api/champions
-# Comprova que la resposta inclou la capçalera X-Request-Id
+# PostgreSQL
+POSTGRES_USER=esportspulse
+POSTGRES_PASSWORD=dev_secret_2024
+POSTGRES_DB=esportspulse_db
 
-# Amb X-Request-Id propi
-curl -v -H "X-Request-Id: test-123" http://localhost:8080/api/champions
-# Comprova que la resposta retorna X-Request-Id: test-123
+# Backend Java
+SPRING_PROFILES_ACTIVE=dev
+JAVA_OPTS=-Xmx512m
 
-# Verifica el log del servidor — ha de mostrar:
-# HTTP GET /api/champions — Status: 200 — Duration: 23ms — RequestId: test-123
+# Servei Python
+LOG_LEVEL=DEBUG
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
 ```
 
-### Part 3: Escriu l'Especificació Completa de l'API
+**1.2. Crea el fitxer `.env.example`:**
 
-1. Crea `docs/api-spec.md` amb tots els endpoints, request/response bodies i codis d'error
-2. Revisa que cada endpoint del controller apareix a l'especificació
-3. Comprova que els exemples JSON coincideixen amb els DTOs reals
+```env
+# Copia aquest fitxer a .env i omple els valors
+POSTGRES_USER=esportspulse
+POSTGRES_PASSWORD=change_me
+POSTGRES_DB=esportspulse_db
+SPRING_PROFILES_ACTIVE=dev
+JAVA_OPTS=-Xmx512m
+LOG_LEVEL=INFO
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
+```
 
-### Part 4: Tests del Filtre
+**1.3. Afegeix `.env` al `.gitignore`:**
 
-1. Crea `RequestLoggingFilterTest.java`
-2. Verifica que el X-Request-Id s'afegeix automàticament
-3. Verifica que un X-Request-Id enviat pel client es respecta
+```gitignore
+# Secrets locals — MAI pujar a Git
+.env
+```
+
+### Part 2: Afegir Health Checks a Tots els Serveis
+
+**2.1. Actualitza el `docker-compose.yml` complet:**
+
+```yaml
+# ===================================================================
+# Docker Compose amb volums, health checks i variables d'entorn
+# ===================================================================
+
+services:
+  # --- Backend Java ---
+  backend:
+    build:
+      context: ./backend-java
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+      - JAVA_OPTS=${JAVA_OPTS}
+    depends_on:
+      postgres:
+        # El backend NO arrenca fins que PostgreSQL estigui "healthy"
+        condition: service_healthy
+    healthcheck:
+      # Spring Boot Actuator exposa /actuator/health
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s    # Spring Boot pot trigar a arrencar
+    restart: unless-stopped
+
+  # --- Servei Python ---
+  ai-service:
+    build:
+      context: ./ai-python
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_PORT=${QDRANT_PORT}
+      - LOG_LEVEL=${LOG_LEVEL}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      # El servei Python exposa /health
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- PostgreSQL ---
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      # Volum amb nom: les dades sobreviuen a docker-compose down
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready: comanda nativa de PostgreSQL per comprovar l'estat
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Qdrant ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      # Volum amb nom per persistir els vectors
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # Qdrant exposa /healthz per a comprovacions d'estat
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  qdrant_data:
+```
+
+### Part 3: Verificar que Tot Funciona
+
+**3.1. Arrenca l'stack i observa l'ordre d'arrencada:**
+
+```bash
+# Arrencar en primer pla per veure l'ordre
+docker-compose up --build
+
+# Hauries de veure:
+# 1. postgres i qdrant arranquen primer
+# 2. Docker espera que passin els health checks
+# 3. backend i ai-service arranquen quan les dependències estan healthy
+```
+
+**3.2. Comprova els health checks:**
+
+```bash
+# En un altre terminal, veure l'estat amb health checks
+docker-compose ps
+
+# Hauries de veure:
+# NAME         STATUS                  PORTS
+# postgres     Up (healthy)            0.0.0.0:5432->5432/tcp
+# qdrant       Up (healthy)            0.0.0.0:6333->6333/tcp
+# backend      Up (healthy)            0.0.0.0:8080->8080/tcp
+# ai-service   Up (healthy)            0.0.0.0:5000->5000/tcp
+
+# Inspeccionar el health check d'un servei concret
+docker inspect --format='{{json .State.Health}}' esportspulse-engine-postgres-1 | python3 -m json.tool
+```
+
+**3.3. Verificar la persistència de dades:**
+
+```bash
+# Crear una taula de prova a PostgreSQL
+docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
+CREATE TABLE IF NOT EXISTS test_persistencia (
+    id SERIAL PRIMARY KEY,
+    missatge TEXT NOT NULL,
+    creat_a TIMESTAMP DEFAULT NOW()
+);
+INSERT INTO test_persistencia (missatge) VALUES ('Dades que sobreviuen!');
+SELECT * FROM test_persistencia;
+"
+
+# Aturar i eliminar tots els contenidors (però NO els volums)
+docker-compose down
+
+# Tornar a arrencar
+docker-compose up -d
+
+# Verificar que les dades segueixen allà
+docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
+SELECT * FROM test_persistencia;
+"
+# Hauries de veure la fila "Dades que sobreviuen!"
+
+# ARA prova amb -v (elimina volums) — les dades es perden!
+docker-compose down -v
+docker-compose up -d
+docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
+SELECT * FROM test_persistencia;
+"
+# ERROR: relation "test_persistencia" does not exist
+# Les dades han desaparegut perquè hem eliminat el volum!
+```
+
+> **Lliçó important:** `docker-compose down` conserva els volums. `docker-compose down -v` els elimina. En desenvolupament, `-v` és útil per començar de zero. En producció, MAI facis `-v` sense una còpia de seguretat.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `RequestLoggingFilter` implementat amb mètode, path, status, durada i X-Request-Id
-- [ ] Cada petició genera un log amb tota la informació
-- [ ] X-Request-Id present a totes les respostes HTTP
-- [ ] Si el client no envia X-Request-Id, el servidor en genera un (UUID)
-- [ ] Si el client envia X-Request-Id, el servidor el respecta
-- [ ] `docs/api-spec.md` complet amb tots els endpoints documentats
-- [ ] Tests del filtre passen correctament
-- [ ] Commit: `feat(logging): add request logging filter with X-Request-Id`
+- [ ] El fitxer `.env` existeix amb totes les variables i **NO** està a Git
+- [ ] El fitxer `.env.example` existeix i **SÍ** està a Git (sense secrets reals)
+- [ ] `.gitignore` inclou `.env`
+- [ ] Els 4 serveis del `docker-compose.yml` tenen `healthcheck` definit
+- [ ] `depends_on` amb `condition: service_healthy` per a backend i ai-service
+- [ ] PostgreSQL i Qdrant tenen volums amb nom declarats
+- [ ] `docker-compose up` arrenca els serveis en l'ordre correcte (DB primer, apps després)
+- [ ] `docker-compose ps` mostra tots els serveis com a "healthy"
+- [ ] Les dades de PostgreSQL sobreviuen a `docker-compose down` (sense `-v`)
+- [ ] Tots els canvis estan commitejats: `feat(docker): add health checks, volumes and env configuration`

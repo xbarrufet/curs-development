@@ -8,7 +8,7 @@ Entendre com el teu codi realment s'executa: què fa el sistema operatiu quan es
 
 ## Prerequisit: Instal·lar Git Bash (Windows)
 
-Aquesta setmana treballaràs intensivament amb el terminal. Les comandes que aprendràs (`grep`, `find`, `sort`, `ps`, pipes, bash scripting) són l'estàndard de la indústria — els servidors de producció, els pipelines de CI/CD (GitHub Actions), i els contenidors Docker que veuràs a la setmana 8 usen Linux. Per tant, és important que les aprenguis en el seu entorn natural.
+Aquesta setmana treballaràs intensivament amb el terminal. Les comandes que aprendràs (`grep`, `find`, `sort`, `ps`, pipes, bash scripting) són l'estàndard de la indústria — els servidors de producció, els pipelines de CI/CD (GitHub Actions), i els contenidors Docker que veuràs a la setmana 9 usen Linux. Per tant, és important que les aprenguis en el seu entorn natural.
 
 Si fas servir **Windows**, obre **Git Bash** (ve instal·lat amb Git for Windows) per a totes les activitats d'aquesta setmana. Git Bash et dona un terminal bash real a Windows amb totes les comandes Unix que necessites: `ls`, `grep`, `find`, `sort`, `awk`, `sed`, `curl`, `ssh`, i molt més.
 
@@ -16,7 +16,7 @@ Si fas servir **Windows**, obre **Git Bash** (ve instal·lat amb Git for Windows
 - Clic dret a qualsevol carpeta → "Open Git Bash here"
 - O busca "Git Bash" al menú d'inici
 
-**Per què no PowerShell?** PowerShell és potent, però usa una sintaxi completament diferent. A la indústria, els scripts de build, CI/CD, i servidors usen bash. Aprendre bash ara et prepara per a Docker (S8), GitHub Actions (S5), i qualsevol feina amb servidors Linux.
+**Per què no PowerShell?** PowerShell és potent, però usa una sintaxi completament diferent. A la indústria, els scripts de build, CI/CD, i servidors usen bash. Aprendre bash ara et prepara per a Docker (S9), GitHub Actions (S7), i qualsevol feina amb servidors Linux.
 
 > **Nota sobre permisos Unix (dimarts):** A Windows, el model de permisos de fitxers (`rwx`, `chmod`) no existeix — Windows usa un sistema diferent (ACLs). Dimarts l'aprendràs com a teoria perquè és essencial per entendre servidors Linux i Docker, tot i que no el faràs servir directament al teu Windows del dia a dia.
 

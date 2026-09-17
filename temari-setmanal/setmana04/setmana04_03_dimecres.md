@@ -1,436 +1,417 @@
-# Setmana 4 — Dimecres: Concurrencia en Python — threading, GIL i asyncio
+# Setmana 04 — Dimecres: Fonaments SQL — SELECT, WHERE, JOIN i Indexos
 
 ## Objectiu del Dia
 
-Traslladar els conceptes de concurrencia de Java a Python: veure que les race conditions existeixen exactament igual, entendre el GIL (Global Interpreter Lock) i per que NO et protegeix, i aprendre `asyncio` com l'equivalent de `CompletableFuture` per a I/O concurrent. Al final del dia tindras el mateix domini de concurrencia en els dos llenguatges i podras comparar els patrons de cadascun.
+Dominar les operacions SQL fonamentals que JPA genera per nosaltres entre bastidors. Al final del dia sabras escriure queries SQL a ma, entendras com funcionen els indexos i podras analitzar el rendiment de les consultes amb EXPLAIN.
 
 ---
 
 ## Teoria
 
-### Race Conditions en Python: El GIL No Et Salva
+### SQL: El Llenguatge de les Bases de Dades
 
-Python te el Global Interpreter Lock (GIL), un mecanisme que fa que **nomes un thread executi bytecode Python alhora**. Molts developers creuen que aixo elimina les race conditions. **Es fals.**
+SQL (Structured Query Language) te mes de 50 anys i continua sent l'estandard per treballar amb dades relacionals. Quan JPA genera `findByNameContaining("Ahri")`, per sota executa SQL. Entendre SQL et dona **control total** sobre les teves dades.
 
-El GIL garanteix que la JVM de Python (CPython) no es corromp internament. Pero `count += 1` **no es un sol bytecode** — son tres instruccions:
+### CRUD: Les 4 Operacions Basiques
 
-```python
-# count += 1 es compila a:
-LOAD_GLOBAL  count    # 1. Llegeix el valor actual de count
-BINARY_ADD   1        # 2. Suma 1
-STORE_GLOBAL count    # 3. Escriu el nou valor
+#### CREATE TABLE — Definir l'Estructura
 
-# El GIL pot canviar de thread ENTRE qualsevol d'aquestes instruccions
-# Si Thread A llegeix count=42 i el GIL dona el torn a Thread B
-# abans que A escrigui, Thread B també llegirà 42 → increment perdut
+```sql
+-- Creem la taula de campions
+-- PRIMARY KEY: identifica unicament cada fila (no pot repetir-se)
+-- NOT NULL: el camp es obligatori (no pot ser buit)
+-- VARCHAR(100): text amb maxim 100 caracters
+CREATE TABLE champions (
+    champion_id VARCHAR(50) PRIMARY KEY,   -- Clau primaria unica
+    name        VARCHAR(100) NOT NULL,     -- Nom obligatori
+    games_played INT DEFAULT 0,            -- Partides jugades, per defecte 0
+    win_rate    DOUBLE,                    -- Percentatge de victories
+    version     BIGINT DEFAULT 0           -- Control de concurrencia (JPA @Version)
+);
 ```
 
-**Regla:** El GIL protegeix les estructures internes de CPython, **no el teu codi**. Qualsevol operacio composta (read-modify-write) es vulnerable a race conditions.
+#### INSERT — Afegir Dades
 
-### threading: L'Equivalent a Java Threads
+```sql
+-- Inserim campions a la taula
+-- L'ordre dels valors ha de coincidir amb l'ordre de les columnes
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('ahri-001', 'Ahri', 1500, 52.3);
 
-El modul `threading` de Python funciona gairebe identic als threads de Java. Els threads comparteixen memoria, i les mateixes trampes apliquen.
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('jinx-002', 'Jinx', 2300, 51.8);
 
-```python
-import threading
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('thresh-003', 'Thresh', 3100, 49.5);
 
-# Crear i llançar un thread — idèntic al concepte de Java
-# target és la funció que executarà el thread (com un Runnable)
-# args són els arguments que rebrà la funció
-t = threading.Thread(target=la_teva_funcio, args=("argument1",))
-t.start()   # Llança el thread — comença l'execució en paral·lel
-t.join()    # Espera que el thread acabi — com Thread.join() a Java
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('yasuo-004', 'Yasuo', 4200, 48.7);
+
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('lux-005', 'Lux', 2800, 53.1);
+
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('zed-006', 'Zed', 1900, 50.2);
+
+INSERT INTO champions (champion_id, name, games_played, win_rate)
+VALUES ('leona-007', 'Leona', 1200, 51.5);
 ```
 
-### threading.Lock(): L'Equivalent a synchronized
+#### SELECT — Consultar Dades
 
-```python
-import threading
+```sql
+-- Seleccionar TOTS els campions amb TOTES les columnes
+-- * significa "totes les columnes" — evita-ho en produccio (selecciona nomes el que necessitis)
+SELECT * FROM champions;
 
-lock = threading.Lock()
+-- Seleccionar nomes nom i win_rate — mes eficient que SELECT *
+SELECT name, win_rate FROM champions;
 
-# El lock garanteix exclusió mútua — com synchronized a Java
-# Només un thread pot tenir el lock alhora; la resta esperen
-with lock:
-    # Secció crítica — codi protegit
-    # Només un thread pot estar aquí dins alhora
-    count += 1
+-- Comptar quants campions tenim
+-- COUNT(*) es una funcio d'agregacio — retorna un sol valor
+SELECT COUNT(*) AS total_champions FROM champions;
 ```
 
-La construccio `with lock:` es l'equivalent de `synchronized` a Java. Adquireix el lock a l'entrada i l'allibera a la sortida (fins i tot si hi ha una excepcio).
+#### UPDATE — Modificar Dades
 
-### asyncio: Concurrencia per a I/O sense Threads
+```sql
+-- Actualitzar el win_rate d'Ahri
+-- WHERE es OBLIGATORI — sense WHERE, actualitzaries TOTES les files!
+-- Error comu i catastrofic: UPDATE champions SET win_rate = 55.0; (sense WHERE)
+UPDATE champions SET win_rate = 55.0 WHERE champion_id = 'ahri-001';
 
-`asyncio` es el model de concurrencia modern de Python per a operacions d'I/O (crides a APIs, lectures de fitxers, queries a BD). A diferencia de `threading`, **no usa multiples threads**. Usa un sol thread amb un event loop que gestiona multiples tasques.
-
-```
-threading (Java i Python):
-┌──────────────────────────────────┐
-│ Thread-1: fetch(api_1) ──[espera 300ms]──→ resultat │
-│ Thread-2: fetch(api_2) ──[espera 100ms]──→ resultat │
-│ Thread-3: fetch(api_3) ──[espera 200ms]──→ resultat │
-└──────────────────────────────────┘
-3 threads, cadascun bloquejat esperant
-
-asyncio (Python):
-┌──────────────────────────────────┐
-│ Event Loop (1 sol thread):                           │
-│   Task-1: fetch(api_1) → [espera] → reprèn          │
-│   Task-2: fetch(api_2) → [espera] → reprèn          │
-│   Task-3: fetch(api_3) → [espera] → reprèn          │
-│                                                      │
-│   Mentre Task-1 espera la xarxa, l'event loop       │
-│   executa Task-2 o Task-3. Ningú està bloquejat.    │
-└──────────────────────────────────┘
-1 thread, mai bloquejat
+-- Incrementar partides jugades
+-- Pots fer operacions aritmetiques directament
+UPDATE champions SET games_played = games_played + 100 WHERE champion_id = 'jinx-002';
 ```
 
-### Comparativa de Patrons Java vs Python
+#### DELETE — Eliminar Dades
 
-| Concepte | Java | Python |
-|----------|------|--------|
-| Thread basic | `new Thread(() -> {...}).start()` | `threading.Thread(target=fn).start()` |
-| Lock | `synchronized` | `threading.Lock()` |
-| Async I/O | `CompletableFuture.supplyAsync()` | `asyncio.create_task()` |
-| Esperar multiples | `CompletableFuture.allOf()` | `asyncio.gather()` |
-| Combinar resultats | `.thenCombine()` | `await asyncio.gather()` retorna llista |
-| Gestio d'errors | `.exceptionally()` | `return_exceptions=True` a `gather()` |
+```sql
+-- Eliminar un campió concret
+-- SEMPRE amb WHERE — sense WHERE, elimines TOTA la taula!
+DELETE FROM champions WHERE champion_id = 'yasuo-004';
 
-### async/await: La Sintaxi
+-- Eliminar campions amb menys de 50% de win rate
+DELETE FROM champions WHERE win_rate < 50.0;
+```
 
-```python
-import asyncio
+### Filtratge i Ordenacio
 
-# "async def" defineix una coroutine — una funció que pot ser pausada i repressa
-# L'event loop gestiona quan s'executa cada part
-async def fetch_champion(champion_id: str) -> dict:
-    # "await" pausa la coroutine fins que l'operació I/O acaba
-    # Mentre espera, l'event loop pot executar altres coroutines
-    await asyncio.sleep(0.3)  # Simula 300ms de latència de xarxa
-    return {"id": champion_id, "name": champion_id, "winRate": 52.3}
+#### WHERE — Filtrar Resultats
 
-async def main():
-    # create_task llança la coroutine — equivalent a supplyAsync()
-    # La tasca comença immediatament però no bloqueja
-    task1 = asyncio.create_task(fetch_champion("Ahri"))
-    task2 = asyncio.create_task(fetch_champion("Zed"))
+```sql
+-- Campions amb win rate superior al 50%
+SELECT name, win_rate FROM champions
+WHERE win_rate > 50.0;
 
-    # gather espera que totes les tasques acabin — equivalent a allOf()
-    # Retorna una llista amb tots els resultats, en el mateix ordre
-    results = await asyncio.gather(task1, task2)
-    return results
+-- Campions amb mes de 2000 partides I win rate positiu
+-- AND: les DUES condicions han de ser certes
+SELECT name, games_played, win_rate FROM champions
+WHERE games_played > 2000 AND win_rate > 50.0;
 
-# asyncio.run() crea l'event loop i executa la coroutine principal
-results = asyncio.run(main())
+-- Campions que es diguin Ahri O Jinx
+-- OR: alguna de les condicions ha de ser certa
+SELECT * FROM champions
+WHERE name = 'Ahri' OR name = 'Jinx';
+
+-- Equivalent mes net amb IN
+-- IN: comprova si el valor esta dins d'una llista
+SELECT * FROM champions
+WHERE name IN ('Ahri', 'Jinx', 'Lux');
+
+-- Cercar per patrons amb LIKE
+-- %: qualsevol seqüencia de caracters
+-- _: exactament un caracter
+SELECT * FROM champions WHERE name LIKE 'A%';     -- Comenca per A
+SELECT * FROM champions WHERE name LIKE '%x';      -- Acaba en x
+SELECT * FROM champions WHERE name LIKE '%re%';    -- Conte "re"
+```
+
+#### ORDER BY i LIMIT
+
+```sql
+-- Ordenar per win rate descendent (millors primer)
+-- DESC: descendent (de mes gran a mes petit)
+-- ASC: ascendent (per defecte, de mes petit a mes gran)
+SELECT name, win_rate FROM champions
+ORDER BY win_rate DESC;
+
+-- Top 3 campions amb millor win rate
+-- LIMIT: restringeix el nombre de resultats (molt util per paginacio)
+SELECT name, win_rate FROM champions
+ORDER BY win_rate DESC
+LIMIT 3;
+
+-- Paginacio: pagina 2 amb 3 resultats per pagina
+-- OFFSET: salta els primers N resultats
+SELECT name, win_rate FROM champions
+ORDER BY win_rate DESC
+LIMIT 3 OFFSET 3;
+```
+
+### Funcions d'Agregacio
+
+```sql
+-- Recompte total de campions
+SELECT COUNT(*) AS total FROM champions;
+
+-- Mitjana de win rate de tots els campions
+-- AVG: calcula la mitjana aritmetica
+SELECT AVG(win_rate) AS avg_win_rate FROM champions;
+
+-- Sumatori total de partides jugades
+SELECT SUM(games_played) AS total_games FROM champions;
+
+-- Maxim i minim de win rate
+SELECT MAX(win_rate) AS best, MIN(win_rate) AS worst FROM champions;
+```
+
+#### GROUP BY — Agrupar Resultats
+
+Per veure GROUP BY, afegim una columna `role`:
+
+```sql
+-- Afegim columna de rol als campions
+ALTER TABLE champions ADD COLUMN role VARCHAR(50);
+
+-- Actualitzem els rols
+UPDATE champions SET role = 'Mid' WHERE champion_id IN ('ahri-001', 'zed-006', 'lux-005');
+UPDATE champions SET role = 'ADC' WHERE champion_id = 'jinx-002';
+UPDATE champions SET role = 'Support' WHERE champion_id IN ('thresh-003', 'leona-007');
+
+-- Comptar campions per rol
+-- GROUP BY agrupa files amb el mateix valor i aplica la funcio d'agregacio a cada grup
+SELECT role, COUNT(*) AS champions_per_role, AVG(win_rate) AS avg_wr
+FROM champions
+GROUP BY role
+ORDER BY champions_per_role DESC;
+```
+
+#### CASE — Logica Condicional
+
+```sql
+-- Classificar campions per nivell de win rate
+-- CASE funciona com un if/else dins de SQL
+SELECT name, win_rate,
+    CASE
+        WHEN win_rate >= 53.0 THEN 'S-Tier'
+        WHEN win_rate >= 51.0 THEN 'A-Tier'
+        WHEN win_rate >= 49.0 THEN 'B-Tier'
+        ELSE 'C-Tier'
+    END AS tier
+FROM champions
+ORDER BY win_rate DESC;
+```
+
+### JOINs: Relacionar Taules
+
+En una base de dades real, les dades es reparteixen en multiples taules. Els JOINs les connecten:
+
+```sql
+-- Creem una taula de patches (actualitzacions del joc)
+CREATE TABLE patches (
+    patch_id VARCHAR(20) PRIMARY KEY,
+    patch_version VARCHAR(10) NOT NULL,
+    release_date DATE NOT NULL
+);
+
+-- Taula intermedia: canvis de campions per patch
+-- Cada fila relaciona un campió amb un patch
+CREATE TABLE champion_patches (
+    champion_id VARCHAR(50) NOT NULL,
+    patch_id VARCHAR(20) NOT NULL,
+    win_rate_change DOUBLE,  -- Canvi de win rate en aquest patch
+    PRIMARY KEY (champion_id, patch_id), -- Clau composta: unica combinacio campió+patch
+    FOREIGN KEY (champion_id) REFERENCES champions(champion_id),
+    FOREIGN KEY (patch_id) REFERENCES patches(patch_id)
+);
+
+-- Inserim dades de patches
+INSERT INTO patches VALUES ('patch-14.1', '14.1', '2024-01-10');
+INSERT INTO patches VALUES ('patch-14.2', '14.2', '2024-01-24');
+
+-- Inserim canvis de campions per patch
+INSERT INTO champion_patches VALUES ('ahri-001', 'patch-14.1', 2.5);
+INSERT INTO champion_patches VALUES ('ahri-001', 'patch-14.2', -1.0);
+INSERT INTO champion_patches VALUES ('jinx-002', 'patch-14.1', -0.5);
+
+-- INNER JOIN: retorna nomes files amb coincidencia a les DUES taules
+-- Si un campió no te canvis en cap patch, NO apareix
+SELECT c.name, p.patch_version, cp.win_rate_change
+FROM champions c
+INNER JOIN champion_patches cp ON c.champion_id = cp.champion_id
+INNER JOIN patches p ON cp.patch_id = p.patch_id
+ORDER BY c.name, p.patch_version;
+
+-- LEFT JOIN: retorna TOTS els campions, tinguin o no canvis
+-- Els campions sense canvis tindran NULL a les columnes del patch
+SELECT c.name, p.patch_version, cp.win_rate_change
+FROM champions c
+LEFT JOIN champion_patches cp ON c.champion_id = cp.champion_id
+LEFT JOIN patches p ON cp.patch_id = p.patch_id
+ORDER BY c.name;
+```
+
+### Indexos: Per que les Queries son Rapides o Lentes
+
+Un index es com l'index d'un llibre — et porta directament a la pagina que busques sense llegir tot el llibre:
+
+```
+Sense index (full table scan):
+┌──────────────────────────────────────────┐
+│ Fila 1 → Fila 2 → Fila 3 → ... → Fila N │  O(n)
+│ Ha de llegir TOTES les files              │
+└──────────────────────────────────────────┘
+
+Amb index (B-Tree scan):
+         ┌───┐
+         │ M │         O(log n)
+        ╱     ╲
+    ┌───┐     ┌───┐
+    │ D │     │ T │
+   ╱     ╲   ╱     ╲
+  A-C   E-L  N-S   U-Z
+```
+
+```sql
+-- Creem un index al camp "name" per accelerar cerques per nom
+-- Sense index: O(n) — ha de llegir totes les files
+-- Amb index: O(log n) — va directe al valor
+CREATE INDEX idx_champion_name ON champions(name);
+
+-- Index compost: util quan filtrem per dos camps alhora
+CREATE INDEX idx_role_winrate ON champions(role, win_rate);
+
+-- EXPLAIN mostra COM la BD executa la query
+-- Permet veure si usa un index o fa un full table scan
+EXPLAIN SELECT * FROM champions WHERE name = 'Ahri';
+
+-- Comparacio: amb i sense index
+-- Primer, sense index (ja que champion_id te index per ser PK)
+EXPLAIN SELECT * FROM champions WHERE games_played > 2000;
+
+-- Creem index i tornem a mirar
+CREATE INDEX idx_games_played ON champions(games_played);
+EXPLAIN SELECT * FROM champions WHERE games_played > 2000;
+```
+
+**Quan crear indexos:**
+- Columnes que uses sovint en WHERE, JOIN o ORDER BY
+- Columnes amb alta cardinalitat (molts valors diferents)
+
+**Quan NO crear indexos:**
+- Taules petites (menys de 1000 files — el full scan es suficient)
+- Columnes amb poca variabilitat (ex: un camp boolea amb 50/50)
+- Taules amb moltes escriptures (cada INSERT/UPDATE ha d'actualitzar l'index)
+
+### Propietats ACID
+
+Les bases de dades relacionals garanteixen 4 propietats que fan les dades fiables:
+
+| Propietat | Significat | Exemple |
+|---|---|---|
+| **Atomicity** | Tot o res — si una part falla, es desfà tot | Transferencia bancaria: treure d'un compte i posar a l'altre |
+| **Consistency** | La BD sempre esta en un estat valid | NOT NULL, FOREIGN KEY — la BD rebutja dades invalides |
+| **Isolation** | Transaccions concurrents no interfereixen | Dos usuaris comprant l'ultim producte alhora |
+| **Durability** | Un cop confirmat (COMMIT), no es perd | Encara que el servidor es reinicii |
+
+### @Transactional a Spring
+
+L'anotacio `@Transactional` aplica ACID als nostres metodes:
+
+```java
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * @Transactional: Spring obre una transaccio al inici del metode
+ * i fa COMMIT si tot va be, o ROLLBACK si hi ha una excepcio.
+ *
+ * Analogia: transferencia bancaria
+ * 1. Treure 100EUR del compte A
+ * 2. Posar 100EUR al compte B
+ * Si el pas 2 falla, el pas 1 es desfà automaticament.
+ */
+@Transactional
+public void transferChampionStats(String fromId, String toId) {
+    // Si qualsevol operacio falla, TOTES es desfan (ROLLBACK)
+    ChampionEntity from = jpaRepository.findById(fromId)
+        .orElseThrow(() -> new RuntimeException("Campió origen no trobat"));
+    ChampionEntity to = jpaRepository.findById(toId)
+        .orElseThrow(() -> new RuntimeException("Campió destí no trobat"));
+
+    // Transferim partides d'un campió a l'altre
+    int gamesToTransfer = from.getGamesPlayed() / 2;
+    from.setGamesPlayed(from.getGamesPlayed() - gamesToTransfer);
+    to.setGamesPlayed(to.getGamesPlayed() + gamesToTransfer);
+
+    // JPA detecta els canvis automaticament ("dirty checking")
+    // No cal cridar save() explicitament dins una @Transactional
+}
 ```
 
 ---
 
 ## Activitat
 
-### 1. Race Condition en Python (20 min)
+### Exercici: Practica SQL a la Consola H2
 
-Replica l'exercici de dilluns en Python per demostrar que el GIL no protegeix:
+**Durada estimada:** 90 minuts
 
-```python
-# race_condition.py
-# Demostra que el GIL de Python NO protegeix contra race conditions
-# count += 1 és LOAD + ADD + STORE — el GIL pot canviar de thread entre elles
+#### Preparacio (5 min)
 
-import threading
-import time
+1. Arrenca l'aplicacio: `mvn spring-boot:run`
+2. Obre la consola H2: `http://localhost:8080/h2-console`
+3. Connecta amb `jdbc:h2:mem:esportspulse`
 
-# Variable global compartida entre tots els threads
-count = 0
+#### Exercici 1: Insercions (10 min)
 
-def increment_unsafe(iterations: int) -> None:
-    """Incrementa el comptador sense protecció — race condition garantida."""
-    global count
-    for _ in range(iterations):
-        count += 1  # NO és atòmic: LOAD_GLOBAL + BINARY_ADD + STORE_GLOBAL
+Insereix manualment 7 campions a la taula `champions` amb les sentencies INSERT proporcionades a la teoria.
 
-def increment_safe(lock: threading.Lock, iterations: int) -> None:
-    """Incrementa el comptador amb lock — equivalent a synchronized de Java."""
-    global count
-    for _ in range(iterations):
-        # El lock garanteix que només un thread fa LOAD+ADD+STORE alhora
-        with lock:
-            count += 1
+#### Exercici 2: Consultes basiques (15 min)
 
-def run_test(name: str, target_fn, num_threads: int, iterations: int, **kwargs) -> None:
-    """Llança N threads i mesura temps i correcció."""
-    global count
-    count = 0  # Reset
+Escriu i executa:
+1. `SELECT` de tots els campions amb win rate > 50%
+2. `SELECT` amb `ORDER BY win_rate DESC LIMIT 3`
+3. `SELECT` amb `LIKE` per trobar campions que continguin "a" al nom
+4. `UPDATE` per modificar el win rate d'un campió
+5. `DELETE` d'un campió concret
 
-    start = time.perf_counter()
+#### Exercici 3: Agregacions (15 min)
 
-    threads = []
-    for _ in range(num_threads):
-        t = threading.Thread(target=target_fn, args=(iterations,), kwargs=kwargs)
-        t.start()
-        threads.append(t)
+1. Calcula la mitjana de win rate de tots els campions
+2. Compta quants campions tenen mes de 2000 partides
+3. Afegeix la columna `role`, actualitza els rols i fes un `GROUP BY role`
+4. Usa `CASE` per classificar campions en tiers
 
-    # join() espera que cada thread acabi — idèntic a Java
-    for t in threads:
-        t.join()
+#### Exercici 4: JOINs (20 min)
 
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    expected = num_threads * iterations
+1. Crea la taula `patches` i `champion_patches`
+2. Insereix dades de patches
+3. Escriu un `INNER JOIN` per veure canvis per campió i patch
+4. Escriu un `LEFT JOIN` per veure TOTS els campions (amb o sense canvis)
 
-    status = "CORRECTE" if count == expected else f"INCORRECTE (perduts: {expected - count})"
-    print(f"{name:20s} Temps: {elapsed_ms:7.1f}ms  Esperat: {expected:>10,}  Real: {count:>10,}  {status}")
+#### Exercici 5: Indexos i EXPLAIN (15 min)
 
-if __name__ == "__main__":
-    NUM_THREADS = 10
-    ITERATIONS = 100_000
+1. Executa `EXPLAIN SELECT * FROM champions WHERE name = 'Ahri';` **sense** index
+2. Crea l'index: `CREATE INDEX idx_champion_name ON champions(name);`
+3. Executa el mateix `EXPLAIN` i compara
+4. Crea un index a `games_played` i repeteix l'experiment
 
-    print("=== Race Condition en Python ===")
-    print(f"{NUM_THREADS} threads x {ITERATIONS:,} increments\n")
+#### Exercici 6: @Transactional (10 min)
 
-    # Test 1: Sense protecció — demostra la race condition
-    run_test("Unsafe (no lock)", increment_unsafe, NUM_THREADS, ITERATIONS)
-
-    # Test 2: Amb Lock — equivalent a synchronized
-    lock = threading.Lock()
-    # Passem el lock com a argument extra
-    def safe_wrapper(iterations):
-        increment_safe(lock, iterations)
-    run_test("Lock (synchronized)", safe_wrapper, NUM_THREADS, ITERATIONS)
-
-    print("\nNota: el GIL NO protegeix contra race conditions en operacions compostes.")
-    print("count += 1 és LOAD + ADD + STORE — el GIL pot canviar entre elles.")
-```
-
-Executa-ho:
-
-```bash
-python3 race_condition.py
-# La versió unsafe perdrà increments. La versió amb Lock serà correcta.
-```
-
-### 2. Concurrencia I/O amb asyncio (25 min)
-
-Ara implementa l'equivalent de `CompletableFuture` de dimarts en Python:
-
-```python
-# async_fetcher.py
-# Equivalent al ParallelFetcher.java de dimarts, però amb asyncio
-# Un sol thread, múltiples tasques I/O concurrents
-
-import asyncio
-import time
-
-async def fetch_riot_data(champion_id: str) -> dict:
-    """Simula crida a Riot API — 300ms de latència."""
-    # asyncio.sleep és la versió async de time.sleep
-    # A diferència de time.sleep (que bloqueja el thread),
-    # asyncio.sleep retorna el control a l'event loop
-    await asyncio.sleep(0.3)
-    return {"source": "riot", "champion": champion_id, "winRate": 52.3}
-
-async def fetch_data_dragon(champion_id: str) -> dict:
-    """Simula crida a Data Dragon — 100ms de latència."""
-    await asyncio.sleep(0.1)
-    return {"source": "dataDragon", "champion": champion_id, "imageUrl": f"https://dd.cdn/{champion_id}.png"}
-
-async def fetch_sequential(champion_id: str) -> tuple:
-    """Versió seqüencial — espera una crida abans de començar l'altra."""
-    riot = await fetch_riot_data(champion_id)
-    dd = await fetch_data_dragon(champion_id)
-    return riot, dd
-
-async def fetch_parallel(champion_id: str) -> tuple:
-    """Versió paral·lela — llança les dues crides alhora amb gather."""
-    # asyncio.gather és l'equivalent de CompletableFuture.allOf()
-    # Llança totes les coroutines i espera que totes acabin
-    # Retorna una llista amb els resultats en el MATEIX ordre
-    riot, dd = await asyncio.gather(
-        fetch_riot_data(champion_id),
-        fetch_data_dragon(champion_id)
-    )
-    return riot, dd
-
-async def main():
-    champion_id = "Ahri"
-
-    # --- Seqüencial ---
-    start = time.perf_counter()
-    riot, dd = await fetch_sequential(champion_id)
-    seq_ms = (time.perf_counter() - start) * 1000
-    print(f"Seqüencial:  {seq_ms:.0f}ms (esperat: ~400ms)")
-    print(f"  Riot: {riot}")
-    print(f"  DD:   {dd}")
-
-    # --- Paral·lel ---
-    start = time.perf_counter()
-    riot, dd = await fetch_parallel(champion_id)
-    par_ms = (time.perf_counter() - start) * 1000
-    print(f"\nParal·lel:   {par_ms:.0f}ms (esperat: ~300ms)")
-    print(f"  Riot: {riot}")
-    print(f"  DD:   {dd}")
-
-    print(f"\nDiferència:  {seq_ms - par_ms:.0f}ms estalviats")
-
-# asyncio.run() crea l'event loop i executa la coroutine main
-asyncio.run(main())
-```
-
-### 3. Extractor Concurrent de 50 Campions (20 min)
-
-Escala a 50 campions per veure la diferencia real:
-
-```python
-# batch_extractor.py
-# Extreu dades de 50 campions en paral·lel amb asyncio
-# Seqüencial: 50 × 300ms = 15s. Paral·lel: ~300ms.
-# Inclou gestió d'errors parcials — si algunes crides fallen, no perd les altres
-
-import asyncio
-import time
-import random
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
-class ChampionData:
-    """Dades d'un campió. frozen=True el fa immutable i thread-safe (com record a Java)."""
-    champion_id: str
-    riot_data: str
-    dd_data: str
-
-@dataclass(frozen=True)
-class ExtractionResult:
-    """Resultat complet: campions extrets + errors parcials."""
-    champions: list   # Llista de ChampionData
-    errors: list      # Llista de (champion_id, error_message)
-
-async def fetch_riot_data(champion_id: str) -> str:
-    """Simula crida a Riot API amb 10% de probabilitat de fallar."""
-    await asyncio.sleep(0.3)  # 300ms de latència
-    # Simula errors de xarxa aleatoris — a producció, les APIs fallen
-    if random.random() < 0.1:
-        raise ConnectionError(f"Timeout connectant a Riot API per {champion_id}")
-    return f"RiotData({champion_id}, wr=52.3)"
-
-async def fetch_data_dragon(champion_id: str) -> str:
-    """Simula crida a Data Dragon."""
-    await asyncio.sleep(0.1)
-    return f"DDData({champion_id}, img=ok)"
-
-async def extract_one(champion_id: str) -> ChampionData:
-    """Extreu dades d'un campió (Riot + DD en paral·lel)."""
-    # gather amb les dues fonts — paral·lel dins de cada campió
-    riot, dd = await asyncio.gather(
-        fetch_riot_data(champion_id),
-        fetch_data_dragon(champion_id)
-    )
-    return ChampionData(champion_id=champion_id, riot_data=riot, dd_data=dd)
-
-async def extract_all(champion_ids: list[str]) -> ExtractionResult:
-    """
-    Extreu dades de tots els campions en paral·lel.
-    Gestiona errors parcials: si algunes crides fallen,
-    retorna els resultats vàlids + la llista d'errors.
-    """
-    # Llançar TOTES les extraccions alhora
-    # return_exceptions=True fa que els errors es retornin com a valors
-    # en lloc de petar tot el gather — CLAU per gestió d'errors parcials
-    tasks = [extract_one(cid) for cid in champion_ids]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    champions = []
-    errors = []
-
-    for cid, result in zip(champion_ids, results):
-        if isinstance(result, Exception):
-            # Error parcial: anotem-lo i continuem amb la resta
-            errors.append((cid, str(result)))
-        else:
-            champions.append(result)
-
-    return ExtractionResult(champions=champions, errors=errors)
-
-async def main():
-    # Llista de 50 campions
-    champion_ids = [f"Champion_{i:03d}" for i in range(50)]
-
-    # --- Versió seqüencial (per comparar) ---
-    print("=== Versió Seqüencial ===")
-    start = time.perf_counter()
-    seq_results = []
-    for cid in champion_ids[:10]:  # Només 10, o trigaríem massa
-        try:
-            data = await extract_one(cid)
-            seq_results.append(data)
-        except Exception as e:
-            pass
-    seq_ms = (time.perf_counter() - start) * 1000
-    print(f"10 campions seqüencials: {seq_ms:.0f}ms (esperat: ~3000ms)")
-
-    # --- Versió paral·lela (tots 50) ---
-    print("\n=== Versió Paral·lela ===")
-    start = time.perf_counter()
-    result = await extract_all(champion_ids)
-    par_ms = (time.perf_counter() - start) * 1000
-
-    print(f"50 campions paral·lels:  {par_ms:.0f}ms (esperat: ~300ms)")
-    print(f"Campions extrets:        {len(result.champions)}")
-    print(f"Errors parcials:         {len(result.errors)}")
-
-    if result.errors:
-        print("\nErrors:")
-        for cid, msg in result.errors:
-            print(f"  {cid}: {msg}")
-
-    # Mostra els primers 3 resultats
-    print("\nPrimers resultats:")
-    for champ in result.champions[:3]:
-        print(f"  {champ.champion_id} → {champ.riot_data}")
-
-    # Verificació
-    assert par_ms < 1000, f"L'extractor hauria de trigar <1s, ha trigat {par_ms:.0f}ms"
-    print(f"\nVerificació OK: {par_ms:.0f}ms < 1000ms")
-
-asyncio.run(main())
-```
-
-### 4. Comparativa de Patrons (10 min)
-
-Crea un fitxer de notes comparant els dos llenguatges:
-
-```
-Patró Java vs Python — Notes personals
-
-CompletableFuture.supplyAsync() ↔ asyncio.create_task()
-  - Java: llança en un thread del ForkJoinPool
-  - Python: registra la coroutine a l'event loop (1 sol thread)
-
-CompletableFuture.allOf() ↔ asyncio.gather()
-  - Java: espera N futures
-  - Python: espera N coroutines, retorna llista de resultats
-
-.thenCombine() ↔ await asyncio.gather() amb unpacking
-  - Java: combina 2 resultats amb lambda
-  - Python: retorna tupla que pots destructurar
-
-.exceptionally() ↔ return_exceptions=True
-  - Java: encadena handler d'error per future
-  - Python: gather retorna excepcions com a valors dins la llista
-
-Quina sintaxi prefereixes? Per què?
-Quin codi és més fàcil de depurar? Per què?
-```
-
-> **Lectura recomanada (opcional, no bloquejant):**
-> - Real Python: [Async IO in Python](https://realpython.com/async-io-python/)
-> - Real Python: [An Intro to Threading in Python](https://realpython.com/intro-to-python-threading/)
+1. Llegeix el codi d'exemple de `transferChampionStats`
+2. Respon: que passaria si NO posem `@Transactional` i el segon `findById` falla?
+3. Escriu la resposta com a comentari al codi
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Has demostrat la race condition en Python amb `threading` i has vist que el GIL no protegeix
-- [ ] Has implementat la solucio amb `threading.Lock()` i funciona correctament
-- [ ] Has implementat l'extractor amb `asyncio` que fa 50 crides en paral-lel en menys d'1 segon
-- [ ] La gestio d'errors parcials funciona: si algunes crides fallen, els resultats valids es conserven
-- [ ] Has comparat els patrons Java vs Python i tens les teves notes amb les equivalencies
-- [ ] Pots explicar: que es el GIL, per que `count += 1` no es atomic en Python, i la diferencia entre `threading` i `asyncio`
+- [ ] 7 campions inserits a la consola H2 amb INSERT
+- [ ] 5 queries SELECT executades (filtre, ordenacio, LIKE, UPDATE, DELETE)
+- [ ] Agregacions amb COUNT, AVG, GROUP BY i CASE funcionals
+- [ ] Taules `patches` i `champion_patches` creades amb JOINs funcionals
+- [ ] EXPLAIN executat abans i despres de crear un index — diferencia documentada
+- [ ] Pregunta sobre @Transactional resposta com a comentari
+- [ ] Captures de pantalla o notes de les queries i resultats

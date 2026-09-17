@@ -1,6 +1,6 @@
-# Setmana 4 — Exercicis de Consolidació
+# Setmana 06 — Exercicis de Consolidació
 
-Aquests exercicis repassen els conceptes clau de la setmana. No cal lliurar-los — són per verificar que has entès la teoria i la pràctica abans de passar a la setmana 5. Intenta resoldre'ls sense mirar els apunts; si et quedes encallat, revisa el dia corresponent.
+Aquests exercicis repassen els conceptes clau de la setmana. No cal lliurar-los — són per verificar que has entès la teoria i la pràctica abans de passar a la setmana 7. Intenta resoldre'ls sense mirar els apunts; si et quedes encallat, revisa el dia corresponent.
 
 ---
 

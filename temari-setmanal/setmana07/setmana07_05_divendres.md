@@ -1,450 +1,486 @@
-# Setmana 07 — Divendres: Filosofia del Testing, Integració i PR
+# Setmana 07 — Divendres: Tag v0.1, CI Badge, Code Review Final i PR
 
 ## Objectiu del Dia
 
-Reflexionar sobre **per què** testem, entendre què val la pena testejar i què no, consolidar la suite de tests completa d'EsportsPulse, i tancar el Bloc 1 amb un PR que demostri tot el que has après. Al final del dia tindràs un projecte amb CI verd, cobertura adequada i tests que documenten el comportament del sistema.
+Tancar la primera versio estable del projecte EsportsPulse: netejar el repositori, crear el tag v0.1, afegir el badge de CI al README, fer un exercici complet de code review, i practicar el cicle professional de PR. Al final del dia tindras un projecte publicable amb versionat semàntic.
 
 ---
 
 ## Teoria
 
-### Filosofia del Testing: Per Què Testem?
+### Neteja del Repositori — Checklist Pre-release
 
-Els tests no existeixen per "complir un requisit" o "arribar al 100% de cobertura". Tenen tres propòsits reals:
+Abans de crear un tag (versió), el repositori ha d'estar impecable:
 
-1. **Protecció contra regressions:** Quan canvies codi, els tests et diuen si has trencat alguna cosa.
-2. **Documentació viva:** Els noms dels tests expliquen què fa el sistema. A diferència dels comentaris, els tests no es queden obsolets perquè fallen si el comportament canvia.
-3. **Habilitar el refactoring:** Sense tests, refactoritzar dóna por. Amb tests, pots reestructurar amb confiança.
+```
+Checklist Pre-release:
 
-> "Els tests no són per demostrar que el codi funciona. Són per avisar-te quan deixa de funcionar."
-
----
-
-### Què Testejar
-
-#### 1. Lògica de Negoci
-
-La part més valuosa de testejar: les regles del teu domini.
-
-```java
-// TESTEJAR: el filtratge per winRate és lògica de negoci
-// Si canviem el llindar o la fórmula, volem saber-ho
-@Test
-@DisplayName("ha de filtrar campions amb winRate per sobre del llindar")
-void shouldFilterChampionsByWinRate() {
-    // Arrange: creem campions amb winRates diversos
-    when(repository.findAll()).thenReturn(List.of(
-        new ChampionRecord("jinx", "Marksman", 55.0),
-        new ChampionRecord("lux", "Mage", 48.0),
-        new ChampionRecord("thresh", "Support", 52.0)
-    ));
-
-    // Act: filtrem per mínim 50%
-    List<ChampionRecord> result = service.findByMinWinRate(50.0);
-
-    // Assert: només jinx (55%) i thresh (52%) passen el filtre
-    assertEquals(2, result.size());
-    assertTrue(result.stream().noneMatch(c -> c.winRate() < 50.0),
-        "Cap campió hauria de tenir winRate per sota del llindar");
-}
+✅ .gitignore complet (veure exemple a sota)
+✅ Cap secret al codi (grep -r "API_KEY\|SECRET\|PASSWORD" src/)
+✅ Tots els tests passen (mvn test && pytest)
+✅ Checkstyle/ruff passen sense errors
+✅ CI pipeline verd (GitHub Actions)
+✅ README actualitzat amb instruccions de setup
+✅ Cap fitxer innecessari (.DS_Store, .class, __pycache__)
 ```
 
-#### 2. Gestió d'Errors
+#### `.gitignore` Complet per EsportsPulse
 
-Què passa quan les coses van malament? Aquesta és una font habitual de bugs en producció.
+```gitignore
+# === Java ===
+# Fitxers compilats — es regeneren amb mvn compile
+target/
+*.class
+*.jar
+*.war
 
-```java
-// TESTEJAR: com gestiona el servei un repositori que falla
-// En producció, les connexions a BD cauen, els discs es queden sense espai...
-@Test
-@DisplayName("ha de llançar ServiceException quan el repositori falla")
-void shouldWrapRepositoryExceptions() {
-    when(repository.findAll()).thenThrow(
-        new RuntimeException("Connexió a BD perduda")
-    );
+# === Python ===
+# Bytecode i cache — es regeneren automàticament
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
 
-    // Verifiquem que el servei transforma l'excepció tècnica
-    // en una excepció de negoci amb un missatge entenedor
-    ServiceException ex = assertThrows(ServiceException.class,
-        () -> service.findAll());
-    assertTrue(ex.getMessage().contains("campions"),
-        "L'error hauria de mencionar el context de negoci");
-}
-```
+# === IDEs ===
+# Configuració local de cada developer — no compartir
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
 
-#### 3. Casos Límit (Edge Cases)
+# === Secrets ===
+# MAI pujar secrets al repositori
+.env
+.env.local
+*.key
+credentials/
 
-Els bugs viuen als extrems: llistes buides, valors null, limits de rang.
+# === Sistema Operatiu ===
+# Fitxers que crea el SO automàticament
+.DS_Store
+Thumbs.db
 
-```java
-// TESTEJAR: límits i casos especials
-// Els bugs més comuns apareixen en condicions límit
-@Nested
-@DisplayName("Casos límit")
-class EdgeCases {
-
-    @Test
-    @DisplayName("ha de retornar llista buida quan no hi ha campions")
-    void shouldReturnEmptyListWhenNoChampions() {
-        when(repository.findAll()).thenReturn(List.of());
-
-        List<ChampionRecord> result = service.findAll();
-
-        assertNotNull(result, "Mai hauria de retornar null");
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    @DisplayName("ha de gestionar nom amb espais en blanc")
-    void shouldHandleWhitespaceName() {
-        // Un nom amb espais no hauria de ser vàlid
-        assertThrows(IllegalArgumentException.class,
-            () -> service.register(
-                new ChampionRecord("   ", "Mage", 50.0)
-            ));
-    }
-
-    @Test
-    @DisplayName("ha de gestionar winRate exactament 0")
-    void shouldHandleZeroWinRate() {
-        // winRate 0 és vàlid (campió sense dades de partides)
-        assertDoesNotThrow(
-            () -> service.register(
-                new ChampionRecord("newChamp", "Tank", 0.0)
-            ));
-    }
-
-    @Test
-    @DisplayName("ha de gestionar winRate exactament 100")
-    void shouldHandleMaxWinRate() {
-        // winRate 100 és vàlid (cas teòric: 100% victòries)
-        assertDoesNotThrow(
-            () -> service.register(
-                new ChampionRecord("perfecto", "Fighter", 100.0)
-            ));
-    }
-}
+# === Base de Dades ===
+# La BD H2 és local, no la compartim
+*.mv.db
+*.trace.db
 ```
 
 ---
 
-### Què NO Testejar
+### Semantic Versioning (SemVer)
 
-#### 1. Codi del Framework
+El versionat semàntic es l'estàndard de la indústria per numerar versions. Format: **MAJOR.MINOR.PATCH**
 
-```java
-// NO TESTEJAR: que Spring @Autowired funciona
-// Això ja ho testa l'equip de Spring. Si @Autowired falla, el problema
-// és de configuració, no de lògica de negoci
-@Test
-void springAutowiredWorks() {
-    // Inútil: estem testejant que Spring funciona, no el nostre codi
-    assertNotNull(applicationContext.getBean(ChampionRepository.class));
-}
+```
+  v MAJOR . MINOR . PATCH
+    │        │        │
+    │        │        └── Correccions de bugs (backward compatible)
+    │        │             Exemple: v1.0.1 → fix winRate decimal
+    │        │
+    │        └── Noves funcionalitats (backward compatible)
+    │             Exemple: v1.1.0 → afegir cerca per rol
+    │
+    └── Canvis que TRENQUEN compatibilitat
+         Exemple: v2.0.0 → canviar l'API de REST a GraphQL
 ```
 
-#### 2. Getters i Setters (sense lògica)
+**Exemples pràctics:**
 
-```java
-// NO TESTEJAR: getters/setters generats o trivials
-// Un record de Java no té getters que puguin fallar
-@Test
-void testGetName() {
-    ChampionRecord c = new ChampionRecord("jinx", "Marksman", 51.5);
-    assertEquals("jinx", c.name());
-    // Testejar això no aporta valor: el record és generat pel compilador
-}
+```
+v0.1.0 → Primera versió funcional (pre-release, l'API pot canviar)
+v0.2.0 → Afegim persistència amb JPA
+v0.2.1 → Fix: corregir NullPointerException al servei
+v1.0.0 → Primera versió estable (l'API és fixa, backward compatible)
+v1.1.0 → Afegim endpoint REST per cercar campions
+v2.0.0 → Migrem de H2 a PostgreSQL (trenca la config existent)
 ```
 
-#### 3. Mètodes Privats Directament
+**Per què el nostre primer tag es `v0.1.0`?** Perquè estem en desenvolupament (MAJOR = 0). Qualsevol cosa pot canviar. Quan MAJOR es 0, no hi ha garanties de compatibilitat.
 
-```java
-// NO TESTEJAR: mètodes privats directament
-// Testa'ls a través de la interfície pública del servei
-// Si un mètode privat falla, un test públic hauria de detectar-ho
+> **Referència:** [semver.org](https://semver.org) — L'especificació completa en 5 minuts de lectura.
 
-// MAL: accedir a mètodes privats via reflection
-@Test
-void testPrivateNormalizeName() throws Exception {
-    Method method = ChampionManagementService.class
-        .getDeclaredMethod("normalizeName", String.class);
-    method.setAccessible(true);
-    // No facis això! Si necessites testejar-lo, potser hauria de ser públic
-    // o estar en una classe Helper separada
-}
+---
 
-// BÉ: testejar a través de la interfície pública
-@Test
-void shouldNormalizeNameWhenRegistering() {
-    // Si normalizeName() funciona, register() retornarà el nom normalitzat
-    service.register(new ChampionRecord("JINX", "Marksman", 51.5));
-    Optional<ChampionRecord> found = service.findById("jinx");
-    assertTrue(found.isPresent(), "El nom hauria d'estar normalitzat a minúscules");
-}
+### Conventional Commits
+
+Format estàndard per als missatges de commit. Permet generar changelogs automàticament.
+
+```
+Format: type(scope): description
+
+Tipus obligatoris:
+  feat:     Nova funcionalitat        → incrementa MINOR
+  fix:      Correcció de bug          → incrementa PATCH
+
+Tipus opcionals:
+  docs:     Documentació
+  test:     Afegir o corregir tests
+  refactor: Canvi intern sense afectar funcionalitat
+  chore:    Manteniment (dependències, CI, configs)
+  ci:       Canvis al pipeline de CI
+  style:    Format del codi (no afecta lògica)
+  perf:     Millora de rendiment
+```
+
+**Exemples reals del projecte EsportsPulse:**
+
+```bash
+# Nova funcionalitat
+git commit -m "feat(search): add champion search by role and winRate"
+
+# Correcció de bug
+git commit -m "fix(service): handle Optional.empty in findById"
+
+# Refactoring
+git commit -m "refactor(repository): extract query methods to interface"
+
+# Tests
+git commit -m "test(service): add edge cases for champion search"
+
+# CI
+git commit -m "ci: add checkstyle step to GitHub Actions pipeline"
+
+# Documentació
+git commit -m "docs: update README with setup instructions"
+
+# BREAKING CHANGE (incrementa MAJOR)
+git commit -m "feat(api)!: change REST response format to include metadata
+
+BREAKING CHANGE: response now wraps data in {data: ..., meta: ...}"
 ```
 
 ---
 
-### Tests com a Documentació
+### Crear un Tag amb Git
 
-Si algú llegeix **només els noms dels tests**, hauria d'entendre què fa el servei:
+Un tag es una "etiqueta" permanent a un commit específic. Marca un punt de referencia (normalment una versió).
 
+```bash
+# Crear un tag anotat (recomanat — inclou missatge, data i autor)
+git tag -a v0.1.0 -m "Primera versió funcional d'EsportsPulse
+
+Inclou:
+- Model de domini amb ChampionRecord (Java) i Champion dataclass (Python)
+- Patró Repository amb implementacions InMemory i JPA
+- Persistència amb H2 (JPA)
+- Tests unitaris per a totes les capes
+- Pipeline CI amb GitHub Actions
+- Checkstyle i ruff configurats"
+
+# Pujar el tag a GitHub (els tags no es pugen amb git push normal)
+git push origin v0.1.0
+
+# Veure tots els tags
+git tag --list
+
+# Veure informació d'un tag concret
+git show v0.1.0
+
+# Crear un tag lleuger (NO recomanat — sense missatge ni metadades)
+git tag v0.1.0-light    # Evita això, sempre usa -a (anotat)
 ```
-ChampionManagementServiceTest
-  Registre de campions
-    ✓ ha de guardar un campió vàlid al repositori
-    ✓ ha de rebutjar un nom null
-    ✓ ha de rebutjar un nom buit
-    ✓ ha de rebutjar un winRate negatiu
-    ✓ ha de normalitzar el nom a minúscules
-  Cerca de campions
-    ✓ ha de retornar tots els campions
-    ✓ ha de filtrar per rol
-    ✓ ha de filtrar per winRate mínim
-    ✓ ha de retornar llista buida per rol desconegut
-  Gestió d'errors
-    ✓ ha de gestionar errors del repositori
-    ✓ ha de llançar excepció per dades invàlides
-  Casos límit
-    ✓ ha de retornar llista buida quan no hi ha campions
-    ✓ ha de gestionar winRate exactament 0
-    ✓ ha de gestionar winRate exactament 100
-```
 
-Això és documentació millor que qualsevol wiki, perquè **si el comportament canvia, els tests fallen**.
+**On apareix el tag?** A GitHub, a la secció "Releases". Pots crear un Release a partir del tag amb notes de versió.
 
 ---
 
-### La Suite Completa de Tests d'EsportsPulse
+### CI Badge al README
 
-A aquest punt del curs, el teu projecte hauria de tenir:
+Un badge es una imatge dinàmica que mostra l'estat actual del CI directament al README.
+
+```markdown
+<!-- README.md — Afegeix això al principi del fitxer -->
+# EsportsPulse
+
+<!-- Badge de CI — mostra l'estat de l'últim build -->
+![CI Pipeline](https://github.com/EL_TEU_USUARI/esportspulse-engine/actions/workflows/ci.yml/badge.svg)
+
+> Base de dades de campions de League of Legends.
+> Projecte educatiu — Spring Boot (Java 21) + Python 3.12.
+```
+
+**Format del badge:**
 
 ```
+https://github.com/{OWNER}/{REPO}/actions/workflows/{WORKFLOW_FILE}/badge.svg
+```
+
+El badge es actualitza automàticament:
+- Verd (passing) quan l'últim CI ha passat
+- Vermell (failing) quan l'últim CI ha fallat
+
+---
+
+### Estructura Professional d'un README
+
+```markdown
+# EsportsPulse
+
+![CI](https://github.com/user/esportspulse-engine/actions/workflows/ci.yml/badge.svg)
+
+> Breu descripció del projecte en 1-2 línies.
+
+## Requisits
+
+- Java 21 (Temurin)
+- Maven 3.9+
+- Python 3.12+
+- Git 2.40+
+
+## Setup
+
+### Java
+
+​```bash
+cd java/
+mvn compile
+mvn test
+​```
+
+### Python
+
+​```bash
+cd python/
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pytest
+​```
+
+## Estructura del Projecte
+
+​```
 esportspulse-engine/
-├── backend-java/
-│   └── src/test/java/com/esportspulse/engine/
-│       ├── ChampionRecordTest.java             ← Tests del model (S2)
-│       ├── ChampionManagementServiceTest.java  ← Tests unitaris amb mocks (S7)
-│       ├── ChampionJpaRepositoryTest.java      ← Tests integració amb H2 (S6)
-│       └── InMemoryChampionRepositoryTest.java ← Tests del repositori en memòria (S2)
-│
-└── ai-python/
-    └── tests/
-        ├── conftest.py                         ← Fixtures compartides (S7)
-        ├── test_champion_service.py            ← Tests unitaris amb mocks (S7)
-        ├── test_champion_record.py             ← Tests del model (S2)
-        ├── test_in_memory_repository.py        ← Tests del repositori (S2)
-        └── test_sqlite_repository.py           ← Tests integració SQLite (S6-S7)
+├── java/
+│   ├── src/main/java/com/esportspulse/
+│   │   ├── domain/          # Records i entitats
+│   │   ├── repository/      # Interfícies i implementacions
+│   │   └── service/         # Lògica de negoci
+│   └── src/test/java/       # Tests unitaris
+├── python/
+│   ├── domain/              # Dataclasses
+│   ├── repository/          # Implementacions
+│   └── tests/               # Tests amb pytest
+└── .github/workflows/       # Pipeline CI
+​```
+
+## Versionat
+
+Seguim [Semantic Versioning](https://semver.org/).
+Seguim [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Llicència
+
+MIT
 ```
-
-#### Tipus de Tests per Capa
-
-| Capa         | Tipus de Test    | Anotació/Eina          | Velocitat | Què Testeja?                     |
-|--------------|-----------------|------------------------|-----------|----------------------------------|
-| Servei       | Unitari + Mock  | `@Mock` + `@InjectMocks` | ~1ms     | Lògica de negoci aïllada        |
-| Repository   | Integració      | `@DataJpaTest`         | ~100ms    | Queries JPA amb H2 real          |
-| Tot el Stack | Integració Full | `@SpringBootTest`      | ~1-2s     | Tot connectat, de punta a punta  |
-| Python       | Unitari + Mock  | `MagicMock` + `pytest` | ~1ms      | Lògica Python aïllada           |
-| Python SQLite| Integració      | `tmp_path` + `pytest`  | ~10ms     | Persistència SQLite real         |
-
----
-
-### Spring Test Slices: Quan Usar Cada Un
-
-Spring Boot ofereix anotacions que carreguen **només una part** del context:
-
-```java
-// @DataJpaTest: carrega NOMÉS la capa JPA (repositoris + BD)
-// Ús: testejar queries, mapping d'entitats
-// NO carrega: controladors, serveis, seguretat
-@DataJpaTest
-class ChampionJpaRepositoryTest {
-
-    @Autowired
-    private ChampionJpaRepository repository;
-
-    @Test
-    void shouldSaveAndRetrieveChampion() {
-        // Treballa amb H2 en memòria per defecte
-        // Ràpid perquè no carrega tot Spring
-        ChampionEntity entity = new ChampionEntity("jinx", "Marksman", 51.5);
-        repository.save(entity);
-
-        Optional<ChampionEntity> found = repository.findById("jinx");
-        assertTrue(found.isPresent());
-    }
-}
-
-// @WebMvcTest: carrega NOMÉS la capa web (controladors)
-// Ús: testejar endpoints HTTP, validació de requests
-// NO carrega: repositoris, BD, serveis (cal mockjar-los)
-@WebMvcTest(ChampionController.class)
-class ChampionControllerTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockBean  // Mock de Spring (no Mockito directe)
-    private ChampionManagementService service;
-
-    @Test
-    void shouldReturnChampionsList() throws Exception {
-        when(service.findAll()).thenReturn(List.of(
-            new ChampionRecord("jinx", "Marksman", 51.5)
-        ));
-
-        mockMvc.perform(get("/api/champions"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].name").value("jinx"));
-    }
-}
-
-// @SpringBootTest: carrega TOT el context
-// Ús: tests E2E, verificar que tot connecta bé
-// Lent: només per a tests crítics de punta a punta
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class EsportsPulseIntegrationTest {
-
-    @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Test
-    void shouldCreateAndRetrieveChampion() {
-        // Test complet: HTTP → Controller → Service → Repository → BD
-        restTemplate.postForEntity("/api/champions",
-            new ChampionRecord("jinx", "Marksman", 51.5),
-            Void.class);
-
-        ChampionRecord[] champions = restTemplate.getForObject(
-            "/api/champions", ChampionRecord[].class);
-
-        assertEquals(1, champions.length);
-        assertEquals("jinx", champions[0].name());
-    }
-}
-```
-
-| Anotació          | Què carrega           | Velocitat | Quan usar-la                    |
-|-------------------|-----------------------|-----------|----------------------------------|
-| `@DataJpaTest`    | JPA + BD              | Ràpid     | Testejar repositoris i queries  |
-| `@WebMvcTest`     | Web + Controllers     | Ràpid     | Testejar endpoints HTTP         |
-| `@SpringBootTest` | Tot                   | Lent      | Tests E2E i d'integració final  |
-
----
-
-### Anti-Patrons Recap
-
-| Anti-Patró             | Problema                                     | Solució                                    |
-|------------------------|----------------------------------------------|--------------------------------------------|
-| Test sense assert      | Cobertura falsa, no verifica res             | Sempre tenir almenys un assert explícit    |
-| Testejar el mock       | Proves que el mock retorna el que li hem dit | Testejar el servei, no el mock             |
-| Test fràgil            | Trenca quan refactoritzem sense canviar comportament | Verificar comportament, no implementació  |
-| Over-mocking           | >3 mocks indica SRP violat                  | Dividir el servei o fer test d'integració  |
-| Test gegant            | 50 línies amb 10 asserts                     | Un test per comportament, dividir          |
-| Testejar getters       | No aporta valor, el record és trivial        | Testejar lògica real, no boilerplate       |
-| Testejar mètodes privats | Acobla test a implementació               | Testejar a través de la interfície pública |
 
 ---
 
 ## Activitat
 
-### Exercici 1: Completar la Suite de Tests
+### Exercici 1: Neteja del Repositori (20 min)
 
-Assegura't que la teva suite de tests és completa:
-
-1. **Java — Tests unitaris:**
-   - `ChampionManagementServiceTest` amb `@Mock` i `@InjectMocks`
-   - Organitzats amb `@Nested` i `@DisplayName`
-   - Tests parametritzats per a validació
-
-2. **Java — Tests d'integració:**
-   - `ChampionJpaRepositoryTest` amb `@DataJpaTest`
-   - CRUD complet: save, findById, findAll, delete
-
-3. **Python — Tests:**
-   - `test_champion_service.py` amb `MagicMock`
-   - `test_sqlite_repository.py` amb `tmp_path`
-   - Fixtures a `conftest.py`
-
-4. **Verifica el CI:**
-   ```bash
-   # Java: ha de passar amb cobertura >= 70%
-   mvn verify
-
-   # Python: ha de passar amb cobertura >= 70% i sense errors de lint
-   ruff check .
-   pytest --cov=esportspulse --cov-fail-under=70
-   ```
-
-### Exercici 2: Cicle Git Complet
+1. Executa la checklist pre-release:
 
 ```bash
-# 1. Crear branca per la setmana
-git checkout -b feature/week7-testing-quality
+# 1. Verifica que .gitignore és complet
+cat .gitignore
 
-# 2. Afegir tots els fitxers nous i modificats
-git add backend-java/src/test/
-git add ai-python/tests/
-git add pom.xml                    # Canvis JaCoCo
-git add ai-python/pyproject.toml   # Canvis pytest-cov + ruff
-git add .github/workflows/ci.yml   # CI actualitzat
+# 2. Busca secrets al codi (no hauria de trobar res)
+grep -r "API_KEY\|SECRET\|PASSWORD\|sk-" src/ --include="*.java" --include="*.py"
 
-# 3. Commit amb missatge descriptiu
-git commit -m "test: add comprehensive test suite with mocks, coverage and CI
+# 3. Executa tots els tests
+cd java/ && mvn test --batch-mode
+cd ../python/ && pytest --verbose
 
-- JUnit 5: @Nested, @ParameterizedTest, @DisplayName
-- Mockito: @Mock, verify, ArgumentCaptor
-- pytest: fixtures, parametrize, MagicMock
-- JaCoCo: 70% minimum line coverage
-- pytest-cov: 70% minimum coverage
-- ruff: Python linting
-- CI: updated GitHub Actions with both jobs"
+# 4. Executa checkstyle i ruff
+cd java/ && mvn checkstyle:check --batch-mode
+cd ../python/ && ruff check .
 
-# 4. Pujar la branca
-git push -u origin feature/week7-testing-quality
+# 5. Verifica que no hi ha fitxers innecessaris
+git status    # No hauria de mostrar .class, __pycache__, etc.
+```
 
-# 5. Crear Pull Request
-gh pr create \
-  --title "feat: week 7 - testing, mocks and code quality" \
-  --body "## Resum
-- Suite de tests completa per Java i Python
-- Mockito per aïllar tests unitaris
-- JaCoCo i pytest-cov per cobertura > 70%
-- ruff per linting Python
-- CI actualitzat amb ambdós jobs
+2. Corregeix qualsevol problema que trobis.
+
+### Exercici 2: Crear Tag v0.1.0 (10 min)
+
+```bash
+# 1. Assegura't que tot està commitejat
+git status
+
+# 2. Crea el tag anotat amb un missatge descriptiu
+git tag -a v0.1.0 -m "v0.1.0: Primera versió funcional
+
+- Model de domini amb records/dataclasses
+- Patró Repository (InMemory + JPA)
+- Persistència H2
+- Tests unitaris
+- CI pipeline amb GitHub Actions
+- Checkstyle i ruff configurats"
+
+# 3. Puja el tag a GitHub
+git push origin v0.1.0
+
+# 4. Verifica a GitHub: pestanya Code → Releases/Tags
+```
+
+### Exercici 3: CI Badge i README Professional (20 min)
+
+1. Afegeix el badge de CI al principi del README.md
+2. Estructura el README seguint el model professional (veure teoria)
+3. Fes commit i push:
+
+```bash
+git add README.md
+git commit -m "docs: add CI badge and professional README structure"
+git push origin main
+```
+
+4. Verifica que el badge apareix correctament a GitHub.
+
+### Exercici 4: Code Review Complet (40 min)
+
+Revisa el seguent Pull Request simulat. Identifica **tots** els problemes i escriu comentaris de review per a cadascun.
+
+**Fitxer 1: ChampionController.java (NOU)**
+
+```java
+// Nou controller REST per a campions
+@RestController
+@RequestMapping("/api/champions")
+public class ChampionController {
+
+    @Autowired
+    private ChampionManagementService service;
+
+    @GetMapping("/{name}")
+    public Champion getByName(@PathVariable String name) {
+        // Retorna el campió directament, sense validar
+        return service.findByName(name);
+    }
+
+    @PostMapping
+    public void create(@RequestBody Champion champion) {
+        // Password hardcoded per "autenticació"
+        if (!champion.getAdminPassword().equals("admin123")) {
+            throw new RuntimeException("Unauthorized");
+        }
+        service.create(champion);
+    }
+}
+```
+
+**Fitxer 2: ChampionControllerTest.java (NOU)**
+
+```java
+@SpringBootTest
+class ChampionControllerTest {
+
+    @MockBean
+    private ChampionManagementService service;
+
+    @Test
+    void testGetByName() {
+        // Configura el mock
+        when(service.findByName("Jinx"))
+            .thenReturn(new Champion("Jinx", "ADC", 51.2));
+
+        // Crida al servei (no al controller!)
+        var result = service.findByName("Jinx");
+
+        // Comprova que el mock retorna el que li hem dit
+        assertEquals("Jinx", result.getName());
+    }
+}
+```
+
+**Fitxer 3: .env (NOU, afegit al commit)**
+
+```env
+DB_PASSWORD=supersecret123
+RIOT_API_KEY=rgapi-1234-5678-abcd
+```
+
+**Respon:**
+1. Quants problemes has trobat? (Objectiu: almenys 6)
+2. Escriu un comentari de review per a cadascun (Observació + Impacte + Suggeriment)
+3. Classifica cada problema: Seguretat / Correcció / Tests / Mantenibilitat
+
+### Exercici 5: Cicle Professional de PR (30 min)
+
+Practica el cicle complet:
+
+```bash
+# 1. Crea una branca feature
+git checkout -b feature/week7-cleanup
+
+# 2. Fes els canvis (README, .gitignore, qualsevol millora)
+# Fes commits petits amb Conventional Commits
+
+# 3. Puja la branca
+git push -u origin feature/week7-cleanup
+
+# 4. Crea el PR a GitHub
+gh pr create --title "chore: week 7 cleanup and CI badge" \
+  --body "## Canvis
+- Afegit badge de CI al README
+- Actualitzat .gitignore
+- Neteja general del repositori
 
 ## Tests
-- [ ] mvn verify passa
-- [ ] pytest --cov-fail-under=70 passa
-- [ ] ruff check . net
-- [ ] CI verd"
+- mvn test: ✅
+- pytest: ✅
+- checkstyle: ✅"
+
+# 5. Revisa el teu propi PR a GitHub (self-review)
+#    - Mira el diff complet
+#    - Hi ha algo que no hauria d'estar?
+
+# 6. Merge el PR
+gh pr merge --merge
 ```
 
-### Exercici 3: Reflexió de Bloc 1 — "5 Línies per a una Entrevista"
+---
 
-Has completat el Bloc 1 del curs. Escriu 5 línies que podries dir en una entrevista de feina sobre el que has après:
+### Reflexio: "5 Linies per a una Entrevista"
+
+Si nomes poguessis dir 5 frases en una entrevista de feina sobre el que has après aquesta setmana, quines serien?
+
+Exemple:
 
 ```
-1. "He construït un projecte amb Clean Architecture separant domini, repositori i servei."
-2. "He implementat el patró Repository amb dues implementacions: InMemory per tests i JPA per producció."
-3. "He escrit tests unitaris amb JUnit 5 i Mockito, aïllant cada capa."
-4. "He configurat un pipeline CI amb GitHub Actions que verifica cobertura i estil."
-5. "He treballat amb Java i Python en paral·lel, aplicant els mateixos patrons en ambdós."
+1. "Sé identificar anti-patrons de seguretat com SQL injection i secrets
+    hardcoded, tant en codi humà com generat per IA."
+
+2. "Tinc experiència amb Git professional: rebase, resolució de conflictes,
+    interactive rebase per netejar l'historial."
+
+3. "He configurat pipelines de CI amb GitHub Actions que executen tests,
+    checkstyle i linting automàticament."
+
+4. "Sé escriure especificacions de refactoring precises i fer code reviews
+    constructius seguint la fórmula Observació-Impacte-Suggeriment."
+
+5. "El meu projecte segueix Semantic Versioning, Conventional Commits,
+    i té un README professional amb badge de CI."
 ```
 
-Personalitza-les amb detalls del **teu** projecte. Practica dir-les en veu alta.
+Escriu les teves 5 frases personalitzades. Guarda-les — les faras servir al CV.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Suite de tests Java completa (unitaris + integració)
-- [ ] Suite de tests Python completa (unitaris + integració SQLite)
-- [ ] `mvn verify` passa amb cobertura >= 70%
-- [ ] `pytest --cov-fail-under=70` passa
-- [ ] `ruff check .` net (sense errors)
-- [ ] CI de GitHub Actions verd
-- [ ] Branca `feature/week7-testing-quality` creada i pujada
-- [ ] Pull Request creat amb descripció completa
-- [ ] Reflexió "5 línies per a una entrevista" escrita
-- [ ] Commit final: `feat: complete week 7 - testing, mocks and code quality`
+- [ ] El repositori passa la checklist pre-release (cap secret, tests verds, estil net)
+- [ ] He creat el tag `v0.1.0` amb un missatge descriptiu
+- [ ] El badge de CI apareix al README i mostra "passing"
+- [ ] He completat el code review de l'Exercici 4 amb almenys 6 problemes trobats
+- [ ] He practicat el cicle complet de PR (branca, push, PR, self-review, merge)
+- [ ] He escrit les meves "5 linies per a una entrevista"
+- [ ] Tots els commits segueixen Conventional Commits
+- [ ] Commit final: `chore: complete week 7 — clean code, CI and code review`

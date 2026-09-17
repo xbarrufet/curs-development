@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Crear la capa de persistencia del projecte EsportsPulse usant el patro Repository amb interficies Java. Implementar una versio in-memory que mes endavant (Setmana 5) es podra canviar per SQL sense tocar el codi de negoci. Veure com Python fa el mateix amb `abc.ABC` i `@dataclass`. Al final del dia tens `ChampionRepository`, `InMemoryChampionRepository`, i l'equivalent Python funcionant.
+Crear la capa de persistencia del projecte EsportsPulse usant el patro Repository amb interficies Java. Implementar una versio in-memory que mes endavant (Setmana 4) es podra canviar per SQL sense tocar el codi de negoci. Veure com Python fa el mateix amb `abc.ABC` i `@dataclass`. Al final del dia tens `ChampionRepository`, `InMemoryChampionRepository`, i l'equivalent Python funcionant.
 
 > **Nova entitat de domini: `ChampionRecord`.** A la setmana 1 vas crear `PlayerRecord` — un jugador de LoL amb el seu nivell i hores jugades. Ara introduïm una segona entitat: `ChampionRecord`, que representa un campió del joc (Ahri, Yasuo, Jinx...) amb les seves estadístiques competitives (win rate, pick rate). Són dues entitats diferents del mateix domini: un **jugador** selecciona un **campió** per jugar una partida. A partir d'ara treballarem amb ambdues entitats segons el context — el repository d'avui serà per a campions perquè connectarem amb l'API de Riot que retorna dades de campions.
 
@@ -79,7 +79,7 @@ El patro Repository es una abstraccio que amaga on i com es guarden les dades. E
                      ChampionRepository       ← CONTRACTE
                         /           \
          InMemoryChampionRepo  SqlChampionRepo  ← IMPLEMENTACIONS
-            (Setmana 2)         (Setmana 5)
+            (Setmana 2)         (Setmana 4)
 ```
 
 Aixo es DIP (Dependency Inversion) i OCP (Open/Closed) en accio:

@@ -1,459 +1,504 @@
-# Setmana 4 — Dijous: Correlation IDs i Tracabilitat en Sistemes Concurrents
+# Setmana 04 — Dijous: Python i SQLite — ChampionRepository amb Base de Dades
 
 ## Objectiu del Dia
 
-Entendre com depurar problemes quan tens desenes de peticions concurrents barrejades als logs. Aprendras a implementar Correlation IDs — identificadors unics que segueixen una peticio des que entra al sistema fins que surt, passant per tots els serveis que toca. Al final del dia sabras afegir tracabilitat al teu codi concurrent i tindras la mentalitat de "produccion first": no n'hi ha prou que el codi funcioni, ha de ser **diagnosticable** quan falla.
+Implementar `SqliteChampionRepository` en Python utilitzant el modul estandard `sqlite3`. Al final del dia tindras un repositori persistent que guarda campions en una base de dades SQLite, amb tests automatitzats amb pytest que usen una base de dades en memoria.
 
 ---
 
 ## Teoria
 
-### El Problema: Logs Caotiques en Sistemes Concurrents
+### SQLite: La Base de Dades Integrada de Python
 
-Ahir i abans d'ahir has fet crides paral-leles a APIs. Ara imagina que una d'elles falla en produccio. Obres els logs i veus aixo:
+SQLite es una base de dades SQL completa que ve inclosa amb Python — no cal instal·lar res. Es l'equivalent del H2 de Java:
 
-```
-INFO  fetching champion data...
-INFO  fetching champion data...
-ERROR connection timeout
-INFO  fetching champion data...
-INFO  champion data received
-ERROR null pointer at ChampionService:42
-INFO  champion data received
-INFO  fetching champion data...
-```
+| Caracteristica | Java (H2) | Python (SQLite) |
+|---|---|---|
+| Inclosa al llenguatge | No (dependencia Maven) | Si (modul `sqlite3`) |
+| Configuracio | `application.properties` | Cap — nomes `import sqlite3` |
+| Mode en memoria | `jdbc:h2:mem:nom` | `sqlite3.connect(":memory:")` |
+| Mode fitxer | `jdbc:h2:file:./data/nom` | `sqlite3.connect("champions.db")` |
+| Tipus SQL | Complet | Complet (amb algunes limitacions) |
 
-**Preguntes impossibles de respondre:**
-- Quin dels 50 campions ha causat el timeout?
-- El `NullPointerException` es del mateix request que el timeout o d'un altre?
-- Quin usuari esta afectat?
-
-Sense tracabilitat, depurar sistemes concurrents es com buscar una agulla en un paller.
-
-### Que es un Correlation ID?
-
-Un **Correlation ID** (o Request ID, Trace ID) es un identificador unic que s'assigna a cada peticio quan entra al sistema. Totes les operacions d'aquella peticio — logs, crides a APIs externes, queries a BD — inclouen aquest ID.
-
-```
-ABANS (sense Correlation ID):
-INFO  fetching champion data...
-ERROR connection timeout
-
-DESPRÉS (amb Correlation ID):
-INFO  [req-a1b2c3] fetching champion data for Ahri
-ERROR [req-a1b2c3] connection timeout calling Riot API (champion=Ahri, elapsed=5003ms)
-INFO  [req-d4e5f6] fetching champion data for Zed
-INFO  [req-d4e5f6] champion data received (champion=Zed, elapsed=287ms)
-```
-
-Ara pots filtrar per `req-a1b2c3` i veure TOT el recorregut d'aquella peticio fallida.
-
-### Anatomia d'un Bon Log en Produccio
-
-Un log util en un sistema concurrent ha de tenir:
-
-```
-[NIVELL] [TIMESTAMP] [CORRELATION_ID] [CONTEXT] missatge (detalls mesurables)
-```
-
-```
-INFO  2024-03-15T10:23:45.123 [req-a1b2c3] [ChampionExtractor] Starting extraction (champion=Ahri)
-INFO  2024-03-15T10:23:45.124 [req-a1b2c3] [RiotClient] Calling Riot API (url=https://api.riot/...)
-WARN  2024-03-15T10:23:50.127 [req-a1b2c3] [RiotClient] Riot API slow response (elapsed=5003ms, threshold=2000ms)
-ERROR 2024-03-15T10:23:50.128 [req-a1b2c3] [ChampionExtractor] Extraction failed (champion=Ahri, cause=ConnectionTimeout)
-```
-
-**Regles per a bons logs:**
-1. **Sempre inclou el Correlation ID** — es l'unica manera de correlacionar events
-2. **Inclou context mesurable** — temps, IDs, URLs, no missatges vagues
-3. **Mai loggeges dades sensibles** — no tokens, no contrasenyes, no dades personals
-4. **Usa nivells correctament** — ERROR per coses que requereixen accio, WARN per anomalies, INFO per flux normal
-
-### Com s'Implementa: El Patro
-
-#### En Java (amb `ThreadLocal`)
-
-`ThreadLocal` es una variable que te un valor diferent per a cada thread — perfecta per a Correlation IDs en un model thread-per-request:
-
-```java
-// RequestContext.java
-// Emmagatzema el Correlation ID del request actual
-// ThreadLocal garanteix que cada thread (= cada request) té el seu propi valor
-// Cap thread veu el Correlation ID d'un altre thread
-
-import java.util.UUID;
-
-public class RequestContext {
-    // ThreadLocal: cada thread veu una còpia independent d'aquesta variable
-    // Quan Thread-1 escriu "req-abc", Thread-2 encara veu null (o el seu propi valor)
-    private static final ThreadLocal<String> correlationId = new ThreadLocal<>();
-
-    // Genera un nou ID únic (UUID) i l'associa al thread actual
-    public static String initCorrelationId() {
-        String id = "req-" + UUID.randomUUID().toString().substring(0, 8);
-        correlationId.set(id);
-        return id;
-    }
-
-    // Retorna el Correlation ID del thread actual
-    public static String getCorrelationId() {
-        String id = correlationId.get();
-        return id != null ? id : "no-correlation-id";
-    }
-
-    // IMPORTANT: netejar quan el request acaba
-    // Si no ho fas, el thread pot ser reutilitzat pel pool
-    // i el següent request heretarà el Correlation ID antic
-    public static void clear() {
-        correlationId.remove();
-    }
-}
-```
-
-#### En Python (amb `contextvars`)
-
-Python 3.7+ te `contextvars`, que funciona com `ThreadLocal` pero tambe funciona correctament amb `asyncio`:
+### Connexio Basica amb sqlite3
 
 ```python
-# request_context.py
-# Equivalent al RequestContext.java però per Python
-# contextvars funciona tant amb threading com amb asyncio
+import sqlite3
 
-import uuid
-import contextvars
+# Connectem a una base de dades en fitxer
+# Si el fitxer no existeix, SQLite el crea automaticament
+conn = sqlite3.connect("champions.db")
 
-# ContextVar és l'equivalent de ThreadLocal en Python
-# A diferència de threading.local(), funciona correctament amb asyncio
-# Cada task async té la seva pròpia còpia del valor
-correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default="no-correlation-id"
-)
+# El cursor es l'objecte que executa queries SQL
+cursor = conn.cursor()
 
-def init_correlation_id() -> str:
-    """Genera i assigna un nou Correlation ID."""
-    new_id = f"req-{uuid.uuid4().hex[:8]}"
-    correlation_id.set(new_id)
-    return new_id
+# Executem una query SQL — identica a la que escriuriem a H2
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS champions (
+        champion_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        games_played INTEGER DEFAULT 0,
+        win_rate REAL
+    )
+""")
 
-def get_correlation_id() -> str:
-    """Retorna el Correlation ID del context actual."""
-    return correlation_id.get()
+# IMPORTANT: commit() desa els canvis a disc
+# Sense commit, els canvis es perden al tancar la connexio
+conn.commit()
+
+# SEMPRE tanquem la connexio quan acabem
+conn.close()
 ```
 
-### Propagacio del Correlation ID a Crides Externes
+### El Model de Dades en Python
 
-Quan el teu servei crida una API externa, ha d'enviar el Correlation ID com a header HTTP. Aixi, si l'altre servei te logs, pots correlacionar les dues bandes:
+Recordem el nostre `ChampionRecord` (creat a la setmana 1-2):
 
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)  # frozen=True: immutable, com un record de Java
+class ChampionRecord:
+    """Registre d'un campió de League of Legends.
+
+    frozen=True garanteix que un cop creat, no es pot modificar.
+    Aixo es important per seguretat: si passes un ChampionRecord a una funcio,
+    tens la garantia que no el modificara.
+    """
+    champion_id: str
+    name: str
+    games_played: int
+    win_rate: float
 ```
-El teu servei                       API externa
-──────────────                     ───────────
-[req-a1b2c3] crido Riot API
-  → Header: X-Correlation-ID: req-a1b2c3
-                                    [req-a1b2c3] request rebut
-                                    [req-a1b2c3] processant...
-                                    [req-a1b2c3] retornant resposta
-[req-a1b2c3] resposta rebuda
+
+### Implementacio: SqliteChampionRepository
+
+```python
+import sqlite3
+from typing import Optional
+from champion_record import ChampionRecord
+from champion_repository import ChampionRepository
+
+
+class SqliteChampionRepository(ChampionRepository):
+    """Repositori de campions que usa SQLite com a backend.
+
+    Equivalent a JpaChampionRepositoryAdapter de Java, pero sense ORM.
+    Escrivim les queries SQL directament — mes control, mes responsabilitat.
+    """
+
+    def __init__(self, db_path: str = "champions.db"):
+        """Inicialitza la connexio i crea la taula si no existeix.
+
+        Args:
+            db_path: ruta al fitxer de base de dades.
+                     Usa ":memory:" per tests (base de dades en RAM).
+        """
+        # Guardem el path per poder crear connexions noves si cal
+        self._db_path = db_path
+        self._conn = sqlite3.connect(db_path)
+
+        # row_factory = sqlite3.Row permet accedir a columnes per nom
+        # Sense aixo, els resultats son tuples (index numeric)
+        self._conn.row_factory = sqlite3.Row
+
+        # Creem la taula al inicialitzar — IF NOT EXISTS evita errors si ja existeix
+        self._create_table()
+
+    def _create_table(self) -> None:
+        """Crea la taula de campions si no existeix.
+
+        Metode privat (prefix _) — nomes s'usa internament.
+        Equivalent al ddl-auto=update de JPA.
+        """
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS champions (
+                champion_id TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                games_played INTEGER DEFAULT 0,
+                win_rate    REAL
+            )
+        """)
+        self._conn.commit()
+
+    def save(self, champion: ChampionRecord) -> None:
+        """Desa un campió. Si ja existeix, l'actualitza.
+
+        INSERT OR REPLACE: equivalent a un "upsert"
+        - Si el champion_id no existeix → INSERT
+        - Si el champion_id ja existeix → DELETE + INSERT (replace)
+
+        IMPORTANT: usem parametres (?) en comptes de concatenar strings.
+        MAI feu: f"INSERT INTO champions VALUES ('{champion.name}')"
+        Aixo es vulnerable a SQL Injection!
+        """
+        self._conn.execute(
+            """
+            INSERT OR REPLACE INTO champions (champion_id, name, games_played, win_rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            # Tupla de parametres — sqlite3 els escapa automaticament
+            # Preveniu SQL Injection sense esforc
+            (champion.champion_id, champion.name,
+             champion.games_played, champion.win_rate)
+        )
+        # Commit per persistir els canvis
+        self._conn.commit()
+
+    def find_by_id(self, champion_id: str) -> ChampionRecord | None:
+        """Cerca un campió per ID.
+
+        Retorna None si no existeix — equivalent a Optional.empty() de Java.
+        Python no te Optional, pero | None (union type) es la convencio.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM champions WHERE champion_id = ?",
+            (champion_id,)  # NOTA: la coma es necessaria per fer-ho tupla d'un element
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        # Convertim la fila SQL a objecte de domini
+        # row["column_name"] funciona gracies a row_factory = sqlite3.Row
+        return ChampionRecord(
+            champion_id=row["champion_id"],
+            name=row["name"],
+            games_played=row["games_played"],
+            win_rate=row["win_rate"]
+        )
+
+    def find_all(self) -> list[ChampionRecord]:
+        """Retorna tots els campions.
+
+        fetchall() retorna una llista de totes les files.
+        Usem list comprehension per convertir cada fila a ChampionRecord.
+        """
+        cursor = self._conn.execute("SELECT * FROM champions ORDER BY name")
+        rows = cursor.fetchall()
+
+        # List comprehension: equivalent a .stream().map().toList() de Java
+        return [
+            ChampionRecord(
+                champion_id=row["champion_id"],
+                name=row["name"],
+                games_played=row["games_played"],
+                win_rate=row["win_rate"]
+            )
+            for row in rows
+        ]
+
+    def find_by_name_containing(self, text: str) -> list[ChampionRecord]:
+        """Cerca campions que continguin el text donat al nom.
+
+        Equivalent a findByNameContaining de Spring Data JPA.
+        LIKE amb % a banda i banda: cerca en qualsevol posicio.
+        """
+        cursor = self._conn.execute(
+            "SELECT * FROM champions WHERE name LIKE ? ORDER BY name",
+            (f"%{text}%",)  # f-string NOMES per construir el patró LIKE, NO per la query
+        )
+        return [
+            ChampionRecord(
+                champion_id=row["champion_id"],
+                name=row["name"],
+                games_played=row["games_played"],
+                win_rate=row["win_rate"]
+            )
+            for row in cursor.fetchall()
+        ]
+
+    def delete(self, champion_id: str) -> None:
+        """Elimina un campió per ID.
+
+        Si el champion_id no existeix, no passa res (comportament idempotent).
+        """
+        self._conn.execute(
+            "DELETE FROM champions WHERE champion_id = ?",
+            (champion_id,)
+        )
+        self._conn.commit()
+
+    def count(self) -> int:
+        """Retorna el nombre total de campions.
+
+        fetchone()[0]: la primera columna de la primera fila del resultat.
+        """
+        cursor = self._conn.execute("SELECT COUNT(*) FROM champions")
+        return cursor.fetchone()[0]
+
+    def close(self) -> None:
+        """Tanca la connexio a la base de dades.
+
+        IMPORTANT: sempre tancar connexions per alliberar recursos.
+        Alternativa: usar context manager (with statement).
+        """
+        self._conn.close()
+```
+
+### SQL Injection: Per que MAI Concatenar Strings
+
+```python
+# ❌ PERILLOS — Vulnerable a SQL Injection
+def find_by_id_UNSAFE(self, champion_id: str):
+    # Un atacant podria passar: "'; DROP TABLE champions; --"
+    # La query resultant seria: SELECT * FROM champions WHERE champion_id = ''; DROP TABLE champions; --'
+    query = f"SELECT * FROM champions WHERE champion_id = '{champion_id}'"
+    self._conn.execute(query)
+
+# ✅ SEGUR — Queries parametritzades
+def find_by_id_SAFE(self, champion_id: str):
+    # sqlite3 escapa automaticament els parametres
+    # L'atacant nomes pot cercar pel string literal, no injectar SQL
+    self._conn.execute(
+        "SELECT * FROM champions WHERE champion_id = ?",
+        (champion_id,)
+    )
+```
+
+### Comparacio: Java (JPA + H2) vs Python (sqlite3)
+
+| Aspecte | Java (JPA) | Python (sqlite3) |
+|---|---|---|
+| ORM | Hibernate (automatic) | Manual (escrivim SQL) |
+| Queries | Derivades del nom del metode | SQL escrit a ma |
+| Entities | `@Entity`, `@Column` | No cal — mapegem manualment |
+| Transaccions | `@Transactional` | `conn.commit()` / `conn.rollback()` |
+| Migracions | `ddl-auto` | `CREATE TABLE IF NOT EXISTS` |
+| Avantatge | Menys codi, mes magic | Mes control, menys abstraccio |
+| Inconvenient | Corba d'aprenentatge, magic | Mes codi repetitiu |
+
+### Tests amb pytest
+
+```python
+import pytest
+from champion_record import ChampionRecord
+from sqlite_champion_repository import SqliteChampionRepository
+
+
+@pytest.fixture
+def repository():
+    """Fixture: crea un repositori amb base de dades en memoria.
+
+    Fixtures de pytest son l'equivalent de @BeforeEach de JUnit.
+    ":memory:" crea una BD nova per cada test — aïllament total.
+    yield permet executar codi de "cleanup" despres del test.
+    """
+    repo = SqliteChampionRepository(db_path=":memory:")
+    yield repo  # El test s'executa aqui
+    repo.close()  # Cleanup: tanquem la connexio
+
+
+@pytest.fixture
+def sample_champion():
+    """Fixture: un campió de mostra per reusar als tests."""
+    return ChampionRecord(
+        champion_id="ahri-001",
+        name="Ahri",
+        games_played=1500,
+        win_rate=52.3
+    )
+
+
+def test_save_and_find_by_id(repository, sample_champion):
+    """Verifica que un campió desat es pot recuperar per ID.
+
+    Equivalent al test registerAndFind_withInMemoryRepository de Java.
+    """
+    # Act: desem el campió
+    repository.save(sample_champion)
+
+    # Assert: el recuperem i comprovem que es el mateix
+    found = repository.find_by_id("ahri-001")
+    assert found is not None
+    assert found.name == "Ahri"
+    assert found.games_played == 1500
+    assert found.win_rate == pytest.approx(52.3, abs=0.01)  # approx per floats
+
+
+def test_find_by_id_not_found(repository):
+    """Verifica que cercar un ID inexistent retorna None."""
+    found = repository.find_by_id("no-existeix")
+    assert found is None  # Equivalent a assertTrue(optional.isEmpty()) de Java
+
+
+def test_find_all_returns_all_champions(repository):
+    """Verifica que find_all retorna tots els campions desats."""
+    # Arrange: desem 3 campions
+    champions = [
+        ChampionRecord("ahri-001", "Ahri", 1500, 52.3),
+        ChampionRecord("jinx-002", "Jinx", 2300, 51.8),
+        ChampionRecord("thresh-003", "Thresh", 3100, 49.5),
+    ]
+    for champ in champions:
+        repository.save(champ)
+
+    # Act
+    all_champions = repository.find_all()
+
+    # Assert
+    assert len(all_champions) == 3
+    # Comprovem que els noms estan presents (ordenats per nom)
+    names = [c.name for c in all_champions]
+    assert "Ahri" in names
+    assert "Jinx" in names
+    assert "Thresh" in names
+
+
+def test_find_by_name_containing(repository):
+    """Verifica la cerca parcial per nom (LIKE %text%)."""
+    repository.save(ChampionRecord("ahri-001", "Ahri", 1500, 52.3))
+    repository.save(ChampionRecord("thresh-003", "Thresh", 3100, 49.5))
+
+    # Cerquem campions que continguin "hr"
+    results = repository.find_by_name_containing("hr")
+
+    # "Ahri" i "Thresh" contenen "hr"
+    assert len(results) == 2
+
+
+def test_delete_removes_champion(repository, sample_champion):
+    """Verifica que delete elimina el campió correctament."""
+    repository.save(sample_champion)
+    assert repository.find_by_id("ahri-001") is not None
+
+    # Act: eliminem
+    repository.delete("ahri-001")
+
+    # Assert: ja no existeix
+    assert repository.find_by_id("ahri-001") is None
+
+
+def test_save_updates_existing_champion(repository):
+    """Verifica que save sobre un ID existent actualitza (upsert)."""
+    # Desem un campió
+    original = ChampionRecord("ahri-001", "Ahri", 1500, 52.3)
+    repository.save(original)
+
+    # Desem un campió amb el MATEIX ID pero dades diferents
+    updated = ChampionRecord("ahri-001", "Ahri", 2000, 55.0)
+    repository.save(updated)
+
+    # Ha d'haver-hi nomes 1 campió, amb les dades actualitzades
+    found = repository.find_by_id("ahri-001")
+    assert found is not None
+    assert found.games_played == 2000
+    assert found.win_rate == pytest.approx(55.0, abs=0.01)
+    assert repository.count() == 1  # Nomes 1, no 2
+
+
+def test_count_returns_correct_number(repository):
+    """Verifica que count() retorna el nombre correcte de campions."""
+    assert repository.count() == 0  # Inicialment buit
+
+    repository.save(ChampionRecord("ahri-001", "Ahri", 1500, 52.3))
+    assert repository.count() == 1
+
+    repository.save(ChampionRecord("jinx-002", "Jinx", 2300, 51.8))
+    assert repository.count() == 2
+```
+
+### El Patro Repository: Mateixa Interficie, Diferent Implementacio
+
+```python
+# El servei nomes coneix la interficie — identic a Java
+class ChampionManagementService:
+    """Servei de gestio de campions.
+
+    Depèn de ChampionRepository (ABC), no de cap implementacio concreta.
+    Podem passar InMemoryChampionRepository o SqliteChampionRepository
+    sense canviar ni una linia d'aquest codi.
+    """
+
+    def __init__(self, repository: ChampionRepository):
+        # Type hint amb la classe abstracta — el servei no sap quina implementacio es
+        self._repository = repository
+
+    def register_champion(self, champion: ChampionRecord) -> None:
+        existing = self._repository.find_by_id(champion.champion_id)
+        if existing is not None:
+            raise ValueError(f"El campió amb ID {champion.champion_id} ja existeix")
+        self._repository.save(champion)
+
+    def find_champion(self, champion_id: str) -> ChampionRecord | None:
+        return self._repository.find_by_id(champion_id)
+
+    def list_all_champions(self) -> list[ChampionRecord]:
+        return self._repository.find_all()
+
+
+# --- Dos usos identics, implementacio diferent ---
+
+# Opcio 1: En memoria (per tests rapids)
+in_memory_service = ChampionManagementService(InMemoryChampionRepository())
+
+# Opcio 2: SQLite (per persistencia real)
+sqlite_service = ChampionManagementService(SqliteChampionRepository("champions.db"))
+
+# El codi del servei es EXACTAMENT el mateix — aixo es el poder del patro
 ```
 
 ---
 
 ## Activitat
 
-### 1. Logger amb Correlation ID en Java (25 min)
+### Exercici: Implementa SqliteChampionRepository
 
-Implementa un logger que inclou automaticament el Correlation ID:
+**Durada estimada:** 90 minuts
 
-```java
-// CorrelatedLogger.java
-// Logger senzill que inclou automàticament el Correlation ID en cada missatge
-// A producció usaríem SLF4J + MDC, però el concepte és el mateix
+#### Pas 1: Estructura de fitxers (5 min)
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
-public class CorrelatedLogger {
-    private final String component;
-    private static final DateTimeFormatter FMT =
-        DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
-
-    // Cada instància del logger s'associa a un component (classe/servei)
-    // Així sabem d'on ve cada línia de log
-    public CorrelatedLogger(String component) {
-        this.component = component;
-    }
-
-    // Mètode central: construeix la línia de log amb tota la informació
-    private void log(String level, String message) {
-        String timestamp = LocalDateTime.now().format(FMT);
-        String corrId = RequestContext.getCorrelationId();
-        // Format: NIVELL TIMESTAMP [CORR_ID] [COMPONENT] missatge
-        System.out.printf("%-5s %s [%s] [%s] %s%n",
-            level, timestamp, corrId, component, message);
-    }
-
-    public void info(String message) { log("INFO", message); }
-    public void warn(String message) { log("WARN", message); }
-    public void error(String message) { log("ERROR", message); }
-}
+```
+ai-python/
+└── src/
+    ├── champion_record.py            ← Ja existeix (setmanes anteriors)
+    ├── champion_repository.py        ← ABC (dilluns)
+    ├── in_memory_champion_repository.py  ← Dilluns
+    ├── sqlite_champion_repository.py     ← NOU: implementacio SQLite
+    └── tests/
+        ├── test_in_memory_repository.py  ← Ja existeix
+        └── test_sqlite_repository.py     ← NOU: tests SQLite
 ```
 
-### 2. Extractor amb Tracabilitat (25 min)
+#### Pas 2: Implementa SqliteChampionRepository (30 min)
 
-Ara integra el Correlation ID a l'extractor de campions:
+1. Crea `sqlite_champion_repository.py`
+2. Implementa els 4 metodes CRUD + `find_by_name_containing` + `count`
+3. Usa queries parametritzades (?) — MAI concatenacio de strings
+4. Recorda fer `conn.commit()` despres de cada escriptura
 
-```java
-// TracedExtractor.java
-// Extractor concurrent amb Correlation IDs — cada operació es pot traçar
-// Demostra com la traçabilitat fa els errors diagnosticables
+#### Pas 3: Escriu 4 tests amb pytest (30 min)
 
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+1. `test_save_and_find_by_id` — desa i recupera
+2. `test_find_all_returns_all_champions` — desa 3, recupera 3
+3. `test_find_by_name_containing` — cerca parcial funciona
+4. `test_delete_removes_champion` — elimina i verifica absencia
 
-public class TracedExtractor {
-    private static final CorrelatedLogger log = new CorrelatedLogger("TracedExtractor");
-    private static final CorrelatedLogger riotLog = new CorrelatedLogger("RiotClient");
-    private static final CorrelatedLogger ddLog = new CorrelatedLogger("DataDragonClient");
+Usa `":memory:"` com a `db_path` per aïllar cada test.
 
-    record ChampionData(String id, String riotData, String ddData) {}
-    record ExtractionResult(List<ChampionData> champions, List<String> errors) {}
+#### Pas 4: Verifica (15 min)
 
-    static String fetchRiotData(String championId) {
-        long start = System.nanoTime();
-        riotLog.info("Calling Riot API (champion=" + championId + ")");
-        try {
-            Thread.sleep(300);
-            // 15% de probabilitat de fallar
-            if (Math.random() < 0.15) {
-                throw new RuntimeException("Connection timeout");
-            }
-            long elapsed = (System.nanoTime() - start) / 1_000_000;
-            riotLog.info("Riot API OK (champion=" + championId + ", elapsed=" + elapsed + "ms)");
-            return "RiotData{" + championId + "}";
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
-    }
+1. Executa els tests: `python -m pytest tests/test_sqlite_repository.py -v`
+2. Tots han de passar en verd
+3. Prova tambe amb un fitxer real: `SqliteChampionRepository("test_champions.db")`
+4. Obre el fitxer `.db` amb una eina SQLite per verificar les dades
 
-    static String fetchDataDragon(String championId) {
-        long start = System.nanoTime();
-        ddLog.info("Calling Data Dragon (champion=" + championId + ")");
-        try {
-            Thread.sleep(100);
-            long elapsed = (System.nanoTime() - start) / 1_000_000;
-            ddLog.info("Data Dragon OK (champion=" + championId + ", elapsed=" + elapsed + "ms)");
-            return "DDData{" + championId + "}";
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
-    }
+#### Pas 5: Integra amb el servei (10 min)
 
-    static CompletableFuture<ChampionData> extractOne(String championId) {
-        // IMPORTANT: capturem el Correlation ID ABANS de llançar l'async
-        // Perquè supplyAsync s'executa en un thread diferent (del ForkJoinPool)
-        // i el ThreadLocal del thread original no es propaga automàticament
-        String corrId = RequestContext.getCorrelationId();
-
-        CompletableFuture<String> riot = CompletableFuture.supplyAsync(() -> {
-            // Propaguem el Correlation ID al thread del ForkJoinPool
-            RequestContext.setCorrelationId(corrId);
-            return fetchRiotData(championId);
-        }).exceptionally(error -> {
-            RequestContext.setCorrelationId(corrId);
-            riotLog.error("FAILED (champion=" + championId + ", cause=" + error.getMessage() + ")");
-            return null;  // Null indica error parcial
-        });
-
-        CompletableFuture<String> dd = CompletableFuture.supplyAsync(() -> {
-            RequestContext.setCorrelationId(corrId);
-            return fetchDataDragon(championId);
-        }).exceptionally(error -> {
-            RequestContext.setCorrelationId(corrId);
-            ddLog.error("FAILED (champion=" + championId + ", cause=" + error.getMessage() + ")");
-            return null;
-        });
-
-        return riot.thenCombine(dd, (r, d) -> new ChampionData(championId, r, d));
-    }
-
-    public static void main(String[] args) {
-        // Simulem 3 requests concurrents, cadascun amb el seu Correlation ID
-        List<String> requests = List.of("Request-A", "Request-B", "Request-C");
-
-        List<Thread> requestThreads = requests.stream().map(reqName -> {
-            Thread t = new Thread(() -> {
-                // Cada "request" rep el seu propi Correlation ID
-                String corrId = RequestContext.initCorrelationId();
-                log.info("=== START " + reqName + " (corrId=" + corrId + ") ===");
-
-                List<String> champions = List.of("Ahri", "Zed", "Lux", "Yasuo", "Jinx");
-
-                List<CompletableFuture<ChampionData>> futures = champions.stream()
-                    .map(TracedExtractor::extractOne)
-                    .collect(Collectors.toList());
-
-                List<ChampionData> results = futures.stream()
-                    .map(CompletableFuture::join)
-                    .collect(Collectors.toList());
-
-                long ok = results.stream().filter(c -> c.riotData() != null).count();
-                long failed = results.size() - ok;
-                log.info("=== END " + reqName + " (ok=" + ok + ", errors=" + failed + ") ===");
-
-                RequestContext.clear();  // Neteja el ThreadLocal
-            });
-            t.start();
-            return t;
-        }).collect(Collectors.toList());
-
-        // Espera que tots els "requests" acabin
-        requestThreads.forEach(t -> {
-            try { t.join(); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-    }
-}
-```
-
-Per fer funcionar l'exemple, afegeix `setCorrelationId` al `RequestContext`:
-
-```java
-// Afegeix al RequestContext.java
-public static void setCorrelationId(String id) {
-    correlationId.set(id);
-}
-```
-
-### 3. Logger amb Correlation ID en Python (15 min)
-
-```python
-# traced_extractor.py
-# Versió Python de l'extractor amb Correlation IDs
-# Usa contextvars, que funciona correctament amb asyncio
-
-import asyncio
-import time
-import random
-import uuid
-import contextvars
-
-# ContextVar: cada tasca async té la seva pròpia còpia
-correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default="no-corr-id"
-)
-
-def log(level: str, component: str, message: str) -> None:
-    """Log amb Correlation ID, timestamp i component."""
-    corr = correlation_id.get()
-    ts = time.strftime("%H:%M:%S")
-    print(f"{level:5s} {ts} [{corr}] [{component}] {message}")
-
-async def fetch_riot_data(champion_id: str) -> str:
-    """Simula crida a Riot API amb traçabilitat."""
-    start = time.perf_counter()
-    log("INFO", "RiotClient", f"Calling Riot API (champion={champion_id})")
-    await asyncio.sleep(0.3)
-
-    if random.random() < 0.15:
-        elapsed = (time.perf_counter() - start) * 1000
-        log("ERROR", "RiotClient", f"Timeout (champion={champion_id}, elapsed={elapsed:.0f}ms)")
-        raise ConnectionError(f"Riot API timeout for {champion_id}")
-
-    elapsed = (time.perf_counter() - start) * 1000
-    log("INFO", "RiotClient", f"OK (champion={champion_id}, elapsed={elapsed:.0f}ms)")
-    return f"RiotData({champion_id})"
-
-async def fetch_data_dragon(champion_id: str) -> str:
-    """Simula crida a Data Dragon amb traçabilitat."""
-    start = time.perf_counter()
-    log("INFO", "DDClient", f"Calling Data Dragon (champion={champion_id})")
-    await asyncio.sleep(0.1)
-    elapsed = (time.perf_counter() - start) * 1000
-    log("INFO", "DDClient", f"OK (champion={champion_id}, elapsed={elapsed:.0f}ms)")
-    return f"DDData({champion_id})"
-
-async def extract_champions(request_name: str, champion_ids: list[str]) -> None:
-    """Extreu campions amb el seu propi Correlation ID."""
-    # Assigna un Correlation ID únic per aquest "request"
-    corr = f"req-{uuid.uuid4().hex[:8]}"
-    correlation_id.set(corr)
-
-    log("INFO", "Extractor", f"=== START {request_name} ({len(champion_ids)} champions) ===")
-
-    tasks = []
-    for cid in champion_ids:
-        tasks.append(fetch_and_handle(cid))
-
-    results = await asyncio.gather(*tasks)
-    ok = sum(1 for r in results if r is not None)
-    errors = len(results) - ok
-
-    log("INFO", "Extractor", f"=== END {request_name} (ok={ok}, errors={errors}) ===")
-
-async def fetch_and_handle(champion_id: str):
-    """Extreu un campió amb gestió d'errors."""
-    try:
-        riot, dd = await asyncio.gather(
-            fetch_riot_data(champion_id),
-            fetch_data_dragon(champion_id)
-        )
-        return {"champion": champion_id, "riot": riot, "dd": dd}
-    except Exception as e:
-        log("WARN", "Extractor", f"Partial error (champion={champion_id}, cause={e})")
-        return None
-
-async def main():
-    # Simula 3 requests concurrents, cadascun amb el seu Correlation ID
-    await asyncio.gather(
-        extract_champions("Request-A", ["Ahri", "Zed", "Lux"]),
-        extract_champions("Request-B", ["Yasuo", "Jinx", "Thresh"]),
-        extract_champions("Request-C", ["Katarina", "Ezreal", "Vayne"]),
-    )
-
-asyncio.run(main())
-```
-
-### 4. Analisi de Logs (10 min)
-
-Executa el `TracedExtractor` (Java o Python) i redirigeix la sortida a un fitxer:
-
-```bash
-# Executa i guarda els logs
-python3 traced_extractor.py > extraction_logs.txt 2>&1
-
-# Filtra per un Correlation ID concret — veus tot el recorregut d'un request
-grep "req-a1b2c3" extraction_logs.txt
-
-# Busca tots els errors
-grep "ERROR" extraction_logs.txt
-
-# Quants requests han tingut errors?
-grep "errors=" extraction_logs.txt
-
-# Quin component falla més?
-grep "ERROR" extraction_logs.txt | grep -oP '\[\K[^\]]+' | sort | uniq -c | sort -rn
-```
-
-Respon:
-- Pots identificar quin request ha fallat nomes mirant els logs?
-- Pots determinar quin campio ha causat cada error?
-- Sense Correlation IDs, podries fer el mateix?
-
-> **Lectura recomanada (opcional, no bloquejant):**
-> - Martin Fowler: [Correlation ID](https://www.enterpriseintegrationpatterns.com/patterns/messaging/CorrelationIdentifier.html)
-> - Baeldung: [MDC with SLF4J and Logback](https://www.baeldung.com/mdc-in-log4j-2-logback) (la versio "de veritat" per a projectes Spring)
+1. Modifica el punt d'entrada per usar `SqliteChampionRepository` en comptes d'`InMemoryChampionRepository`
+2. Verifica que el servei funciona igual — cap canvi al codi del servei
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Has implementat `RequestContext` amb `ThreadLocal` (Java) o `contextvars` (Python)
-- [ ] Has implementat un logger que inclou automaticament el Correlation ID
-- [ ] Has executat l'extractor amb 3 requests concurrents i cada request te el seu propi Correlation ID als logs
-- [ ] Pots filtrar els logs per Correlation ID i veure tot el recorregut d'un request
-- [ ] Pots identificar errors parcials i el seu campio/request nomes mirant els logs
-- [ ] Entens per que la tracabilitat es essencial en sistemes concurrents i en produccio
+- [ ] `SqliteChampionRepository` implementat amb 4 metodes CRUD + `find_by_name_containing`
+- [ ] Queries parametritzades (?) usades a TOTS els metodes — cap concatenacio de strings
+- [ ] `CREATE TABLE IF NOT EXISTS` al constructor
+- [ ] `conn.commit()` despres de cada operacio d'escriptura
+- [ ] Fixture pytest amb `":memory:"` per aïllament de tests
+- [ ] Minim 4 tests passant: save+find, find_all, find_by_name, delete
+- [ ] Test d'upsert: save dos cops amb el mateix ID actualitza (no duplica)
+- [ ] `python -m pytest -v` tot en verd
+- [ ] El servei funciona amb `SqliteChampionRepository` sense canviar codi del servei

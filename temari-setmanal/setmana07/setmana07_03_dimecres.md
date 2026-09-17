@@ -1,449 +1,416 @@
-# Setmana 07 — Dimecres: pytest i unittest.mock — Testing en Python
+# Setmana 07 — Dimecres: GitHub Actions — CI Pipeline Automàtic
 
 ## Objectiu del Dia
 
-Traslladar els patrons de testing que hem après amb JUnit 5 i Mockito al món Python amb pytest. Al final del dia tindràs una suite de tests completa per al mòdul Python d'EsportsPulse, usant fixtures, tests parametritzats i mocks.
+Configurar un pipeline de CI (Continuous Integration) amb GitHub Actions que executi els tests i el checkstyle automàticament a cada push. Al final del dia, cada cop que pugis codi a GitHub, els tests s'executaran sols i veuràs si el codi passa o falla sense haver d'executar res manualment.
 
 ---
 
 ## Teoria
 
-### pytest vs JUnit: Mateixa Filosofia, Diferent Sintaxi
+### Què és CI (Continuous Integration)?
 
-Python i Java comparteixen els mateixos principis de testing, però les eines tenen personalitats molt diferents. pytest és minimalista: menys boilerplate, més convencions.
+CI es la pràctica d'integrar el codi de tots els developers al repositori compartit **diverses vegades al dia**, amb verificació automàtica.
 
-### Fixtures: L'Equivalent de @BeforeEach
+**Sense CI:**
 
-Una fixture és una funció decorada amb `@pytest.fixture` que prepara dades o objectes per als tests. pytest les injecta automàticament com a paràmetres:
+```
+Developer 1: "Al meu ordinador funciona" ✅
+Developer 2: "Al meu també" ✅
+Servidor de producció: Error 500 💥
 
-```python
-# test_champion_service.py
-
-import pytest
-from esportspulse.champion_record import ChampionRecord
-from esportspulse.champion_service import ChampionManagementService
-from esportspulse.in_memory_repository import InMemoryChampionRepository
-
-
-# Fixture: crea un repositori buit per a cada test
-# S'executa automàticament abans de cada test que la requereixi
-@pytest.fixture
-def repository():
-    """Repositori buit, equivalent a @BeforeEach en JUnit."""
-    return InMemoryChampionRepository()
-
-
-# Fixture: crea el servei injectant el repositori
-# Demostra composició de fixtures: depèn de 'repository'
-@pytest.fixture
-def service(repository):
-    """Servei amb repositori buit, llest per testejar."""
-    return ChampionManagementService(repository)
-
-
-# Fixture: repositori amb dades predefinides
-# Útil per als tests de cerca que necessiten dades existents
-@pytest.fixture
-def populated_repository(repository):
-    """Repositori amb 3 campions per a tests de cerca."""
-    repository.save(ChampionRecord("jinx", "Marksman", 51.5))
-    repository.save(ChampionRecord("lux", "Mage", 52.0))
-    repository.save(ChampionRecord("thresh", "Support", 49.8))
-    return repository
-
-
-# Fixture: servei amb dades
-# Composició: depèn de populated_repository
-@pytest.fixture
-def populated_service(populated_repository):
-    """Servei amb 3 campions registrats."""
-    return ChampionManagementService(populated_repository)
+Per què? Perquè les versions de Java, les dependències,
+o les configuracions eren diferents.
 ```
 
-#### conftest.py: Fixtures Compartides
+**Amb CI:**
 
-Quan múltiples fitxers de test necessiten les mateixes fixtures, les posem a `conftest.py`:
-
-```python
-# tests/conftest.py
-# pytest detecta automàticament aquest fitxer
-# Les fixtures definides aquí estan disponibles a TOTS els tests del directori
-
-import pytest
-from esportspulse.champion_record import ChampionRecord
-
-
-@pytest.fixture
-def sample_jinx():
-    """Campió de test: Jinx (Marksman)."""
-    return ChampionRecord("jinx", "Marksman", 51.5)
-
-
-@pytest.fixture
-def sample_lux():
-    """Campió de test: Lux (Mage)."""
-    return ChampionRecord("lux", "Mage", 52.0)
-
-
-@pytest.fixture
-def sample_champions(sample_jinx, sample_lux):
-    """Llista de campions de test per a proves de col·lecció."""
-    return [
-        sample_jinx,
-        sample_lux,
-        ChampionRecord("thresh", "Support", 49.8),
-    ]
+```
+Developer 1: push → GitHub Actions executa tests → ✅ Passa
+Developer 2: push → GitHub Actions executa tests → ❌ Falla!
+  → Es veu immediatament quins tests fallen
+  → Es corregeix ABANS de fer merge a main
 ```
 
-#### Ús en Tests
+**Regla d'or:** Si el CI no passa, el codi NO es pot fer merge a main. Mai.
 
-```python
-# test_champion_service.py
+---
 
-def test_should_register_new_champion(service, sample_jinx):
-    """Registrar un campió vàlid ha de guardar-lo al repositori."""
-    # pytest injecta automàticament 'service' i 'sample_jinx'
-    # No cal instanciar res manualment
-    service.register(sample_jinx)
+### Anatomia d'un Workflow de GitHub Actions
 
-    found = service.find_by_id("jinx")
-    assert found is not None
-    assert found.role == "Marksman"
+Un workflow és un fitxer YAML a `.github/workflows/` que defineix **què** s'executa, **quan** i **on**.
 
+```yaml
+# .github/workflows/ci.yml
+# Fitxer de configuració de CI — s'executa automàticament a cada push
 
-def test_should_return_all_champions(populated_service):
-    """Ha de retornar tots els campions registrats."""
-    # 'populated_service' ja té 3 campions gràcies a la fixture
-    champions = populated_service.find_all()
-    assert len(champions) == 3
+# 1. NOM — Descriptiu, apareix a la pestanya "Actions" de GitHub
+name: CI Pipeline
+
+# 2. TRIGGERS — Quan s'executa aquest workflow?
+on:
+  push:
+    branches: [ main ]          # A cada push a main
+  pull_request:
+    branches: [ main ]          # A cada PR que apunti a main
+
+# 3. JOBS — Què s'executa? Pot tenir múltiples jobs en paral·lel
+jobs:
+  # Nom del job — pot ser qualsevol cosa descriptiva
+  build-and-test:
+    # 4. RUNNER — On s'executa? Ubuntu és l'estàndard per CI
+    runs-on: ubuntu-latest
+
+    # 5. STEPS — Passos seqüencials dins del job
+    steps:
+      # Pas 1: Descarregar el codi del repositori
+      # 'uses' indica una "Action" pre-feta (com una llibreria)
+      - name: Checkout del codi
+        uses: actions/checkout@v4
+
+      # Pas 2: Instal·lar Java 21
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'    # Distribució OpenJDK gratuïta
+
+      # Pas 3: Executar els tests amb Maven
+      # 'run' executa una comanda de terminal
+      - name: Executar tests
+        run: mvn test --batch-mode
+        # --batch-mode evita output interactiu (no hi ha terminal al CI)
 ```
 
 ---
 
-### @pytest.mark.parametrize: L'Equivalent de @ParameterizedTest
+### Cada Element en Detall
 
-```python
-# Testem validació de winRate amb múltiples valors
-# Cada tupla (winRate, expected_valid) és un cas de test independent
-@pytest.mark.parametrize(
-    "win_rate, expected_valid",
-    [
-        (0.0, True),      # Límit inferior: winRate zero és vàlid
-        (52.3, True),     # Cas normal: winRate típic
-        (100.0, True),    # Límit superior: winRate màxim
-        (-1.0, False),    # Fora de rang: negatiu no és vàlid
-        (101.0, False),   # Fora de rang: supera 100%
-    ],
-)
-def test_should_validate_win_rate(service, win_rate, expected_valid):
-    """El servei ha de validar que el winRate està entre 0 i 100."""
-    champion = ChampionRecord("test", "Mage", win_rate)
+#### `name` — El nom del workflow
 
-    if expected_valid:
-        # No ha de llançar excepció per a valors vàlids
-        service.register(champion)
-        assert service.find_by_id("test") is not None
-    else:
-        # Ha de llançar ValueError per a valors invàlids
-        with pytest.raises(ValueError):
-            service.register(champion)
-
-
-# Parametritzar amb objectes complexos
-# Cada campió és un cas de test complet
-@pytest.mark.parametrize(
-    "champion",
-    [
-        ChampionRecord("jinx", "Marksman", 51.5),
-        ChampionRecord("lux", "Mage", 52.0),
-        ChampionRecord("thresh", "Support", 49.8),
-        ChampionRecord("garen", "Fighter", 50.1),
-    ],
-    # ids personalitzats per a la sortida de pytest
-    ids=["jinx-marksman", "lux-mage", "thresh-support", "garen-fighter"],
-)
-def test_should_register_valid_champions(service, champion):
-    """Tots els campions vàlids s'han de poder registrar correctament."""
-    service.register(champion)
-    found = service.find_by_id(champion.name)
-    assert found is not None
-    assert found.role == champion.role
+```yaml
+# Apareix a la pestanya Actions de GitHub
+# Usa un nom descriptiu que expliqui QUÈ fa
+name: CI Pipeline              # ✅ Clar
+name: Build                    # ❌ Massa vague — build de què?
 ```
 
-**Sortida de pytest:**
+#### `on` — Triggers (quan s'executa)
 
+```yaml
+# Opció 1: A cada push i PR a main
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Opció 2: A QUALSEVOL push (totes les branques)
+on: push
+
+# Opció 3: Programat (cron) — per exemple, cada nit a les 2AM
+on:
+  schedule:
+    - cron: '0 2 * * *'        # Minuts Hores DiaDelMes Mes DiaDeLaSetmana
+
+# Opció 4: Manual (botó a GitHub)
+on:
+  workflow_dispatch:           # Afegeix un botó "Run workflow" a la UI
 ```
-test_champion_service.py::test_should_validate_win_rate[0.0-True]     PASSED
-test_champion_service.py::test_should_validate_win_rate[52.3-True]    PASSED
-test_champion_service.py::test_should_validate_win_rate[100.0-True]   PASSED
-test_champion_service.py::test_should_validate_win_rate[-1.0-False]   PASSED
-test_champion_service.py::test_should_validate_win_rate[101.0-False]  PASSED
-test_champion_service.py::test_should_register_valid_champions[jinx-marksman]    PASSED
-test_champion_service.py::test_should_register_valid_champions[lux-mage]        PASSED
+
+#### `runs-on` — El sistema operatiu del runner
+
+```yaml
+runs-on: ubuntu-latest         # Linux (el més comú per CI)
+runs-on: windows-latest        # Windows (si necessites .NET, per exemple)
+runs-on: macos-latest          # macOS (si necessites Xcode)
 ```
 
----
+#### `uses` vs `run` — Actions pre-fetes vs comandes
 
-### monkeypatch: L'Equivalent Lleuger de Mockito
+```yaml
+steps:
+  # 'uses' — Usa una Action del Marketplace de GitHub
+  # Format: organització/nom-action@versió
+  - name: Checkout
+    uses: actions/checkout@v4           # Descarrega el codi del repo
 
-`monkeypatch` és una fixture built-in de pytest que permet substituir atributs, mètodes o variables d'entorn temporalment. Els canvis es reverteixen automàticament després de cada test.
+  - name: Setup Java
+    uses: actions/setup-java@v4         # Instal·la Java
+    with:                                # Paràmetres de l'Action
+      java-version: '21'
+      distribution: 'temurin'
 
-```python
-def test_should_handle_broken_save(service, monkeypatch, sample_jinx):
-    """Si el repositori falla al guardar, el servei ha de gestionar l'error."""
+  # 'run' — Executa comandes de terminal directament
+  - name: Compilar
+    run: mvn compile --batch-mode
 
-    # Definim una funció que simula un error
-    def broken_save(champion):
-        raise IOError("Disc ple — no es pot guardar")
-
-    # Substituïm el mètode save() del repositori per la versió trencada
-    # monkeypatch reverteix el canvi automàticament després del test
-    monkeypatch.setattr(service.repository, "save", broken_save)
-
-    # Verifiquem que el servei gestiona l'error correctament
-    with pytest.raises(IOError):
-        service.register(sample_jinx)
-
-
-def test_should_use_test_database_path(monkeypatch):
-    """Verificar que podem canviar el path de la BD via variable d'entorn."""
-
-    # Substituïm la variable d'entorn DB_PATH
-    # Útil per testejar que el codi llegeix la configuració correctament
-    monkeypatch.setenv("DB_PATH", "/tmp/test_esportspulse.db")
-
-    import os
-    assert os.environ["DB_PATH"] == "/tmp/test_esportspulse.db"
-    # Després del test, DB_PATH torna al seu valor original
+  # Múltiples comandes amb '|' (pipe YAML)
+  - name: Tests i cobertura
+    run: |
+      mvn test --batch-mode
+      echo "Tests completats!"
 ```
 
 ---
 
-### unittest.mock: Per a Mocking Més Complex
+### Workflow Complet per EsportsPulse
 
-Quan necessitem funcionalitats equivalents a Mockito (`verify`, `ArgumentCaptor`), usem `unittest.mock`:
+```yaml
+# .github/workflows/ci.yml
+# Pipeline de CI complet per al projecte EsportsPulse
+# Executa: compilació, tests, checkstyle i (opcionalment) cobertura
 
-```python
-from unittest.mock import MagicMock, patch, call
+name: EsportsPulse CI
 
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-def test_should_save_champion_to_repository():
-    """Equivalent a verify(repository).save() de Mockito."""
-    # MagicMock crea un objecte que accepta qualsevol crida
-    # Equivalent a @Mock de Mockito
-    mock_repository = MagicMock()
-    service = ChampionManagementService(mock_repository)
+jobs:
+  # JOB 1: Compilar i executar tests de Java
+  java-build:
+    name: Java Build & Test
+    runs-on: ubuntu-latest
 
-    champion = ChampionRecord("jinx", "Marksman", 51.5)
-    service.register(champion)
+    steps:
+      # Descarreguem el codi del repositori
+      - name: Checkout del codi
+        uses: actions/checkout@v4
 
-    # Verifiquem que save() s'ha cridat amb el campió correcte
-    # Equivalent a verify(repository).save(champion) de Mockito
-    mock_repository.save.assert_called_once_with(champion)
+      # Configurem Java 21 (Temurin és una distribució gratuïta d'OpenJDK)
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
 
+      # Cache de Maven — evita descarregar dependències cada vegada
+      # Estalvia 2-3 minuts per execució
+      - name: Cache de dependències Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-def test_should_not_delete_when_registering():
-    """Equivalent a verify(repository, never()).delete() de Mockito."""
-    mock_repository = MagicMock()
-    service = ChampionManagementService(mock_repository)
+      # Compilar el projecte (sense executar tests encara)
+      - name: Compilar
+        run: mvn compile --batch-mode
+        working-directory: ./java     # Si el projecte Java està en un subdirectori
 
-    service.register(ChampionRecord("jinx", "Marksman", 51.5))
+      # Executar tots els tests
+      - name: Executar tests
+        run: mvn test --batch-mode
+        working-directory: ./java
 
-    # Verifiquem que delete() NO s'ha cridat
-    mock_repository.delete.assert_not_called()
+      # Executar Checkstyle per validar l'estil del codi
+      - name: Checkstyle
+        run: mvn checkstyle:check --batch-mode
+        working-directory: ./java
 
+  # JOB 2: Lint de Python (s'executa en paral·lel amb java-build)
+  python-lint:
+    name: Python Lint & Test
+    runs-on: ubuntu-latest
 
-def test_should_call_find_all_once():
-    """Equivalent a verify(repository, times(1)).findAll() de Mockito."""
-    mock_repository = MagicMock()
-    mock_repository.find_all.return_value = []
-    service = ChampionManagementService(mock_repository)
+    steps:
+      - name: Checkout del codi
+        uses: actions/checkout@v4
 
-    service.find_all()
+      # Configurem Python 3.12
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-    # Verifiquem el nombre exacte de crides
-    assert mock_repository.find_all.call_count == 1
-```
+      # Instal·lem dependències de Python
+      - name: Instal·lar dependències
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest
+        working-directory: ./python
 
-#### side_effect: Simular Comportament Dinàmic
+      # Ruff — linter ultra-ràpid per Python (substitueix flake8, isort, etc.)
+      - name: Lint amb ruff
+        run: ruff check .
+        working-directory: ./python
 
-```python
-def test_should_handle_intermittent_errors():
-    """side_effect permet definir comportaments dinàmics per a cada crida."""
-    mock_repository = MagicMock()
-
-    # Primera crida: error. Segona crida: èxit.
-    # Simula un error transitori de connexió a la BD
-    mock_repository.find_all.side_effect = [
-        IOError("Connexió perduda"),   # Primera crida: falla
-        [ChampionRecord("jinx", "Marksman", 51.5)],  # Segona: funciona
-    ]
-
-    service = ChampionManagementService(mock_repository)
-
-    # Primera crida: error
-    with pytest.raises(IOError):
-        service.find_all()
-
-    # Segona crida: èxit (si el servei implementa retry)
-    result = service.find_all()
-    assert len(result) == 1
-```
-
-#### @patch: Substituir Mòduls Sencers
-
-```python
-# @patch substitueix un objecte durant el test
-# Útil per a dependències que s'importen dins del mòdul
-@patch("esportspulse.sqlite_repository.sqlite3")
-def test_should_handle_sqlite_connection_error(mock_sqlite3):
-    """Simular que SQLite no pot connectar."""
-    # Quan algú cridi sqlite3.connect(), llançarà un error
-    mock_sqlite3.connect.side_effect = Exception("BD corrupta")
-
-    with pytest.raises(Exception):
-        SqliteChampionRepository("/path/to/broken.db")
+      # Executar tests de Python
+      - name: Executar tests
+        run: pytest --verbose
+        working-directory: ./python
 ```
 
 ---
 
-### Taula Comparativa: JUnit 5 vs pytest
+### Checkstyle — Estil de Codi Automàtic
 
-| Concepte          | JUnit 5                          | pytest                                |
-|-------------------|----------------------------------|---------------------------------------|
-| Setup per test    | `@BeforeEach`                    | `@pytest.fixture`                     |
-| Setup global      | `@BeforeAll`                     | `@pytest.fixture(scope="session")`    |
-| Parametritzar     | `@ParameterizedTest + @CsvSource`| `@pytest.mark.parametrize`            |
-| Grups             | `@Nested`                        | Classes dins del fitxer de test       |
-| Mock              | `@Mock` (Mockito)                | `MagicMock` / `monkeypatch`           |
-| Verify            | `verify(mock).method()`          | `mock.method.assert_called_once()`    |
-| Excepcions        | `assertThrows(Ex.class, ()→...)` | `with pytest.raises(Ex):`             |
-| Noms descriptius  | `@DisplayName("...")`           | Docstrings o noms de funcions clars   |
-| Shared fixtures   | Herència de classes              | `conftest.py`                         |
+Checkstyle valida que el codi Java segueix un estàndard d'estil (indentació, noms, imports).
+
+#### Configuració al `pom.xml`
+
+```xml
+<!-- pom.xml — Secció de plugins -->
+<build>
+    <plugins>
+        <!-- Plugin de Checkstyle — valida l'estil del codi automàticament -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-checkstyle-plugin</artifactId>
+            <version>3.3.1</version>
+            <configuration>
+                <!-- Usem les regles de Google (estàndard de la indústria) -->
+                <configLocation>google_checks.xml</configLocation>
+                <!-- Si hi ha violacions, el build falla -->
+                <failOnViolation>true</failOnViolation>
+                <!-- Nivell de severitat mínim per fallar -->
+                <violationSeverity>warning</violationSeverity>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+Per executar-lo:
+
+```bash
+# Verificar l'estil del codi
+mvn checkstyle:check
+
+# Si falla, veuràs missatges com:
+# [ERROR] src/main/java/com/esportspulse/ChampionService.java:15:
+#   Whitespace: 'if' is not followed by whitespace. [WhitespaceAround]
+# [ERROR] src/main/java/com/esportspulse/ChampionService.java:23:
+#   Naming: Name 'winrate' must match pattern '^[a-z][a-zA-Z0-9]*$' [LocalVariableName]
+```
+
+**Per què importa l'estil automàtic?**
+- Elimina discussions inútils al code review ("hauries de posar espai aquí")
+- Tothom escriu codi amb el mateix format
+- El CI ho comprova automàticament, no cal que ho revisi un humà
 
 ---
 
-### Testejar el SqliteChampionRepository
+### Entendre els Resultats del CI
 
-```python
-# test_sqlite_repository.py
-import os
-import pytest
-from esportspulse.sqlite_repository import SqliteChampionRepository
-from esportspulse.champion_record import ChampionRecord
+Quan fas push, GitHub mostra l'estat del CI:
 
-
-@pytest.fixture
-def db_path(tmp_path):
-    """Crea un path temporal per a la BD de test.
-    tmp_path és una fixture built-in de pytest que crea un directori temporal.
-    Es neteja automàticament després dels tests."""
-    return str(tmp_path / "test_champions.db")
-
-
-@pytest.fixture
-def sqlite_repo(db_path):
-    """Repositori SQLite amb BD temporal.
-    Cada test treballa amb una BD buida i aïllada."""
-    repo = SqliteChampionRepository(db_path)
-    return repo
-
-
-def test_should_save_and_retrieve_champion(sqlite_repo):
-    """Guardar un campió i recuperar-lo ha de retornar les mateixes dades."""
-    champion = ChampionRecord("jinx", "Marksman", 51.5)
-
-    sqlite_repo.save(champion)
-    found = sqlite_repo.find_by_id("jinx")
-
-    assert found is not None
-    assert found.name == "jinx"
-    assert found.role == "Marksman"
-    assert found.win_rate == 51.5
-
-
-def test_should_return_none_for_unknown_champion(sqlite_repo):
-    """Buscar un campió que no existeix ha de retornar None."""
-    found = sqlite_repo.find_by_id("champion_inexistent")
-    assert found is None
-
-
-def test_should_persist_across_repository_instances(db_path):
-    """Les dades han de persistir entre instàncies del repositori.
-    Això verifica que realment estem guardant a disc, no a memòria."""
-    # Primera instància: guardem
-    repo1 = SqliteChampionRepository(db_path)
-    repo1.save(ChampionRecord("jinx", "Marksman", 51.5))
-
-    # Segona instància: recuperem (simula reiniciar l'aplicació)
-    repo2 = SqliteChampionRepository(db_path)
-    found = repo2.find_by_id("jinx")
-
-    assert found is not None
-    assert found.name == "jinx"
-
-
-def test_should_delete_champion(sqlite_repo):
-    """Esborrar un campió ha d'eliminar-lo de la BD."""
-    sqlite_repo.save(ChampionRecord("jinx", "Marksman", 51.5))
-
-    sqlite_repo.delete("jinx")
-
-    assert sqlite_repo.find_by_id("jinx") is None
 ```
+  Commit abc1234: "feat: add champion search"
+
+  ✅ Java Build & Test — Passed (2m 15s)
+     ✅ Checkout del codi
+     ✅ Configurar JDK 21
+     ✅ Compilar
+     ✅ Executar tests (15 tests passed)
+     ✅ Checkstyle
+
+  ❌ Python Lint & Test — Failed (45s)
+     ✅ Checkout del codi
+     ✅ Configurar Python 3.12
+     ❌ Lint amb ruff
+        Error: champion_service.py:12: F841 local variable 'x' is assigned but never used
+```
+
+**Quan el CI falla:**
+1. Clica al job que ha fallat
+2. Llegeix el missatge d'error (sol ser clar)
+3. Corregeix al teu ordinador
+4. Fes commit i push — el CI es torna a executar automàticament
 
 ---
 
 ## Activitat
 
-### Exercici: Suite de Tests Completa en Python
+### Exercici 1: Crear el Pipeline CI des de Zero (45 min)
 
-Escriu tests per al mòdul Python d'EsportsPulse:
+1. Crea el directori per al workflow:
 
-1. **Configura les fixtures a `conftest.py`:**
-   - `repository` — repositori buit
-   - `service` — servei amb repositori buit
-   - `sample_champions` — llista de campions de test
+```bash
+# Crea el directori (ha d'estar exactament aquí, GitHub el busca aquí)
+mkdir -p .github/workflows
+```
 
-2. **Escriu tests parametritzats:**
-   - Validació de `win_rate` amb `@pytest.mark.parametrize` (5+ valors)
-   - Registre de campions vàlids parametritzat
+2. Crea el fitxer `.github/workflows/ci.yml` amb el contingut del workflow complet (veure secció anterior).
 
-3. **Escriu tests amb mocks:**
-   - Usa `MagicMock` per aïllar el servei del repositori
-   - Verifica interaccions amb `assert_called_once_with`
-   - Usa `monkeypatch` per simular errors del repositori
+3. Adapta els `working-directory` a l'estructura del teu projecte.
 
-4. **Testa el `SqliteChampionRepository`:**
-   - CRUD complet: save, find, find_all, delete
-   - Persistència entre instàncies (usa `tmp_path`)
+4. Fes commit i push:
 
-5. **Executa:**
-   ```bash
-   # Executar tots els tests amb sortida detallada
-   pytest -v
+```bash
+git add .github/workflows/ci.yml
+git commit -m "ci: add GitHub Actions pipeline for Java and Python"
+git push origin main
+```
 
-   # Executar només tests d'un fitxer
-   pytest tests/test_champion_service.py -v
-   ```
+5. Ves a la pestanya **Actions** del teu repositori a GitHub i observa l'execució.
 
-### Criteris d'Èxit
+### Exercici 2: Configurar Checkstyle (30 min)
 
-- `conftest.py` amb fixtures compartides
-- Almenys 3 tests amb `@pytest.mark.parametrize`
-- Almenys 2 tests amb `MagicMock` i verificació d'interaccions
-- Tests del `SqliteChampionRepository` amb `tmp_path`
-- `pytest -v` passa al 100%
+1. Afegeix el plugin de Checkstyle al `pom.xml` (veure secció anterior).
+
+2. Executa localment:
+
+```bash
+mvn checkstyle:check
+```
+
+3. Corregeix les violacions d'estil que trobi.
+
+4. Torna a executar fins que passi sense errors.
+
+### Exercici 3: Provocar un Error al CI (15 min)
+
+1. Introdueix un error intencionat (per exemple, un test que falla).
+2. Fes push i observa com el CI detecta l'error.
+3. Corregeix l'error, fes push de nou, i verifica que el CI passa.
+4. Reflexiona: **Quant de temps t'ha estalviat el CI** respecte a trobar l'error manualment?
+
+### Exercici 4: Interpretar YAML (20 min)
+
+Llegeix el seguent workflow i respon les preguntes:
+
+```yaml
+name: Mystery Workflow
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run security audit
+        run: mvn dependency:tree | grep -i "vulnerability"
+      - name: Check for secrets
+        run: |
+          if grep -r "API_KEY\|SECRET\|PASSWORD" src/ --include="*.java"; then
+            echo "::error::Secrets trobats al codi font!"
+            exit 1
+          fi
+```
+
+**Preguntes:**
+1. Quan s'executa aquest workflow? (pista: tradueix el cron)
+2. Es pot executar manualment? Per què?
+3. Què fa el segon step? Què passaria si trobés un secret al codi?
+4. Per què l'exit code `1` és important?
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `conftest.py` amb fixtures compartides
-- [ ] `test_champion_service.py` amb tests unitaris i parametritzats
-- [ ] `test_sqlite_repository.py` amb tests d'integració
-- [ ] Tests amb `MagicMock` per aïllar el servei
-- [ ] Tests amb `monkeypatch` per simular errors
-- [ ] Tests parametritzats amb `@pytest.mark.parametrize`
-- [ ] `pytest -v` passa al 100%
-- [ ] Commit: `test(python): add pytest suite with fixtures, mocks and parametrize`
+- [ ] He creat `.github/workflows/ci.yml` amb el pipeline complet
+- [ ] El CI s'executa automàticament quan faig push
+- [ ] He configurat Checkstyle al `pom.xml` i passa localment
+- [ ] He provocat un error al CI i l'he corregit
+- [ ] He respost les preguntes de l'Exercici 4
+- [ ] Entenc la diferència entre `uses` (Actions) i `run` (comandes)
+- [ ] Commit amb missatge: `ci: add GitHub Actions pipeline with checkstyle`

@@ -48,7 +48,7 @@ JWT te un defecte intrinsec: **un cop emès, no es pot revocar**. El token es va
 
 **Solucio: Token Blacklist amb Redis**
 
-Redis es una base de dades en memoria ultra-rapida (ja la vam veure conceptualment a S8 amb Docker). L'usarem per mantenir una llista de tokens invalidats:
+Redis es una base de dades en memoria ultra-rapida (ja la vam veure conceptualment a S9 amb Docker). L'usarem per mantenir una llista de tokens invalidats:
 
 ```
 Logout → Afegim el token a Redis amb TTL = temps restant del token
@@ -70,7 +70,7 @@ Peticio → Validem JWT + Comprovem que NO esta a la blacklist de Redis
 
 ### 1. Afegir Redis al docker-compose (10 min)
 
-Actualitza el `docker-compose.yml` del projecte (connexio amb S8 Docker):
+Actualitza el `docker-compose.yml` del projecte (connexio amb S9 Docker):
 
 ```yaml
 # fitxer: docker-compose.yml

@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Entendre com es comuniquen les maquines a la xarxa: adreces IP, ports, DNS. Connectar-se a una maquina remota amb SSH. Fer peticions HTTP des del terminal amb `curl`. Tancar la setmana amb un script bash integrador que descarrega dades d'una API publica, les processa amb `jq` i genera un informe. Al final del dia tens coneixements de xarxa suficients per entendre Docker networking (S8), REST APIs (S9) i desplegament al nuvol (S22), i un script funcional que demostra tot el que has apres aquesta setmana.
+Entendre com es comuniquen les maquines a la xarxa: adreces IP, ports, DNS. Connectar-se a una maquina remota amb SSH. Fer peticions HTTP des del terminal amb `curl`. Tancar la setmana amb un script bash integrador que descarrega dades d'una API publica, les processa amb `jq` i genera un informe. Al final del dia tens coneixements de xarxa suficients per entendre Docker networking (S9), REST APIs (S5) i desplegament al nuvol (S22), i un script funcional que demostra tot el que has apres aquesta setmana.
 
 ---
 
@@ -22,7 +22,7 @@ Cada maquina connectada a una xarxa te una adreca IP. Es com una direccio postal
 142.250.185.14  → IP pública (per exemple, Google)
 ```
 
-**Per que importa:** Quan arrenques Spring Boot i veus `Tomcat started on port 8080`, el servidor escolta a `127.0.0.1:8080`. Quan a S8 connectis contenidors Docker, cada un tindra la seva propia IP dins d'una xarxa virtual.
+**Per que importa:** Quan arrenques Spring Boot i veus `Tomcat started on port 8080`, el servidor escolta a `127.0.0.1:8080`. Quan a S9 connectis contenidors Docker, cada un tindra la seva propia IP dins d'una xarxa virtual.
 
 ```bash
 # Comprovar la connexió amb una màquina remota
@@ -47,14 +47,14 @@ Port    Servei              Quan el veuràs
 22      SSH                 Connectar-te a servidors remots (avui)
 80      HTTP                Web no encriptada
 443     HTTPS               Web encriptada (el navegador usa això)
-5432    PostgreSQL          Base de dades (S5-S6)
-8080    Spring Boot         El teu backend Java (S9+)
+5432    PostgreSQL          Base de dades (S4, S9)
+8080    Spring Boot         El teu backend Java (S5+)
 8000    FastAPI/Django      El teu servei Python
 3000    React/Next.js       Frontend (si n'uses un)
 6333    Qdrant              Base de dades vectorial (S14)
 ```
 
-**Per que importa:** Quan a Docker (S8) defineixis `ports: "8080:8080"`, estaras mapejant el port 8080 del contenidor al port 8080 de la teva maquina. Si dos serveis intenten usar el mateix port, un dels dos fallara amb `Address already in use`.
+**Per que importa:** Quan a Docker (S9) defineixis `ports: "8080:8080"`, estaras mapejant el port 8080 del contenidor al port 8080 de la teva maquina. Si dos serveis intenten usar el mateix port, un dels dos fallara amb `Address already in use`.
 
 ```bash
 # Veure quins ports estan en ús a la teva màquina
@@ -93,7 +93,7 @@ dig github.com
 # Busca la línia "ANSWER SECTION" — allà hi ha la IP
 
 # Cas pràctic: si docker-compose no resol un nom de servei,
-# saber com funciona DNS t'ajudarà a diagnosticar-ho (S8)
+# saber com funciona DNS t'ajudarà a diagnosticar-ho (S9)
 ```
 
 **Resum visual de la connexio:**
@@ -199,7 +199,7 @@ Host github
 #### Per Que curl?
 
 `curl` et permet fer peticions HTTP (les mateixes que fa el navegador) des del terminal. Aixo es essencial per:
-- **Testejar APIs** sense obrir un navegador ni Postman (S9+)
+- **Testejar APIs** sense obrir un navegador ni Postman (S5+)
 - **Automatitzar** peticions dins de scripts bash
 - **Depurar** problemes de xarxa veient exactament que s'envia i que es rep
 
@@ -241,7 +241,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"name": "Ahri", "role": "Mage", "difficulty": 5}' \
   http://localhost:8080/api/champions
-# Això crea un nou campió al teu backend (quan el tinguis a S9)
+# Això crea un nou campió al teu backend (quan el tinguis a S5)
 
 # POST amb dades des d'un fitxer (útil per JSONs grans)
 # @fitxer.json → curl llegeix el contingut del fitxer com a body

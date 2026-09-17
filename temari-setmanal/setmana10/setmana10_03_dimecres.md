@@ -313,7 +313,7 @@ curl -X POST http://localhost:8001/batch-analyze \
 
 ### Pas 4: Compara amb Spring Boot (10 min)
 
-Obre el codi del teu controlador Java de la setmana 9 i compara:
+Obre el codi del teu controlador Java de la setmana 5 i compara:
 - Com es defineixen les rutes
 - Com es gestionen els errors
 - Com es genera la documentacio

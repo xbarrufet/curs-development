@@ -1,424 +1,386 @@
-# Setmana 06 — Dimarts: Spring Data JPA amb H2 — Entitats, @Repository i Consultes Derivades
+# Setmana 06 — Dimarts: CompletableFuture i I/O Paral-lel
 
 ## Objectiu del Dia
 
-Connectar l'aplicacio EsportsPulse a una base de dades H2 mitjancant Spring Data JPA. Al final del dia, els campions es desaran en una taula SQL real (encara que en memoria), podras veure'ls a la consola H2 i tindras consultes derivades funcionals com `findByNameContaining`.
+Aprendre a fer crides a APIs externes en paral-lel amb `CompletableFuture`. Ahir vas veure que la concurrencia pot causar problemes (race conditions). Avui veurem el costat positiu: la concurrencia permet que el teu backend sigui **molt mes rapid** quan ha de consultar multiples serveis externs. Al final del dia sabras transformar crides sequencials en paral-leles, combinar resultats de multiples fonts, i entendre per que aixo es el que fas cada dia a una empresa amb microserveis.
 
 ---
 
 ## Teoria
 
-### De la RAM a la Base de Dades
+### El Problema: APIs Externes Lentes
 
-Ahir vam crear `InMemoryChampionRepository` — funciona, pero te un problema fonamental:
-
-```
-┌─────────────────────────────────────────────┐
-│  Problema: les dades viuen a la RAM          │
-│                                              │
-│  1. Arrenques l'aplicacio                    │
-│  2. Registres 50 campions                    │
-│  3. L'aplicacio es reinicia (deploy, error)  │
-│  4. ❌ Tots els campions han desaparegut     │
-└─────────────────────────────────────────────┘
-```
-
-**Solucio:** una base de dades. Les dades sobreviuen als reinicis perque es guarden a disc.
-
-### Que es JPA?
-
-**JPA** (Java Persistence API) es l'estandard de Java per mapejar objectes Java a taules SQL:
+El teu backend no viu aillat. Necessita dades d'altres serveis: Riot API per a estadistiques de campions, Data Dragon per a imatges, potser un servei intern de recomanacions. Cada crida triga temps perque viatge per la xarxa.
 
 ```
-Java                          SQL
-─────                         ─────
-Classe (@Entity)         →    Taula (TABLE)
-Camp (@Column)           →    Columna (COLUMN)
-Instancia                →    Fila (ROW)
-championId (@Id)         →    PRIMARY KEY
+Seqüencial (el que faries sense pensar-hi):
+─────────────────────────────────────────
+Riot API     ──────[300ms]───────→
+                                  Data Dragon ──[100ms]──→
+                                                          Total: 400ms
+
+Paral·lel (el que has de fer):
+─────────────────────────────
+Riot API     ──────[300ms]───────→
+Data Dragon  ──[100ms]──→
+                          Total: 300ms (el màxim de les dues)
 ```
 
-JPA no es una llibreria — es una **especificacio** (un contracte). **Hibernate** es la implementacio mes usada, i Spring Data JPA la integra automaticament.
+**100ms de diferencia?** Sembla poc, pero:
+- Amb 10 crides sequencials: 3 segons vs 300ms
+- Amb 50 crides: 15 segons vs ~600ms
+- L'usuari nota qualsevol resposta >200ms
 
-### H2: Base de Dades per a Desenvolupament
+### El Thread Pool i el Seu Limit
 
-H2 es una base de dades SQL escrita en Java que pot funcionar en dos modes:
+Recorda d'ahir: Tomcat te 200 threads. Si cada thread espera 500ms per una API externa, el maxim es 400 peticions per segon. Despres, els nous clients esperen en cua fins que algun thread s'allibera.
 
-| Mode | Descripcio | Us |
-|---|---|---|
-| **In-memory** | Les dades viuen a RAM, es perden al reiniciar | Tests, desenvolupament |
-| **File-based** | Les dades es guarden a disc | Desenvolupament persistent |
-
-**Avantatge d'H2:** zero configuracio. No cal instal·lar res — es una dependencia Maven.
-
-### Pas 1: Afegir Dependencies
-
-Al `pom.xml`, afegeix Spring Data JPA i H2:
-
-```xml
-<!-- pom.xml — seccio <dependencies> -->
-
-<!-- Spring Data JPA: proporciona repositoris automatics i gestio d'entitats -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-data-jpa</artifactId>
-</dependency>
-
-<!-- H2: base de dades SQL en memoria per a desenvolupament -->
-<dependency>
-    <groupId>com.h2database</groupId>
-    <artifactId>h2</artifactId>
-    <scope>runtime</scope> <!-- Nomes necessaria en temps d'execucio, no de compilacio -->
-</dependency>
+```
+| Temps per request | Threads | Peticions/segon |
+|-------------------|---------|-----------------|
+| 5ms (cache local) | 200     | 40.000 req/s    |
+| 50ms (BD)         | 200     | 4.000 req/s     |
+| 500ms (API ext.)  | 200     | 400 req/s       |
+| Pool esgotat      | 0       | Timeout!        |
 ```
 
-### Pas 2: Configurar application.properties
+**Conclusio:** Reduir el temps d'espera per I/O es critic. Si pots fer dues crides de 300ms en paral-lel en lloc de sequencial, has guanyat 300ms per request — i el thread torna al pool mes aviat.
 
-```properties
-# src/main/resources/application.properties
+### CompletableFuture: Futures en Java
 
-# --- Configuracio H2 ---
-# URL de connexio: mem = en memoria, esportspulse = nom de la BD
-spring.datasource.url=jdbc:h2:mem:esportspulse
-
-# Driver JDBC per H2
-spring.datasource.driver-class-name=org.h2.Driver
-
-# Credencials (per defecte, H2 accepta qualsevol)
-spring.datasource.username=sa
-spring.datasource.password=
-
-# --- Configuracio JPA ---
-# update: JPA crea/modifica taules automaticament segons les entitats
-# IMPORTANT: nomes per desenvolupament! En produccio usariem "validate" o "none"
-spring.jpa.hibernate.ddl-auto=update
-
-# Mostra les queries SQL al log — util per aprendre, desactivar en produccio
-spring.jpa.show-sql=true
-
-# Format les queries SQL per llegibilitat
-spring.jpa.properties.hibernate.format_sql=true
-
-# --- Consola H2 ---
-# Activa la interficie web per veure les taules i executar SQL manualment
-spring.h2.console.enabled=true
-
-# URL de la consola: http://localhost:8080/h2-console
-spring.h2.console.path=/h2-console
-```
-
-### Pas 3: Convertir ChampionRecord a @Entity
-
-JPA necessita classes **mutables** amb constructor sense arguments. Aixo entra en conflicte amb els `record` de Java (immutables). Tenim dues opcions:
-
-**Opcio A: Classe JPA separada (recomanada)**
+Un `CompletableFuture<T>` representa un valor que **encara no existeix** pero existira en el futur. Es com un tiquet de recollida: el dones al cuiner i continues fent altres coses. Quan el plat esta llest, el reculls.
 
 ```java
-package com.esportspulse.engine.entity;
+// supplyAsync llança una tasca en un thread del ForkJoinPool
+// Retorna immediatament un CompletableFuture — la promesa d'un resultat futur
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+    // Això s'executa en un thread separat
+    return crida_lenta_a_api();
+});
 
-import jakarta.persistence.*;
+// El thread principal pot fer altres coses mentre espera...
 
-/**
- * Entitat JPA que representa un campió a la base de dades.
- * Es una classe mutable perque JPA ho requereix (necessita constructor buit
- * i setters per hidratar objectes des de la BD).
- *
- * NOTA: Mantenim ChampionRecord com a objecte de domini immutable.
- * Aquesta classe es nomes per persistencia — separacio de responsabilitats.
- */
-@Entity // Indica a JPA que aquesta classe correspon a una taula SQL
-@Table(name = "champions") // Nom explicit de la taula (per defecte seria "champion_entity")
-public class ChampionEntity {
-
-    @Id // Clau primaria — identifica unicament cada fila
-    @Column(name = "champion_id", nullable = false) // Nom de columna explicit
-    private String championId;
-
-    @Column(nullable = false) // NOT NULL a la BD — un campió SEMPRE te nom
-    private String name;
-
-    @Column(name = "games_played") // snake_case a SQL, camelCase a Java
-    private int gamesPlayed;
-
-    @Column(name = "win_rate")
-    private double winRate;
-
-    @Version // Control de concurrencia optimista
-    // Si dos usuaris modifiquen el mateix campió, JPA detecta el conflicte
-    private Long version;
-
-    // Constructor buit OBLIGATORI per JPA
-    // JPA crea instancies buides i despres omple els camps via reflexio
-    protected ChampionEntity() {
-    }
-
-    // Constructor per crear noves instancies des del codi
-    public ChampionEntity(String championId, String name, int gamesPlayed, double winRate) {
-        this.championId = championId;
-        this.name = name;
-        this.gamesPlayed = gamesPlayed;
-        this.winRate = winRate;
-    }
-
-    // --- Conversio entre domini i entitat ---
-
-    /**
-     * Converteix un objecte de domini (immutable) a entitat JPA (mutable).
-     * Patro "factory method" — centralitza la conversio en un sol lloc.
-     */
-    public static ChampionEntity fromDomain(ChampionRecord record) {
-        return new ChampionEntity(
-            record.championId(),
-            record.name(),
-            record.gamesPlayed(),
-            record.winRate()
-        );
-    }
-
-    /**
-     * Converteix l'entitat JPA a objecte de domini.
-     * El servei treballa amb ChampionRecord, mai amb ChampionEntity.
-     */
-    public ChampionRecord toDomain() {
-        return new ChampionRecord(championId, name, gamesPlayed, winRate);
-    }
-
-    // Getters i setters (necessaris per JPA)
-    public String getChampionId() { return championId; }
-    public void setChampionId(String championId) { this.championId = championId; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public int getGamesPlayed() { return gamesPlayed; }
-    public void setGamesPlayed(int gamesPlayed) { this.gamesPlayed = gamesPlayed; }
-    public double getWinRate() { return winRate; }
-    public void setWinRate(double winRate) { this.winRate = winRate; }
-}
+// .join() bloqueja fins que el resultat està disponible
+String resultat = future.join();
 ```
 
-### Pas 4: Crear el Repositori JPA
-
-Aqui es on Spring Data JPA brilla — **no has d'escriure cap implementacio**:
+### Operacions Clau de CompletableFuture
 
 ```java
-package com.esportspulse.engine.repository;
+// supplyAsync: llança una tasca que retorna un valor
+// El ForkJoinPool.commonPool() assigna un thread automàticament
+CompletableFuture<RiotData> riotFuture =
+    CompletableFuture.supplyAsync(() -> riotClient.fetch(championId));
 
-import com.esportspulse.engine.entity.ChampionEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+// thenApply: transforma el resultat quan arribi (com .map() en streams)
+// No bloqueja — encadena la transformació per quan el resultat estigui llest
+CompletableFuture<String> nameFuture =
+    riotFuture.thenApply(data -> data.name().toUpperCase());
 
-import java.util.List;
+// thenCombine: combina els resultats de dos futures independents
+// Espera que AMBDÓS acabin i aplica la funció de combinació
+CompletableFuture<ChampionView> combined =
+    riotFuture.thenCombine(ddFuture, (riot, dd) ->
+        new ChampionView(riot.name(), riot.winRate(), dd.imageUrl()));
 
-/**
- * Repositori JPA per a campions.
- * Spring Data genera AUTOMATICAMENT la implementacio en temps d'execucio.
- * Nomes cal definir la interficie — Spring crea les queries SQL per nosaltres.
- *
- * JpaRepository<ChampionEntity, String>:
- *   - ChampionEntity: el tipus d'entitat
- *   - String: el tipus de la clau primaria (@Id)
- */
-@Repository
-public interface ChampionJpaRepository extends JpaRepository<ChampionEntity, String> {
+// allOf: espera que TOTS els futures d'un array acabin
+// Útil quan tens N crides i vols esperar-les totes
+CompletableFuture.allOf(future1, future2, future3).join();
 
-    // --- Metodes heretats de JpaRepository (no cal escriure'ls) ---
-    // save(entity)        → INSERT o UPDATE
-    // findById(id)        → SELECT WHERE champion_id = ?
-    // findAll()           → SELECT * FROM champions
-    // deleteById(id)      → DELETE WHERE champion_id = ?
-    // count()             → SELECT COUNT(*) FROM champions
-
-    // --- Consultes derivades: Spring genera SQL a partir del nom del metode ---
-
-    /**
-     * Cerca campions que continguin el text donat al nom.
-     * Spring genera: SELECT * FROM champions WHERE name LIKE '%text%'
-     * Exemple: findByNameContaining("Ah") → retorna Ahri
-     */
-    List<ChampionEntity> findByNameContaining(String text);
-
-    /**
-     * Cerca campions amb mes de X partides jugades.
-     * Spring genera: SELECT * FROM champions WHERE games_played > ?
-     */
-    List<ChampionEntity> findByGamesPlayedGreaterThan(int minGames);
-
-    /**
-     * Cerca campions amb win rate entre dos valors.
-     * Spring genera: SELECT * FROM champions WHERE win_rate BETWEEN ? AND ?
-     */
-    List<ChampionEntity> findByWinRateBetween(double min, double max);
-
-    /**
-     * Cerca campions ordenats per win rate descendent.
-     * Spring genera: SELECT * FROM champions ORDER BY win_rate DESC
-     */
-    List<ChampionEntity> findAllByOrderByWinRateDesc();
-}
+// exceptionally: gestiona errors sense que tot peti
+// Si la crida falla, retorna un valor per defecte en lloc de propagar l'excepció
+CompletableFuture<RiotData> safeFuture =
+    riotFuture.exceptionally(error -> {
+        System.err.println("Error cridant Riot API: " + error.getMessage());
+        return RiotData.empty();  // Valor per defecte
+    });
 ```
 
-### Com Funcionen les Consultes Derivades?
-
-Spring Data analitza el nom del metode i genera la query SQL:
+### Flux d'Execucio Visual
 
 ```
-findByNameContaining("Ah")
-│    │    │
-│    │    └─ LIKE '%Ah%'
-│    └────── WHERE name
-└─────────── SELECT * FROM champions
-
-findByGamesPlayedGreaterThan(1000)
-│    │           │
-│    │           └─ > 1000
-│    └───────────── WHERE games_played
-└────────────────── SELECT * FROM champions
+Thread principal (Tomcat)
+    │
+    ├── supplyAsync() → ForkJoinPool thread-1 → riotClient.fetch()
+    │                                              ↓ (300ms)
+    │                                           RiotData
+    │
+    ├── supplyAsync() → ForkJoinPool thread-2 → dataDragonClient.fetch()
+    │                                              ↓ (100ms)
+    │                                           DataDragonData
+    │
+    └── thenCombine(riot, dd) → ChampionView
+         ↓
+       Retorna al client (temps total: ~300ms, no 400ms)
 ```
 
-**Paraules clau disponibles:**
-
-| Paraula | SQL | Exemple |
-|---|---|---|
-| `Containing` | `LIKE '%x%'` | `findByNameContaining("ri")` |
-| `GreaterThan` | `> x` | `findByGamesPlayedGreaterThan(100)` |
-| `LessThan` | `< x` | `findByWinRateLessThan(50.0)` |
-| `Between` | `BETWEEN x AND y` | `findByWinRateBetween(45.0, 55.0)` |
-| `OrderBy...Desc` | `ORDER BY col DESC` | `findAllByOrderByWinRateDesc()` |
-| `And` / `Or` | `AND` / `OR` | `findByNameAndGamesPlayedGreaterThan(...)` |
-
-### Adaptador: Connectant JPA amb la Nostra Interficie
-
-Per mantenir la separacio, creem un adaptador que implementa la nostra interficie `ChampionRepository` i delega al JPA:
-
-```java
-package com.esportspulse.engine.repository;
-
-import com.esportspulse.engine.domain.ChampionRecord;
-import com.esportspulse.engine.entity.ChampionEntity;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Optional;
-
-/**
- * Adaptador que connecta ChampionRepository (interficie de domini)
- * amb ChampionJpaRepository (interficie de Spring Data).
- * Patro Adapter: tradueix entre dos mons (domini i persistencia).
- *
- * @Primary: quan Spring troba dues implementacions de ChampionRepository,
- * tria aquesta per defecte (per sobre de InMemoryChampionRepository).
- */
-@Component
-@Primary // Prioritat sobre InMemoryChampionRepository
-public class JpaChampionRepositoryAdapter implements ChampionRepository {
-
-    private final ChampionJpaRepository jpaRepository;
-
-    public JpaChampionRepositoryAdapter(ChampionJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
-    }
-
-    @Override
-    public void save(ChampionRecord champion) {
-        // Convertim domini → entitat JPA, i demanem a JPA que la desi
-        jpaRepository.save(ChampionEntity.fromDomain(champion));
-    }
-
-    @Override
-    public Optional<ChampionRecord> findById(String championId) {
-        // Convertim entitat JPA → domini en retornar
-        return jpaRepository.findById(championId)
-            .map(ChampionEntity::toDomain); // .map() transforma el contingut de l'Optional
-    }
-
-    @Override
-    public List<ChampionRecord> findAll() {
-        // Stream: convertim cada entitat JPA a objecte de domini
-        return jpaRepository.findAll().stream()
-            .map(ChampionEntity::toDomain)
-            .toList();
-    }
-
-    @Override
-    public void delete(String championId) {
-        jpaRepository.deleteById(championId);
-    }
-}
-```
-
-### La Consola H2
-
-Un cop l'aplicacio esta arrencada, pots accedir a la consola H2:
-
-```
-URL:       http://localhost:8080/h2-console
-JDBC URL:  jdbc:h2:mem:esportspulse
-Username:  sa
-Password:  (buit)
-```
-
-Des d'aqui pots:
-- Veure les taules creades automaticament per JPA
-- Executar queries SQL manualment
-- Verificar que les dades s'han desat correctament
+El thread principal NO espera. Llanca les dues tasques i continua. Nomes quan necessita el resultat final (al `join()` o al retornar la resposta HTTP), espera que tot estigui llest.
 
 ---
 
 ## Activitat
 
-### Exercici: Integra JPA a EsportsPulse
+### 1. Versio Sequencial — El Punt de Partida (15 min)
 
-**Durada estimada:** 90 minuts
+Primer, implementa la versio lenta per veure el problema:
 
-#### Pas 1: Dependencies (10 min)
+```java
+// SequentialFetcher.java
+// Versió seqüencial: crida una API darrere l'altra
+// Serveix com a baseline per comparar amb la versió paral·lela
 
-1. Afegeix `spring-boot-starter-data-jpa` i `h2` al `pom.xml`
-2. Executa `mvn compile` per verificar que les dependencies es descarreguen
+public class SequentialFetcher {
 
-#### Pas 2: Configuracio (10 min)
+    // Simula una crida a Riot API (300ms de latència de xarxa)
+    static String fetchRiotData(String championId) {
+        try {
+            Thread.sleep(300);  // Simula latència de xarxa
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "RiotData{champion=" + championId + ", winRate=52.3}";
+    }
 
-1. Crea/modifica `application.properties` amb la configuracio H2
-2. Activa `spring.jpa.show-sql=true` per veure les queries
+    // Simula una crida a Data Dragon (100ms de latència)
+    static String fetchDataDragon(String championId) {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "DDData{champion=" + championId + ", imageUrl=https://dd.cdn/ahri.png}";
+    }
 
-#### Pas 3: Entitat (20 min)
+    public static void main(String[] args) {
+        String championId = "Ahri";
 
-1. Crea `ChampionEntity` amb les anotacions JPA
-2. Implementa `fromDomain()` i `toDomain()`
-3. Afegeix `@Version` per control de concurrencia
+        long start = System.nanoTime();
 
-#### Pas 4: Repositori JPA (15 min)
+        // Crida seqüencial: primer Riot, després Data Dragon
+        // El thread espera 300ms, després espera 100ms més
+        String riotData = fetchRiotData(championId);
+        String ddData = fetchDataDragon(championId);
 
-1. Crea `ChampionJpaRepository extends JpaRepository`
-2. Afegeix 3 consultes derivades:
-   - `findByNameContaining`
-   - `findByGamesPlayedGreaterThan`
-   - `findByWinRateBetween`
+        long elapsed = (System.nanoTime() - start) / 1_000_000;
 
-#### Pas 5: Adaptador (15 min)
+        System.out.println("Riot:   " + riotData);
+        System.out.println("DD:     " + ddData);
+        System.out.println("Temps:  " + elapsed + "ms (esperat: ~400ms)");
+    }
+}
+```
 
-1. Crea `JpaChampionRepositoryAdapter` que implementa `ChampionRepository`
-2. Marca amb `@Primary`
-3. Verifica que `ChampionManagementService` no canvia ni una linia
+### 2. Versio Paral-lela amb CompletableFuture (25 min)
 
-#### Pas 6: Verifica amb H2 (20 min)
+Ara transforma-ho en paral-lel:
 
-1. Arrenca l'aplicacio: `mvn spring-boot:run`
-2. Obre `http://localhost:8080/h2-console`
-3. Connecta amb `jdbc:h2:mem:esportspulse`
-4. Executa: `SELECT * FROM champions;`
-5. Insereix un campió manualment amb SQL i verifica que l'API el retorna
+```java
+// ParallelFetcher.java
+// Versió paral·lela: llança les dues crides alhora amb CompletableFuture
+// El temps total és el màxim de les dues, no la suma
+
+import java.util.concurrent.CompletableFuture;
+
+public class ParallelFetcher {
+
+    // Record immutable per al resultat combinat
+    // Usar records garanteix thread-safety (S2 + S6 dilluns)
+    record ChampionView(String riotData, String ddData, long fetchTimeMs) {}
+
+    static String fetchRiotData(String championId) {
+        try { Thread.sleep(300); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "RiotData{champion=" + championId + ", winRate=52.3}";
+    }
+
+    static String fetchDataDragon(String championId) {
+        try { Thread.sleep(100); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "DDData{champion=" + championId + ", imageUrl=https://dd.cdn/ahri.png}";
+    }
+
+    public static void main(String[] args) {
+        String championId = "Ahri";
+
+        long start = System.nanoTime();
+
+        // supplyAsync llança cada crida en un thread separat del ForkJoinPool
+        // Retorna immediatament — no bloqueja el thread principal
+        CompletableFuture<String> riotFuture =
+            CompletableFuture.supplyAsync(() -> fetchRiotData(championId));
+
+        CompletableFuture<String> ddFuture =
+            CompletableFuture.supplyAsync(() -> fetchDataDragon(championId));
+
+        // thenCombine espera que AMBDÓS futures acabin i combina els resultats
+        // La funció lambda rep els dos valors i crea l'objecte final
+        ChampionView view = riotFuture.thenCombine(ddFuture, (riot, dd) -> {
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
+            return new ChampionView(riot, dd, elapsed);
+        }).join();  // join() bloqueja fins que tot està llest
+
+        System.out.println("Riot:   " + view.riotData());
+        System.out.println("DD:     " + view.ddData());
+        System.out.println("Temps:  " + view.fetchTimeMs() + "ms (esperat: ~300ms)");
+    }
+}
+```
+
+Compila i compara els temps:
+
+```bash
+javac SequentialFetcher.java && java SequentialFetcher
+# Temps: ~400ms
+
+javac ParallelFetcher.java && java ParallelFetcher
+# Temps: ~300ms — 25% més ràpid amb només 2 crides
+```
+
+### 3. Extractor de Multiples Campions (25 min)
+
+Ara escala: en lloc de 1 campio, extreu dades de 20 campions en paral-lel:
+
+```java
+// BatchExtractor.java
+// Extreu dades de múltiples campions en paral·lel
+// Demostra l'escalabilitat de CompletableFuture: 20 crides en ~300ms vs ~6s seqüencial
+
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+
+public class BatchExtractor {
+
+    record ChampionData(String id, String riotData, String ddData) {}
+
+    static String fetchRiotData(String championId) {
+        try { Thread.sleep(300); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "RiotData{" + championId + ", wr=52.3}";
+    }
+
+    static String fetchDataDragon(String championId) {
+        try { Thread.sleep(100); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "DDData{" + championId + ", img=ok}";
+    }
+
+    // Extreu dades d'UN campió en paral·lel (Riot + DD simultàniament)
+    static CompletableFuture<ChampionData> extractOne(String championId) {
+        CompletableFuture<String> riot =
+            CompletableFuture.supplyAsync(() -> fetchRiotData(championId));
+        CompletableFuture<String> dd =
+            CompletableFuture.supplyAsync(() -> fetchDataDragon(championId));
+
+        // thenCombine combina els dos resultats quan ambdós estan llestos
+        return riot.thenCombine(dd, (r, d) -> new ChampionData(championId, r, d));
+    }
+
+    public static void main(String[] args) {
+        List<String> champions = List.of(
+            "Ahri", "Zed", "Lux", "Yasuo", "Jinx",
+            "Thresh", "Lee Sin", "Katarina", "Ezreal", "Vayne",
+            "Darius", "Morgana", "Garen", "Ashe", "Blitzcrank",
+            "Teemo", "Miss Fortune", "Jhin", "Kai'Sa", "Viego"
+        );
+
+        // --- Versió seqüencial ---
+        long startSeq = System.nanoTime();
+        for (String champ : champions) {
+            fetchRiotData(champ);
+            fetchDataDragon(champ);
+        }
+        long seqMs = (System.nanoTime() - startSeq) / 1_000_000;
+
+        // --- Versió paral·lela ---
+        long startPar = System.nanoTime();
+
+        // Llança TOTES les extraccions en paral·lel
+        // Cada extractOne ja fa Riot+DD en paral·lel internament
+        List<CompletableFuture<ChampionData>> futures = champions.stream()
+            .map(BatchExtractor::extractOne)
+            .collect(Collectors.toList());
+
+        // Espera que totes acabin i recull els resultats
+        List<ChampionData> results = futures.stream()
+            .map(CompletableFuture::join)  // join() espera cada futur individualment
+            .collect(Collectors.toList());
+
+        long parMs = (System.nanoTime() - startPar) / 1_000_000;
+
+        System.out.println("=== Resultats ===");
+        System.out.println("Campions extrets: " + results.size());
+        System.out.println("Seqüencial:       " + seqMs + "ms");
+        System.out.println("Paral·lel:        " + parMs + "ms");
+        System.out.printf("Speedup:          %.1fx més ràpid%n", (double) seqMs / parMs);
+
+        // Mostra els primers 3 resultats com a verificació
+        results.stream().limit(3).forEach(c ->
+            System.out.println("  " + c.id() + " → " + c.riotData()));
+    }
+}
+```
+
+### 4. Gestio d'Errors Parcials (15 min)
+
+A la vida real, algunes crides fallen. L'extractor no ha de petar sencer:
+
+```java
+// Afegeix al BatchExtractor o crea un fitxer nou
+
+// Versió robusta que gestiona errors parcials
+// Si una crida falla, la resta continuen — retorna resultats vàlids + llista d'errors
+static CompletableFuture<ChampionData> extractOneSafe(String championId) {
+    CompletableFuture<String> riot =
+        CompletableFuture.supplyAsync(() -> fetchRiotData(championId))
+            .exceptionally(error -> {
+                // Si Riot API falla, retornem un valor per defecte
+                // L'error queda loggejat però no trenca l'extracció
+                System.err.println("WARN: Riot API error per " + championId + ": " + error.getMessage());
+                return "RiotData{UNAVAILABLE}";
+            });
+
+    CompletableFuture<String> dd =
+        CompletableFuture.supplyAsync(() -> fetchDataDragon(championId))
+            .exceptionally(error -> {
+                System.err.println("WARN: DataDragon error per " + championId + ": " + error.getMessage());
+                return "DDData{UNAVAILABLE}";
+            });
+
+    return riot.thenCombine(dd, (r, d) -> new ChampionData(championId, r, d));
+}
+```
+
+Prova afegint un error aleatori al `fetchRiotData`:
+
+```java
+static String fetchRiotData(String championId) {
+    try { Thread.sleep(300); } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+    // 10% de probabilitat de fallar — simula errors de xarxa reals
+    if (Math.random() < 0.1) {
+        throw new RuntimeException("Connection timeout to Riot API");
+    }
+    return "RiotData{" + championId + ", wr=52.3}";
+}
+```
+
+> **Lectura recomanada (opcional, no bloquejant):**
+> - Baeldung: [Guide to CompletableFuture](https://www.baeldung.com/java-completablefuture)
+> - Oracle: [CompletableFuture API](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html)
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Dependencies JPA i H2 afegides al `pom.xml`
-- [ ] `application.properties` configurat amb H2 i consola activada
-- [ ] `ChampionEntity` creada amb `@Entity`, `@Id`, `@Column`, `@Version`
-- [ ] Metodes `fromDomain()` i `toDomain()` funcionals
-- [ ] `ChampionJpaRepository` amb minim 3 consultes derivades
-- [ ] `JpaChampionRepositoryAdapter` implementa `ChampionRepository` amb `@Primary`
-- [ ] `ChampionManagementService` NO ha canviat (comprova amb `git diff`)
-- [ ] Aplicacio arrenca sense errors: `mvn spring-boot:run`
-- [ ] Consola H2 accessible i mostra la taula `champions`
-- [ ] `mvn test` verd
+- [ ] Has implementat la versio sequencial i veus que triga ~400ms per 1 campio
+- [ ] Has implementat la versio paral-lela amb CompletableFuture i triga ~300ms (25% menys)
+- [ ] Has escalat a 20 campions i la versio paral-lela es almenys 5x mes rapida
+- [ ] Has afegit gestio d'errors parcials amb `exceptionally()` — si 2 de 20 fallen, tens 18 resultats
+- [ ] Pots explicar: que fa `supplyAsync`, que fa `thenCombine`, que fa `join()`
+- [ ] Entens per que paral-lelitzar I/O extern es critic en un servidor web amb thread pool limitat

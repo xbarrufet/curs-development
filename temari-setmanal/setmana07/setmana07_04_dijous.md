@@ -1,471 +1,327 @@
-# Setmana 07 — Dijous: Cobertura de Codi amb JaCoCo i CI amb pytest + ruff
+# Setmana 07 — Dijous: Especificacions de Refactoring, Code Review i Pre-commit Hooks
 
 ## Objectiu del Dia
 
-Configurar JaCoCo per mesurar la cobertura de codi a Java i pytest-cov a Python. Actualitzar el pipeline de GitHub Actions perquè falli si la cobertura baixa del 70%. Afegir ruff com a linter de Python. Al final del dia, el teu CI protegirà la qualitat del codi automàticament.
+Aprendre a escriure especificacions de refactoring que un agent IA (o un company) pugui seguir. Dominar el code review com a eina professional. Configurar pre-commit hooks per automatitzar la validacio d'estil. Al final del dia sabras escriure specs precises, fer reviews constructives i tenir guardianes automàtics al teu repositori.
 
 ---
 
 ## Teoria
 
-### Què és la Cobertura de Codi?
+### Code Review com a Habilitat Professional
 
-La cobertura de codi mesura **quin percentatge del teu codi s'executa durant els tests**. Hi ha dos tipus principals:
+El code review no es buscar errors (per això tenim tests i CI). Es una conversa professional sobre la qualitat del codi.
 
-**Cobertura de línies (line coverage):** quantes línies s'han executat.
+#### Què Buscar en un Code Review
 
-**Cobertura de branques (branch coverage):** quantes decisions if/else s'han explorat.
+```
+Ordre de prioritat (de més a menys important):
 
-```java
-// Exemple: mètode amb una branca if/else
-// Per tenir 100% de cobertura de branques, necessitem 2 tests
-public String classifyWinRate(double winRate) {
-    if (winRate >= 52.0) {           // Branca 1: winRate alt
-        return "META";               // Línia coberta si testem winRate >= 52
-    } else {                         // Branca 2: winRate normal
-        return "STANDARD";           // Línia coberta si testem winRate < 52
-    }
-}
+1. 🔒 Seguretat     → SQL Injection, secrets exposats, input no validat
+2. ✅ Correcció     → El codi fa el que diu que fa?
+3. 🧪 Tests         → Hi ha tests? Cobreixen els casos importants?
+4. 🏗️ Mantenibilitat → Es pot entendre en 6 mesos? Noms clars?
+5. ⚡ Rendiment     → Hi ha bucles innecessaris o queries N+1?
+6. 📝 Estil         → L'automatitza Checkstyle/ruff, no ho revisis tu
 ```
 
-| Test                          | Line coverage | Branch coverage |
-|-------------------------------|--------------|-----------------|
-| Només `classifyWinRate(55.0)` | 75%          | 50% (falta else) |
-| `classifyWinRate(55.0)` + `classifyWinRate(48.0)` | 100% | 100% |
+**Regla:** Mai comentes sobre estil manualment. Per a això tenim eines automàtiques (Checkstyle, ruff). El teu temps de reviewer es massa valuós per discutir espais.
 
 ---
 
-### Què Mesura la Cobertura (i Què NO)
+#### Com Escriure Comentaris de Review
 
-**El que SÍ mesura:**
-- Quines línies de codi s'han executat durant els tests
-- Quines branques (if/else, switch) s'han explorat
-- Quins mètodes s'han cridat
-
-**El que NO mesura:**
-- Si el codi és **correcte**
-- Si els tests tenen **asserts** adequats
-- Si la **lògica de negoci** funciona bé
-
-#### Anti-patró: 100% Cobertura, 0% Valor
-
-```java
-// PERILL: Aquest test té 100% cobertura del mètode
-// però NO VERIFICA RES — no té cap assert!
-@Test
-void testWithNoAssertions() {
-    // Executem el mètode (cobertura de línia: 100%)
-    service.register(new ChampionRecord("jinx", "Marksman", 51.5));
-    // ... i ja? No comprovem si s'ha guardat correctament!
-    // JaCoCo dirà 100% coverage, però el test és inútil
-}
-
-// BÉ: Menys cobertura potser, però verifica comportament
-@Test
-void shouldSaveAndRetrieveChampion() {
-    service.register(new ChampionRecord("jinx", "Marksman", 51.5));
-
-    // VERIFICAR que realment s'ha guardat
-    Optional<ChampionRecord> found = service.findById("jinx");
-    assertTrue(found.isPresent());
-    assertEquals("Marksman", found.get().role());
-}
-```
-
-> **Regla:** La cobertura és un **indicador**, no un **objectiu**. 70-80% és un bon llindar. 100% sol indicar tests artificials.
-
----
-
-### JaCoCo: Configuració a pom.xml
-
-JaCoCo (Java Code Coverage) s'integra amb Maven com un plugin. Afegeix-lo al `pom.xml`:
-
-```xml
-<build>
-    <plugins>
-        <!-- JaCoCo: mesura la cobertura de codi durant els tests -->
-        <!-- S'activa automàticament amb 'mvn verify' -->
-        <plugin>
-            <groupId>org.jacoco</groupId>
-            <artifactId>jacoco-maven-plugin</artifactId>
-            <version>0.8.12</version>
-            <executions>
-                <!-- 1. prepare-agent: instrumenta el codi abans dels tests -->
-                <!-- Afegeix un agent JVM que registra quines línies s'executen -->
-                <execution>
-                    <id>prepare-agent</id>
-                    <goals>
-                        <goal>prepare-agent</goal>
-                    </goals>
-                </execution>
-
-                <!-- 2. report: genera l'informe HTML després dels tests -->
-                <!-- Es pot obrir a target/site/jacoco/index.html -->
-                <execution>
-                    <id>report</id>
-                    <phase>test</phase>
-                    <goals>
-                        <goal>report</goal>
-                    </goals>
-                </execution>
-
-                <!-- 3. check: falla el build si la cobertura és insuficient -->
-                <!-- Aquesta és la part que integrem al CI -->
-                <execution>
-                    <id>check</id>
-                    <goals>
-                        <goal>check</goal>
-                    </goals>
-                    <configuration>
-                        <rules>
-                            <rule>
-                                <!-- Aplica a tot el bundle (projecte) -->
-                                <element>BUNDLE</element>
-                                <limits>
-                                    <limit>
-                                        <!-- Mínim 70% de cobertura de línies -->
-                                        <!-- Si baixa del 70%, 'mvn verify' FALLA -->
-                                        <counter>LINE</counter>
-                                        <value>COVEREDRATIO</value>
-                                        <minimum>0.70</minimum>
-                                    </limit>
-                                </limits>
-                            </rule>
-                        </rules>
-                    </configuration>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
-</build>
-```
-
-#### Executar i Veure l'Informe
-
-```bash
-# Compila, executa tests i verifica cobertura
-# Si la cobertura < 70%, el build FALLA
-mvn verify
-
-# L'informe HTML es genera a:
-# target/site/jacoco/index.html
-# Obre'l al navegador per veure detalls per classe i mètode
-open target/site/jacoco/index.html
-```
-
-**Exemple de sortida quan falla:**
+La formula: **Observació + Impacte + Suggeriment**
 
 ```
-[ERROR] Rule violated for bundle esportspulse-engine:
-  lines covered ratio is 0.58, but expected minimum is 0.70
-[ERROR] BUILD FAILURE
+❌ MAL comentari:
+"Això està malament."
+→ No explica QUÈ ni PER QUÈ. Desmotiva.
+
+❌ MAL comentari:
+"Hauries d'usar Optional aquí."
+→ No explica per què. Sembla una ordre.
+
+✅ BON comentari:
+"Observació: `findById()` retorna Optional, però aquí cridem `.get()` directament.
+Impacte: Si l'ID no existeix, llançarà NoSuchElementException sense context.
+Suggeriment: Considera `.orElseThrow(() -> new ChampionNotFoundException(id))`
+per donar un missatge d'error descriptiu."
+→ Explica el problema, l'impacte, i proposa solució.
+```
+
+**En Python:**
+
+```
+✅ BON comentari:
+"Observació: Aquí capturem Exception genèric amb `except Exception: pass`.
+Impacte: Si falla la connexió a la BD, l'error es perd i el servei retorna
+una llista buida com si tot anés bé. L'usuari veu "0 campions" sense saber per què.
+Suggeriment: Captura l'excepció específica (IOError) i logeja-la amb `logger.error()`."
 ```
 
 ---
 
-### pytest-cov: Cobertura en Python
+### Escriure Especificacions de Refactoring
 
-Instal·la el plugin de cobertura per a pytest:
+Una "spec" és un document que descriu **exactament** què vols que faci un agent (humà o IA). La qualitat de la spec determina la qualitat del resultat.
 
-```bash
-# Instal·lar pytest-cov (afegir també a requirements.txt)
-pip install pytest-cov
+#### Estructura d'una Spec
+
+```markdown
+# Spec: Refactoritzar ChampionManagementService
+
+## Objectiu
+Separar la lògica de cerca de la lògica de persistència al servei de campions.
+
+## Context
+Actualment, `ChampionManagementService` té 15 mètodes que mesclen:
+- Cerca (findByName, searchByRole, filterByWinRate)
+- CRUD (create, update, delete)
+- Validació (validateChampion, checkDuplicate)
+
+## Regles
+1. Crear `ChampionSearchService` amb els mètodes de cerca
+2. Mantenir `ChampionManagementService` amb CRUD i validació
+3. Tots els mètodes existents han de seguir funcionant (backward compatible)
+4. No canviar les signatures públiques dels mètodes
+5. Afegir @Transactional als mètodes que modifiquen dades
+
+## Tests Esperats
+- Tots els tests existents han de continuar passant SENSE modificacions
+- Afegir test: `searchByRole_whenNoResults_returnsEmptyList`
+- Afegir test: `create_whenDuplicate_throwsDuplicateException`
+
+## Criteris d'Acceptació
+- [ ] mvn test passa amb 0 errors
+- [ ] mvn checkstyle:check passa
+- [ ] Cap mètode té més de 20 línies
+- [ ] Cap classe té més de 200 línies
 ```
 
-Afegeix-lo a `requirements.txt`:
+#### Per Què les Specs Importen
 
 ```
-pytest>=8.0.0
-pytest-cov>=5.0.0
+Spec vaga:
+"Refactoritza el servei de campions perquè sigui més net."
+→ La IA/company no sap què vol dir "més net"
+→ Necessites 5 iteracions per arribar al resultat
+
+Spec precisa:
+(La de l'exemple de dalt)
+→ La IA/company sap exactament què fer
+→ Resultat correcte al primer intent (o molt proper)
 ```
 
-#### Executar amb Cobertura
+**Regla:** Si no pots escriure la spec, no entens prou bé el problema. Escriure la spec ES l'acte de pensar.
 
-```bash
-# Executar tests amb cobertura del mòdul esportspulse
-# --cov: quin mòdul mesurar
-# --cov-report=html: generar informe HTML
-# --cov-report=term-missing: mostrar línies no cobertes a la terminal
-# --cov-fail-under=70: fallar si la cobertura < 70%
-pytest --cov=esportspulse \
-       --cov-report=html \
-       --cov-report=term-missing \
-       --cov-fail-under=70
-```
+---
 
-**Exemple de sortida:**
+### Pre-commit Hooks — Guardianes Automàtics
+
+Un pre-commit hook es un script que s'executa **automàticament** abans de cada commit. Si falla, el commit no es crea.
 
 ```
----------- coverage: platform linux, python 3.12 ----------
-Name                                Stmts   Miss  Cover   Missing
------------------------------------------------------------------
-esportspulse/__init__.py                0      0   100%
-esportspulse/champion_record.py        12      0   100%
-esportspulse/champion_service.py       35      4    89%   42-45
-esportspulse/in_memory_repository.py   20      2    90%   31-32
-esportspulse/sqlite_repository.py      45     15    67%   58-72
------------------------------------------------------------------
-TOTAL                                 112     21    81%
+Flux amb pre-commit hook:
 
-FAIL Required test coverage of 70% reached. Total coverage: 81.25%
-```
-
-#### Configuració a pyproject.toml
-
-```toml
-# pyproject.toml
-# Configuració centralitzada per a pytest i cobertura
-
-[tool.pytest.ini_options]
-# Opcions per defecte de pytest
-# Així no cal recordar els flags cada cop
-testpaths = ["tests"]
-addopts = """
-    -v
-    --cov=esportspulse
-    --cov-report=term-missing
-    --cov-fail-under=70
-"""
+git commit -m "feat: add search"
+       │
+       ▼
+  Pre-commit hook s'executa:
+  1. Checkstyle (Java)     → ✅ Passa
+  2. Ruff (Python)         → ❌ Falla!
+     Error: unused import 'os'
+       │
+       ▼
+  COMMIT REBUTJAT ❌
+  "Fix the issues and try again"
+       │
+       ▼
+  Developer arregla el problema
+  git commit -m "feat: add search"  → ✅ Commit creat
 ```
 
 ---
 
-### ruff: Linter de Python (com Checkstyle per a Java)
-
-ruff és un linter ultra-ràpid per a Python. Detecta errors d'estil, imports no usats, variables mortes i problemes comuns:
+#### Instal·lar Pre-commit (eina multiplataforma)
 
 ```bash
-# Instal·lar ruff
-pip install ruff
+# Instal·la l'eina pre-commit (funciona amb Python, Java, JS, etc.)
+pip install pre-commit
 ```
 
-#### Configuració a pyproject.toml
-
-```toml
-# pyproject.toml
-
-[tool.ruff]
-# Versió de Python del projecte
-target-version = "py312"
-
-# Amplada màxima de línia
-line-length = 100
-
-[tool.ruff.lint]
-# Regles activades:
-# E = errors d'estil (PEP 8)
-# F = errors lògics (pyflakes)
-# I = imports desordenats
-# N = convencions de nomenclatura
-# UP = suggeriments de modernització
-select = ["E", "F", "I", "N", "UP"]
-
-# Regles ignorades:
-# E501 = línia massa llarga (ja controlat per line-length)
-ignore = ["E501"]
-```
-
-#### Executar ruff
-
-```bash
-# Comprovar errors (sense corregir)
-ruff check .
-
-# Corregir errors automàticament (imports, format)
-ruff check . --fix
-
-# Exemple de sortida:
-# esportspulse/champion_service.py:3:1: F401 'os' imported but unused
-# esportspulse/sqlite_repository.py:15:5: N806 variable 'Champions' should be lowercase
-```
-
----
-
-### Actualitzar GitHub Actions CI
-
-Actualitzem el workflow de CI per incloure cobertura i linting:
+#### Configurar `.pre-commit-config.yaml`
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI - EsportsPulse
+# .pre-commit-config.yaml
+# Defineix quins hooks s'executen abans de cada commit
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+repos:
+  # Hook per Python: ruff (linter ultra-ràpid)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0                    # Versió del hook
+    hooks:
+      - id: ruff                    # Lint: detecta errors d'estil i bugs
+        args: [ --fix ]             # Corregeix automàticament si pot
+      - id: ruff-format             # Format: reformata el codi automàticament
 
-jobs:
-  # Job 1: Java — compilar, testejar, verificar cobertura
-  java-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  # Hook per fitxers generals
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace     # Elimina espais al final de les línies
+      - id: end-of-file-fixer       # Assegura newline al final del fitxer
+      - id: check-yaml              # Valida que els YAML són correctes
+      - id: check-added-large-files # Evita pujar fitxers grans per accident
+        args: [ '--maxkb=500' ]     # Màxim 500KB per fitxer
+      - id: detect-private-key      # Detecta claus privades al codi
+```
 
-      # Configurar Java 21
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
+```bash
+# Instal·la els hooks al repositori (crea .git/hooks/pre-commit)
+pre-commit install
 
-      # mvn verify executa: compile → test → JaCoCo check
-      # Si la cobertura < 70%, el step FALLA i el CI es posa vermell
-      - name: Build and verify with Maven
-        run: mvn verify --batch-mode
-        working-directory: backend-java
-
-      # Pujar l'informe JaCoCo com a artefacte
-      # Permet descarregar-lo des de la pàgina del workflow
-      - name: Upload JaCoCo report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: backend-java/target/site/jacoco/
-
-  # Job 2: Python — testejar, cobertura, linting
-  python-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # Configurar Python 3.12
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # Instal·lar dependències
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-        working-directory: ai-python
-
-      # Executar ruff primer: si l'estil és incorrecte, no cal executar tests
-      # Falla ràpid: millor saber que tens un import no usat ABANS de córrer tests
-      - name: Lint with ruff
-        run: ruff check .
-        working-directory: ai-python
-
-      # Executar tests amb cobertura
-      # --cov-fail-under=70: falla si la cobertura < 70%
-      - name: Test with pytest and coverage
-        run: |
-          pytest --cov=esportspulse \
-                 --cov-report=html \
-                 --cov-report=term-missing \
-                 --cov-fail-under=70
-        working-directory: ai-python
-
-      # Pujar l'informe de cobertura Python
-      - name: Upload Python coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-coverage
-          path: ai-python/htmlcov/
+# Executa manualment sobre tots els fitxers (útil la primera vegada)
+pre-commit run --all-files
 ```
 
 ---
 
-### Mutation Testing: Concepte (Manual)
+#### Checkstyle com a Hook per Java
 
-El mutation testing verifica que els tests realment **detecten errors**. La idea:
-
-1. **Canvia** una línia del codi (crea un "mutant")
-2. **Executa** els tests
-3. Si els tests **fallen** → el mutant ha estat **detectat** (bé)
-4. Si els tests **passen** → el mutant ha **sobreviscut** (els tests són febles)
-
-#### Exemples de Mutacions Manuals
-
-```java
-// ORIGINAL: filtra campions amb winRate >= mínim
-public List<ChampionRecord> findByMinWinRate(double minRate) {
-    return repository.findAll().stream()
-        .filter(c -> c.winRate() >= minRate)  // Original: >=
-        .toList();
-}
-
-// MUTANT 1: canviar >= per >
-// Si els tests no fallen, no testegem el cas límit (winRate == minRate)
-        .filter(c -> c.winRate() > minRate)   // Mutant: >
-
-// MUTANT 2: eliminar el filtre
-// Si els tests no fallen, no estem comprovant que el filtre funciona
-    return repository.findAll();              // Mutant: retorna tot
-
-// MUTANT 3: canviar el return
-// Si els tests no fallen, no comprovem el resultat
-    return List.of();                         // Mutant: retorna buit
-```
-
-#### Com fer-ho manualment
+Per Java, podem usar un script personalitzat com a pre-commit hook:
 
 ```bash
-# 1. Canvia una línia del codi (>= per >)
-# 2. Executa els tests
-mvn test
+#!/bin/bash
+# .git/hooks/pre-commit (fer executable amb chmod +x)
+# Executa Checkstyle abans de cada commit
 
-# 3. Si els tests FALLEN → El mutant ha estat detectat (els tests són bons)
-# 4. Si els tests PASSEN → Tens un forat! Afegeix un test pel cas límit
+echo "Executant Checkstyle..."
 
-# 5. IMPORTANT: reverteix el canvi!
-git checkout -- src/main/java/com/esportspulse/engine/ChampionManagementService.java
+# Executa checkstyle al directori Java del projecte
+cd java/ && mvn checkstyle:check --batch-mode -q
+
+# Si checkstyle falla (exit code != 0), el commit es rebutja
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Checkstyle ha fallat. Corregeix els errors abans de fer commit."
+    echo "   Executa: mvn checkstyle:check per veure els detalls."
+    exit 1    # Exit code 1 = el commit es cancel·la
+fi
+
+echo "✅ Checkstyle ha passat."
+exit 0        # Exit code 0 = el commit continua
 ```
 
-> **Consell:** Fes 3-5 mutacions manuals avui. Si algun mutant sobreviu, afegeix un test que el mati.
+```bash
+# Fer el script executable (necessari a Linux/Mac)
+chmod +x .git/hooks/pre-commit
+```
+
+---
+
+#### Ruff per Python — Configuració
+
+```toml
+# pyproject.toml o ruff.toml — Configuració de ruff per al projecte
+[tool.ruff]
+# Longitud màxima de línia
+line-length = 100
+
+# Regles activades (cada lletra és una categoria)
+select = [
+    "E",    # pycodestyle errors (estil bàsic)
+    "F",    # pyflakes (variables no usades, imports duplicats)
+    "I",    # isort (ordre dels imports)
+    "N",    # pep8-naming (noms de variables i funcions)
+    "UP",   # pyupgrade (modernitzar codi antic)
+    "B",    # flake8-bugbear (bugs comuns)
+    "S",    # flake8-bandit (seguretat)
+]
+
+# Regles ignorades
+ignore = [
+    "S101",  # Permetre 'assert' als tests
+]
+```
+
+```bash
+# Executar ruff manualment
+ruff check .                    # Només reportar errors
+ruff check . --fix              # Corregir automàticament el que pugui
+ruff format .                   # Reformatar tot el codi
+```
 
 ---
 
 ## Activitat
 
-### Exercici: Configurar Cobertura + CI
+### Exercici 1: Escriure una Spec de Refactoring (30 min)
 
-1. **Configura JaCoCo a `pom.xml`:**
-   - Afegeix el plugin amb els 3 goals: `prepare-agent`, `report`, `check`
-   - Estableix mínim 70% de cobertura de línies
-   - Executa `mvn verify` i obre l'informe HTML
+Escriu una spec per refactoritzar el `ChampionManagementService` del teu projecte EsportsPulse. La spec ha de seguir l'estructura:
 
-2. **Configura pytest-cov:**
-   - Afegeix `pytest-cov` a `requirements.txt`
-   - Configura `pyproject.toml` amb les opcions per defecte
-   - Executa `pytest --cov-fail-under=70`
+1. **Objectiu** — Què vols aconseguir (1-2 frases)
+2. **Context** — Estat actual del codi
+3. **Regles** — Restriccions que s'han de complir
+4. **Tests Esperats** — Quins tests han de passar
+5. **Criteris d'Acceptació** — Checklist verificable
 
-3. **Configura ruff:**
-   - Afegeix configuració a `pyproject.toml`
-   - Executa `ruff check .` i corregeix els errors
+### Exercici 2: Dona la Spec a un Agent IA (30 min)
 
-4. **Actualitza `.github/workflows/ci.yml`:**
-   - Java job: `mvn verify` (inclou JaCoCo check)
-   - Python job: `ruff check .` + `pytest --cov-fail-under=70`
-   - Puja els informes com a artefactes
+1. Copia la spec de l'Exercici 1 i dona-la a una IA (Claude, ChatGPT, Cursor).
+2. Avalua el resultat:
+   - Ha seguit totes les regles?
+   - Els tests que ha generat cobreixen els casos importants?
+   - Ha mantingut backward compatibility?
+3. Compara amb el que hauries fet manualment.
+4. **Reflexió:** Quant de temps has estalviat? La qualitat es comparable?
 
-5. **Mutation testing manual:**
-   - Fes 3 mutacions al codi Java (canvia `>=` per `>`, elimina un `null` check, canvia un return)
-   - Per a cada mutació: executa tests, anota si el mutant sobreviu
-   - Si sobreviu, escriu un test que el mati
-   - **Reverteix** totes les mutacions!
+### Exercici 3: Configurar Pre-commit Hooks (30 min)
 
-### Criteris d'Èxit
+1. Instal·la `pre-commit`:
 
-- `mvn verify` passa amb cobertura >= 70%
-- `pytest --cov-fail-under=70` passa
-- `ruff check .` no reporta errors
-- CI actualitzat amb ambdós jobs
-- Almenys 3 mutants provats manualment
+```bash
+pip install pre-commit
+```
+
+2. Crea el fitxer `.pre-commit-config.yaml` al directori arrel del projecte (veure secció de teoria).
+
+3. Instal·la els hooks:
+
+```bash
+pre-commit install
+```
+
+4. Prova que funciona:
+
+```bash
+# Introdueix un error d'estil intencionat (per exemple, import no usat)
+# Intenta fer commit — ha de fallar
+git add .
+git commit -m "test: pre-commit hook"
+
+# Corregeix l'error i torna a intentar
+```
+
+### Exercici 4: Code Review entre Companys (30 min)
+
+Intercanvia el teu codi amb un company de classe. Fes una revisió seguint:
+
+1. Revisa **seguretat** primer: hi ha secrets? SQL injection? Input no validat?
+2. Revisa **correcció**: El codi fa el que diu?
+3. Revisa **tests**: Quins casos importants falten?
+4. Escriu 3 comentaris seguint la formula Observacio + Impacte + Suggeriment.
+
+Si no tens company, revisa el teu propi codi de la setmana 6 amb ulls frescos.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] JaCoCo configurat a `pom.xml` amb mínim 70%
-- [ ] `mvn verify` passa i genera informe HTML
-- [ ] `pytest-cov` configurat a `pyproject.toml`
-- [ ] `pytest --cov-fail-under=70` passa
-- [ ] `ruff` configurat i sense errors
-- [ ] `.github/workflows/ci.yml` actualitzat amb ambdós jobs
-- [ ] Almenys 3 mutacions manuals provades i documentades
-- [ ] Commit: `ci: add JaCoCo coverage check and Python linting with ruff`
+- [ ] He escrit una spec de refactoring completa amb tots els apartats
+- [ ] He donat la spec a una IA i he avaluat el resultat
+- [ ] He configurat `.pre-commit-config.yaml` al meu projecte
+- [ ] Els pre-commit hooks funcionen (he provat que rebutgen codi amb errors)
+- [ ] He fet (o simulat) un code review amb 3 comentaris constructius
+- [ ] Entenc la formula Observacio + Impacte + Suggeriment
+- [ ] Commit amb missatge: `chore: add pre-commit hooks with ruff and checkstyle`

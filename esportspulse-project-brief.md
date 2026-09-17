@@ -16,7 +16,7 @@
 
 Aquest curs **no inclou frontend web** (HTML/CSS/JavaScript/React). La decisió és conscient:
 - El perfil objectiu és **junior backend + IA**, no fullstack.
-- L'estudiant entén com un frontend consumiria la seva API (Swagger/OpenAPI, CORS, contractes JSON a S7) sense haver de construir-ne un.
+- L'estudiant entén com un frontend consumiria la seva API (Swagger/OpenAPI, CORS, contractes JSON a S5) sense haver de construir-ne un.
 - Si l'estudiant vol ampliar amb frontend, el projecte té una API REST documentada amb Swagger que qualsevol framework (React, Vue, etc.) pot consumir directament.
 
 ### Streamlit com a Vehicle de Spec-Driven Development
@@ -31,8 +31,8 @@ La interfície d'usuari del projecte és **Streamlit** (Python). No és "el fron
 **Progressió de Streamlit al curs:**
 | Setmana | Exercici | Focus |
 |---------|----------|-------|
-| S10 | Dashboard bàsic que consumeix l'API REST | Aprendre Streamlit + spec amb wireframe ASCII |
-| S19 | Dashboard avançat d'agents (state, historial, mètriques) | Generat per agent a partir de spec; l'estudiant audita |
+| S13 | Dashboard bàsic que consumeix l'API REST | Aprendre Streamlit + spec amb wireframe ASCII |
+| S21 | Dashboard avançat d'agents (state, historial, mètriques) | Generat per agent a partir de spec; l'estudiant audita |
 | S24 | Demo final del sistema complet (5 min) | Streamlit com a capa de presentació del portfolio |
 
 ---
@@ -95,11 +95,11 @@ Una **partida** connecta jugadors amb campions: cada jugador selecciona un campi
 
 | Entitat | API | Autenticació | Primer ús al curs |
 |---------|-----|-------------|-------------------|
-| PlayerRecord | Riot API summoner-v4 | API key gratuïta | S1 (sintètic), S7 (real) |
-| ChampionRecord | Data Dragon (CDN públic) | Cap | S2 (sintètic), S7 (real) |
-| MatchRecord | Riot API match-v5 | API key gratuïta | S3 (extractor concurrent) |
-| PatchNote | Web scraping LoL patch notes | Cap | S12 (knowledge retrieval) |
-| User | Intern (BD pròpia) | — | S14 (JWT auth) |
+| PlayerRecord | Riot API summoner-v4 | API key gratuïta | S1 (sintètic), S6 (real, via extractor concurrent) |
+| ChampionRecord | Data Dragon (CDN públic) | Cap | S2 (real — Data Dragon no necessita clau ni gestió de rate limit) |
+| MatchRecord | Riot API match-v5 | API key gratuïta | S6 (extractor concurrent) |
+| PatchNote | Web scraping LoL patch notes | Cap | S14 (knowledge engineering) |
+| User | Intern (BD pròpia) | — | S12 (JWT auth) |
 
 ### Evolució de les Entitats al Curs
 
@@ -107,13 +107,13 @@ Una **partida** connecta jugadors amb campions: cada jugador selecciona un campi
 |---------|---------|-----------|
 | S1 | PlayerRecord | Es crea amb dades sintètiques (100K jugadors) per practicar col·leccions i benchmarking |
 | S2 | PlayerRecord | S'amplia amb validació (compact constructor) i mètodes de negoci |
-| S2 | ChampionRecord | Es crea quan es connecta amb APIs reals (Data Dragon, Riot API) |
-| S3 | MatchRecord | Es crea per a l'extractor concurrent de partides via Riot API |
-| S5-S6 | ChampionRecord, PlayerRecord | Persistència amb JPA + H2, repositoris SQL |
-| S7 | Totes | Endpoints REST, dades reals de Data Dragon i Riot API |
-| S12-S13 | PatchNote | Parser de patch notes + indexació a Qdrant per knowledge retrieval |
-| S14 | User | Autenticació JWT, endpoints protegits |
-| S15 | Totes | PostgreSQL, migracions Flyway, JOINs entre entitats |
+| S2 | ChampionRecord | Es crea connectant directament amb Data Dragon (CDN públic, sense clau) |
+| S4 | ChampionRecord, PlayerRecord | Persistència amb JPA + H2, repositoris SQL |
+| S5 | Totes | Endpoints REST exposant les dades persistides |
+| S6 | MatchRecord, PlayerRecord (real) | Extractor concurrent contra Riot API (match-v5, summoner-v4) — la primera font que necessita clau i gestió de rate limit |
+| S12 | User | Autenticació JWT, endpoints protegits |
+| S14 | PatchNote | Parser de patch notes + indexació a Qdrant per knowledge retrieval |
+| S18 | Totes | PostgreSQL, migracions Flyway, JOINs entre entitats |
 
 ---
 
@@ -184,7 +184,7 @@ https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{championKey}_0.jpg
 → Retorna: imatge de splash art per visualitzar al dashboard
 ```
 
-**Avantatge:** Zero autenticació, zero rate limit, dades completes per a 170+ campiòns. S'integra a partir de S7 quan es connecta amb dades reals (a S1-S2 les dades són sintètiques).
+**Avantatge:** Zero autenticació, zero rate limit, dades completes per a 170+ campiòns. S'integra ja des de S2 per a `ChampionRecord`; les dades de jugador via Riot API (que sí necessiten clau i rate limit) no arriben fins a l'extractor concurrent de S6.
 
 ### PandaScore API (Alternativa/Complement — Multi-Game)
 
@@ -208,7 +208,7 @@ GET https://api.pandascore.co/lol/matches
 → Retorna: partides recents de l'escena professional
 ```
 
-**Avantatge:** Dades de la escena professional (torneigs, equips, resultats) que Riot API no retorna directament. Ideal per a l'exercici de S3 (extractor concurrent) com a complemento a Riot API.
+**Avantatge:** Dades de la escena professional (torneigs, equips, resultats) que Riot API no retorna directament. Ideal per a l'exercici de S6 (extractor concurrent) com a complemento a Riot API.
 
 ### Patch Notes (Per al Bloc 3: Knowledge Engineering)
 
@@ -217,7 +217,7 @@ Les patch notes de LoL no vénen d'una API — són documents publicats pels dev
 - **League of Legends:** https://www.leagueoflegends.com/en-us/news/tags/patch-notes/ (HTML scrapable, historial complet)
 - **Valorant:** https://playvalorant.com/en-us/news/tags/patch-notes/ (HTML)
 
-**Exercici S12:** L'estudiant descarrega 10-20 patch notes reals de LoL (HTML), les estructura en markdown amb metadades (patch version, data, canvis de campiò), i les indexa a Qdrant per a knowledge retrieval.
+**Exercici S14:** L'estudiant descarrega 10-20 patch notes reals de LoL (HTML), les estructura en markdown amb metadades (patch version, data, canvis de campiò), i les indexa a Qdrant per a knowledge retrieval.
 
 ### Gestió de Claus API al Projecte
 
@@ -235,7 +235,7 @@ riot_api_key = os.environ["RIOT_API_KEY"]
 pandascore_api_key = os.environ["PANDASCORE_API_KEY"]
 ```
 
-**Regla del curs:** Mai secrets al codi. Sempre `.env` + `.gitignore`. Això es practica des de S4 (anti-patró de secrets hardcodejats).
+**Regla del curs:** Mai secrets al codi. Sempre `.env` + `.gitignore`. Això es practica des de S7 (anti-patró de secrets hardcodejats).
 
 ---
 
@@ -243,57 +243,58 @@ pandascore_api_key = os.environ["PANDASCORE_API_KEY"]
 
 Cada bloc afegeix capacitats reals a l'aplicació. Al final de cada bloc, EsportsPulse **fa coses noves** que abans no podia fer.
 
-### **Bloc 1: Motor de Dades Local (Setmanes 1-6)**
+### **Bloc 1: Fundaments i Vertical Slice REST (Setmanes 1-9)**
 
 **L'aplicació pot:**
 - Emmagatzemar jugadors i campions en memòria amb cerca instantània per ID (HashMap)
 - Validar que cap entitat invàlida entri al sistema (compact constructors)
-- Ingerir dades de múltiples fonts en paral·lel (extractor concurrent de Riot API + PandaScore)
-- Persistir campions i jugadors a una base de dades local (H2) amb repositoris
-- Executar una suite de tests automatitzats (JUnit 5 + pytest) integrada al CI
+- Persistir campions i jugadors a una base de dades local (H2) amb repositoris JPA
+- Exposar una API REST per consultar campions per rol, win rate i pick rate (endpoints Swagger documentats)
+- Ingerir dades de múltiples fonts en paral·lel (extractor concurrent de Riot API + PandaScore, amb Virtual Threads)
+- Passar per un cicle de code review i CI real: anti-patrons corregits, `rebase` de Git, GitHub Actions
+- Executar una suite de tests automatitzats (JUnit 5 + Mockito + pytest) integrada al CI
+- Córrer tots els serveis del bloc amb un sol `docker-compose up`
 
-**Lliurament:** `v0.1` — Motor de dades local amb ingesta concurrent, persistència i tests
+**Lliurament:** `v0.1` — Vertical slice complet (Domini→Repository→Service→REST) amb ingesta concurrent, tests, CI i Docker
 
-### **Bloc 2: API REST i Dashboard (Setmanes 7-10)**
+### **Bloc 2: Integració IA, Seguretat i Frontend (Setmanes 10-13)**
 
 **L'aplicació pot:**
-- Exposar una API REST per consultar campions per rol, win rate i pick rate (endpoints Swagger documentats)
 - Generar anàlisis estructurades de campions via LLM (output Pydantic validat)
 - Connectar agents IA a la base de dades d'EsportsPulse via MCP
+- Propagar errors i logs estructurats (correlation IDs) entre el backend Java i el servei Python
+- Protegir endpoints amb autenticació JWT (login, tokens, endpoints protegits, sessions a Redis)
 - Mostrar un dashboard interactiu amb tier list de campions, filtres per rol, i imatges de Data Dragon
 
-**Lliurament:** `v0.2` — API REST + dashboard Streamlit + MCP servers
+**Lliurament:** `v0.2` — API protegida amb JWT + servei Python (FastAPI/MCP) + dashboard Streamlit
 
-### **Bloc 3: Infraestructura i Knowledge Base (Setmanes 11-16)**
+### **Bloc 3: Knowledge, Agents i Spec-Driven Development (Setmanes 14-17)**
 
 **L'aplicació pot:**
-- Córrer tots els serveis amb un sol `docker-compose up` (Java, Python, PostgreSQL, Qdrant, Redis, RabbitMQ)
-- Respondre "quan van nerfar Yasuo?" cercant semànticament entre patch notes indexades a Qdrant, amb citació de la font
+- Respondre "quan van nerfar Yasuo?" cercant semànticament entre patch notes indexades a Qdrant, amb citació de la font i sense al·lucinar
 - Cachear respostes de l'LLM i queries freqüents a Redis (reducció de latència i cost)
-- Protegir endpoints amb autenticació JWT (login, tokens, endpoints protegits)
-- Persistir dades a PostgreSQL amb migracions versionades (Flyway) i queries optimitzades
-- Reaccionar a events asíncrons: quan es publica un patch nou → parsejar notes → indexar a Qdrant → invalidar cache (RabbitMQ)
-
-**Lliurament:** `v0.3` — Infraestructura dockeritzada + knowledge base de patch notes + auth + cache + events asíncrons
-
-### **Bloc 4: Agents Intel·ligents (Setmanes 17-19)**
-
-**L'aplicació pot:**
 - Respondre preguntes complexes combinant dos agents: l'Agent Estadístic (consulta stats de campions a la BD) i l'Agent de Knowledge (cerca patch notes a Qdrant)
-- Recomanar picks i bans per a una partida concreta (Draft Assistant) basant-se en stats actuals i canvis recents del meta
-- Mesurar la qualitat de les respostes dels agents amb evals automatitzats al CI (20+ preguntes de referència)
-- Traçar cada interacció dels agents amb LangFuse (cost, latència, qualitat)
-- Mostrar un dashboard d'agents amb historial de preguntes, qualitat i cost acumulat
+- Traçar cada interacció dels agents amb LangFuse (cost, latència, qualitat) i mesurar-ne la qualitat amb evals al CI
+- Implementar una feature nova de cap a peu seguint spec-driven development (spec → agent genera → review)
 
-**Lliurament:** `v0.4` — Agents amb evals al CI + Draft Assistant + dashboard d'agents
+**Lliurament:** `v0.3` — Knowledge base de patch notes + agents amb evals al CI + primera feature spec-driven
 
-### **Bloc 5: Producció (Setmanes 20-24)**
+### **Bloc 4: Infraestructura Avançada (Setmanes 18-20)**
 
 **L'aplicació pot:**
+- Persistir dades a PostgreSQL amb migracions versionades (Flyway) i queries optimitzades (JOINs, indexes, EXPLAIN)
+- Reaccionar a events asíncrons: quan es publica un patch nou → parsejar notes → indexar a Qdrant → invalidar cache (RabbitMQ)
+- Córrer tota la plataforma (Java, Python, PostgreSQL, Qdrant, Redis, RabbitMQ) amb un `docker-compose up` unificat, amb health checks i dashboard de mètriques
+
+**Lliurament:** `v0.4` — Infraestructura de producció: PostgreSQL + message queues + CI/CD i observabilitat consolidats
+
+### **Bloc 5: Producció i Portfolio (Setmanes 21-24)**
+
+**L'aplicació pot:**
+- Recomanar picks i bans per a una partida concreta (Draft Assistant) basant-se en stats actuals i canvis recents del meta, amb un dashboard d'agents avançat
 - Desplegar-se automàticament a cloud (Render/Fly.io) via CI/CD amb cada push a `main`
 - Ser accessible via URL pública (`esportspulse.fly.dev`) amb tota la funcionalitat operativa
-- Passar tests E2E complets (login → cerca de campió → anàlisi d'agent → resultat)
-- Resistir auditoria de seguretat bàsica (OWASP top 10)
+- Passar tests E2E complets (login → cerca de campió → anàlisi d'agent → resultat) i resistir una auditoria de seguretat bàsica (OWASP top 10)
 - Presentar-se en una demo de 5 minuts amb documentació tècnica (diagrames C4, Swagger, portfolio GitHub)
 
 **Lliurament:** `v1.0` — Plataforma completa en cloud, documentada i presentable en entrevista
@@ -304,29 +305,32 @@ Cada bloc afegeix capacitats reals a l'aplicació. Al final de cada bloc, Esport
 
 | Setmana | Tema | EsportsPulse Milestone |
 |---------|------|-------------------|
-| 1-6 | Algorítmica + POO + Concurrència + Testing | `v0.1`: Backend Java + Python amb tests, model de domini amb dades sintètiques |
-| 7-10 | APIs + LLMs + Dashboard + MCP | `v0.2`: REST + Streamlit (tier list, campiò search) + MCP servers |
-| 11-16 | Docker + Knowledge + Auth + SQL + Redis + Queues | `v0.3`: Docker + Retrieval de patch notes + JWT + PostgreSQL + Redis + RabbitMQ |
-| 17-19 | Agents + Specs + Consolidació | `v0.4`: Agents (Estadístic + Knowledge) + evals + dashboard d'agents + Draft Assistant |
-| 20-24 | Producció + Portfolio + Entrevista | `v1.0`: Cloud (esportspulse.fly.dev) + demo + portfolio + prep entrevista |
+| 1-9 | Algorítmica + POO + Persistència JPA + REST + Concurrència + Git/CI + Testing + Docker | `v0.1`: Vertical slice complet (Domini→Repository→Service→REST) dockeritzat, amb ingesta concurrent i tests al CI |
+| 10-13 | LLMs + MCP + Error Handling + Auth + Streamlit | `v0.2`: API protegida amb JWT + servei Python (FastAPI/MCP) + dashboard Streamlit |
+| 14-17 | Knowledge + Agents + Spec-Driven | `v0.3`: Retrieval de patch notes + agents (Estadístic + Knowledge) amb evals + primera feature spec-driven |
+| 18-20 | SQL Avançat + Queues + CI/CD Consolidat | `v0.4`: PostgreSQL + Redis + RabbitMQ + monitoring unificat |
+| 21-24 | Producció + Portfolio + Entrevista | `v1.0`: Draft Assistant + Cloud (esportspulse.fly.dev) + demo + portfolio + prep entrevista |
 
 ---
 
 ## Hypothetical Query Lifecycle
 
-**Setmana 1-6:** "Quant es juega Yasuo?"
-→ Consulta Java pura; resposta de la BD local (gamesPlayed index)
+**Setmana 1-5:** "Quant es juega Yasuo?"
+→ Consulta Java pura contra l'API REST; resposta de la BD (H2 via JPA)
 
-**Setmana 7-10:** "Quants campiòns marksman hi ha amb winRate > 52%?"
-→ Query REST + Streamlit → Tier list visual, imatges de Data Dragon
+**Setmana 6-9:** "Quants campiòns marksman hi ha amb winRate > 52%?"
+→ Query REST sobre dades ingerides en paral·lel (Virtual Threads); pipeline validat per tests i CI, tot dins Docker
 
-**Setmana 11-16:** "Quan van nerfar Yasuo per últim cop i quant li van baixar el dany?"
-→ Query → Knowledge retrieval busca patch notes a Qdrant → Resposta cacheada a Redis → Retorna patch amb citació (autenticat amb JWT) → Tot dins Docker
+**Setmana 10-13:** "Analitza aquest campió amb un LLM i mostra-ho al dashboard"
+→ Query → Servei Python (FastAPI) genera l'anàlisi (output Pydantic) → Endpoint protegit amb JWT → Streamlit ho mostra amb imatges de Data Dragon
 
-**Setmana 17-19:** "Analitza si Yasuo està overpowered comparat amb Ahri"
-→ Query → Agent Stats (pulls winrates, pickrates) → Agent Knowledge (busca patches recents) → Combina análisis → LangFuse traça tot → Dashboard d'agents
+**Setmana 14-17:** "Quan van nerfar Yasuo per últim cop i quant li van baixar el dany?"
+→ Query → Knowledge retrieval busca patch notes a Qdrant → Resposta cacheada a Redis → Retorna patch amb citació → Agent Knowledge + Agent Estadístic combinen l'anàlisi, traçat a LangFuse
 
-**Setmana 20-24:** "Recomana el millor pick per countre Yasuo en el patx actual"
+**Setmana 18-20:** "Analitza si Yasuo està overpowered comparat amb Ahri, amb dades reals de producció"
+→ Query → PostgreSQL (JOINs optimitzats) → Event asíncron via RabbitMQ actualitza el cache → Resposta servida amb monitoring i health checks
+
+**Setmana 21-24:** "Recomana el millor pick per countre Yasuo en el patx actual"
 → Query via Dashboard Streamlit → Draft Assistant (combina stats + meta conocimiento) → Resultat amb mètriques de confiança → Desplegat a `esportspulse.fly.dev`
 
 ---

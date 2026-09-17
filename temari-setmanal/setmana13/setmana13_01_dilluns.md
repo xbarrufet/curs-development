@@ -109,7 +109,7 @@ pip install -r dashboard/requirements.txt
 
 ### Pas 2: Connectar amb l'API REST Java
 
-L'API REST que vam crear a la Setmana 9 exposa `GET /api/champions`. Farem servir `requests` per cridar-la:
+L'API REST que vam crear a la Setmana 5 exposa `GET /api/champions`. Farem servir `requests` per cridar-la:
 
 ```python
 # dashboard/app.py — Primera versió del dashboard EsportsPulse

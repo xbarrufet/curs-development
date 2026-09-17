@@ -1,417 +1,292 @@
-# Setmana 06 — Dimecres: Fonaments SQL — SELECT, WHERE, JOIN i Indexos
+# Setmana 06 — Dimecres: Virtual Threads (Java 21)
 
 ## Objectiu del Dia
 
-Dominar les operacions SQL fonamentals que JPA genera per nosaltres entre bastidors. Al final del dia sabras escriure queries SQL a ma, entendras com funcionen els indexos i podras analitzar el rendiment de les consultes amb EXPLAIN.
+Entendre el problema de l'escalabilitat amb threads de plataforma, com els Virtual Threads de Java 21 el resolen, i activar-los a Spring Boot. Al final del dia tindràs Virtual Threads habilitats al projecte i un benchmark senzill que demostra la diferència.
 
 ---
 
 ## Teoria
 
-### SQL: El Llenguatge de les Bases de Dades
+### El Problema: Threads de Plataforma
 
-SQL (Structured Query Language) te mes de 50 anys i continua sent l'estandard per treballar amb dades relacionals. Quan JPA genera `findByNameContaining("Ahri")`, per sota executa SQL. Entendre SQL et dona **control total** sobre les teves dades.
+Dilluns i dimarts vas treballar amb threads de plataforma directament (`Thread`, `CompletableFuture`). Avui veuràs per què, a partir de Java 21, ja no cal patir tant per gestionar-los — i ho activaràs sobre l'API REST real que vas acabar la setmana passada.
 
-### CRUD: Les 4 Operacions Basiques
-
-#### CREATE TABLE — Definir l'Estructura
-
-```sql
--- Creem la taula de campions
--- PRIMARY KEY: identifica unicament cada fila (no pot repetir-se)
--- NOT NULL: el camp es obligatori (no pot ser buit)
--- VARCHAR(100): text amb maxim 100 caracters
-CREATE TABLE champions (
-    champion_id VARCHAR(50) PRIMARY KEY,   -- Clau primaria unica
-    name        VARCHAR(100) NOT NULL,     -- Nom obligatori
-    games_played INT DEFAULT 0,            -- Partides jugades, per defecte 0
-    win_rate    DOUBLE,                    -- Percentatge de victories
-    version     BIGINT DEFAULT 0           -- Control de concurrencia (JPA @Version)
-);
-```
-
-#### INSERT — Afegir Dades
-
-```sql
--- Inserim campions a la taula
--- L'ordre dels valors ha de coincidir amb l'ordre de les columnes
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('ahri-001', 'Ahri', 1500, 52.3);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('jinx-002', 'Jinx', 2300, 51.8);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('thresh-003', 'Thresh', 3100, 49.5);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('yasuo-004', 'Yasuo', 4200, 48.7);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('lux-005', 'Lux', 2800, 53.1);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('zed-006', 'Zed', 1900, 50.2);
-
-INSERT INTO champions (champion_id, name, games_played, win_rate)
-VALUES ('leona-007', 'Leona', 1200, 51.5);
-```
-
-#### SELECT — Consultar Dades
-
-```sql
--- Seleccionar TOTS els campions amb TOTES les columnes
--- * significa "totes les columnes" — evita-ho en produccio (selecciona nomes el que necessitis)
-SELECT * FROM champions;
-
--- Seleccionar nomes nom i win_rate — mes eficient que SELECT *
-SELECT name, win_rate FROM champions;
-
--- Comptar quants campions tenim
--- COUNT(*) es una funcio d'agregacio — retorna un sol valor
-SELECT COUNT(*) AS total_champions FROM champions;
-```
-
-#### UPDATE — Modificar Dades
-
-```sql
--- Actualitzar el win_rate d'Ahri
--- WHERE es OBLIGATORI — sense WHERE, actualitzaries TOTES les files!
--- Error comu i catastrofic: UPDATE champions SET win_rate = 55.0; (sense WHERE)
-UPDATE champions SET win_rate = 55.0 WHERE champion_id = 'ahri-001';
-
--- Incrementar partides jugades
--- Pots fer operacions aritmetiques directament
-UPDATE champions SET games_played = games_played + 100 WHERE champion_id = 'jinx-002';
-```
-
-#### DELETE — Eliminar Dades
-
-```sql
--- Eliminar un campió concret
--- SEMPRE amb WHERE — sense WHERE, elimines TOTA la taula!
-DELETE FROM champions WHERE champion_id = 'yasuo-004';
-
--- Eliminar campions amb menys de 50% de win rate
-DELETE FROM champions WHERE win_rate < 50.0;
-```
-
-### Filtratge i Ordenacio
-
-#### WHERE — Filtrar Resultats
-
-```sql
--- Campions amb win rate superior al 50%
-SELECT name, win_rate FROM champions
-WHERE win_rate > 50.0;
-
--- Campions amb mes de 2000 partides I win rate positiu
--- AND: les DUES condicions han de ser certes
-SELECT name, games_played, win_rate FROM champions
-WHERE games_played > 2000 AND win_rate > 50.0;
-
--- Campions que es diguin Ahri O Jinx
--- OR: alguna de les condicions ha de ser certa
-SELECT * FROM champions
-WHERE name = 'Ahri' OR name = 'Jinx';
-
--- Equivalent mes net amb IN
--- IN: comprova si el valor esta dins d'una llista
-SELECT * FROM champions
-WHERE name IN ('Ahri', 'Jinx', 'Lux');
-
--- Cercar per patrons amb LIKE
--- %: qualsevol seqüencia de caracters
--- _: exactament un caracter
-SELECT * FROM champions WHERE name LIKE 'A%';     -- Comenca per A
-SELECT * FROM champions WHERE name LIKE '%x';      -- Acaba en x
-SELECT * FROM champions WHERE name LIKE '%re%';    -- Conte "re"
-```
-
-#### ORDER BY i LIMIT
-
-```sql
--- Ordenar per win rate descendent (millors primer)
--- DESC: descendent (de mes gran a mes petit)
--- ASC: ascendent (per defecte, de mes petit a mes gran)
-SELECT name, win_rate FROM champions
-ORDER BY win_rate DESC;
-
--- Top 3 campions amb millor win rate
--- LIMIT: restringeix el nombre de resultats (molt util per paginacio)
-SELECT name, win_rate FROM champions
-ORDER BY win_rate DESC
-LIMIT 3;
-
--- Paginacio: pagina 2 amb 3 resultats per pagina
--- OFFSET: salta els primers N resultats
-SELECT name, win_rate FROM champions
-ORDER BY win_rate DESC
-LIMIT 3 OFFSET 3;
-```
-
-### Funcions d'Agregacio
-
-```sql
--- Recompte total de campions
-SELECT COUNT(*) AS total FROM champions;
-
--- Mitjana de win rate de tots els campions
--- AVG: calcula la mitjana aritmetica
-SELECT AVG(win_rate) AS avg_win_rate FROM champions;
-
--- Sumatori total de partides jugades
-SELECT SUM(games_played) AS total_games FROM champions;
-
--- Maxim i minim de win rate
-SELECT MAX(win_rate) AS best, MIN(win_rate) AS worst FROM champions;
-```
-
-#### GROUP BY — Agrupar Resultats
-
-Per veure GROUP BY, afegim una columna `role`:
-
-```sql
--- Afegim columna de rol als campions
-ALTER TABLE champions ADD COLUMN role VARCHAR(50);
-
--- Actualitzem els rols
-UPDATE champions SET role = 'Mid' WHERE champion_id IN ('ahri-001', 'zed-006', 'lux-005');
-UPDATE champions SET role = 'ADC' WHERE champion_id = 'jinx-002';
-UPDATE champions SET role = 'Support' WHERE champion_id IN ('thresh-003', 'leona-007');
-
--- Comptar campions per rol
--- GROUP BY agrupa files amb el mateix valor i aplica la funcio d'agregacio a cada grup
-SELECT role, COUNT(*) AS champions_per_role, AVG(win_rate) AS avg_wr
-FROM champions
-GROUP BY role
-ORDER BY champions_per_role DESC;
-```
-
-#### CASE — Logica Condicional
-
-```sql
--- Classificar campions per nivell de win rate
--- CASE funciona com un if/else dins de SQL
-SELECT name, win_rate,
-    CASE
-        WHEN win_rate >= 53.0 THEN 'S-Tier'
-        WHEN win_rate >= 51.0 THEN 'A-Tier'
-        WHEN win_rate >= 49.0 THEN 'B-Tier'
-        ELSE 'C-Tier'
-    END AS tier
-FROM champions
-ORDER BY win_rate DESC;
-```
-
-### JOINs: Relacionar Taules
-
-En una base de dades real, les dades es reparteixen en multiples taules. Els JOINs les connecten:
-
-```sql
--- Creem una taula de patches (actualitzacions del joc)
-CREATE TABLE patches (
-    patch_id VARCHAR(20) PRIMARY KEY,
-    patch_version VARCHAR(10) NOT NULL,
-    release_date DATE NOT NULL
-);
-
--- Taula intermedia: canvis de campions per patch
--- Cada fila relaciona un campió amb un patch
-CREATE TABLE champion_patches (
-    champion_id VARCHAR(50) NOT NULL,
-    patch_id VARCHAR(20) NOT NULL,
-    win_rate_change DOUBLE,  -- Canvi de win rate en aquest patch
-    PRIMARY KEY (champion_id, patch_id), -- Clau composta: unica combinacio campió+patch
-    FOREIGN KEY (champion_id) REFERENCES champions(champion_id),
-    FOREIGN KEY (patch_id) REFERENCES patches(patch_id)
-);
-
--- Inserim dades de patches
-INSERT INTO patches VALUES ('patch-14.1', '14.1', '2024-01-10');
-INSERT INTO patches VALUES ('patch-14.2', '14.2', '2024-01-24');
-
--- Inserim canvis de campions per patch
-INSERT INTO champion_patches VALUES ('ahri-001', 'patch-14.1', 2.5);
-INSERT INTO champion_patches VALUES ('ahri-001', 'patch-14.2', -1.0);
-INSERT INTO champion_patches VALUES ('jinx-002', 'patch-14.1', -0.5);
-
--- INNER JOIN: retorna nomes files amb coincidencia a les DUES taules
--- Si un campió no te canvis en cap patch, NO apareix
-SELECT c.name, p.patch_version, cp.win_rate_change
-FROM champions c
-INNER JOIN champion_patches cp ON c.champion_id = cp.champion_id
-INNER JOIN patches p ON cp.patch_id = p.patch_id
-ORDER BY c.name, p.patch_version;
-
--- LEFT JOIN: retorna TOTS els campions, tinguin o no canvis
--- Els campions sense canvis tindran NULL a les columnes del patch
-SELECT c.name, p.patch_version, cp.win_rate_change
-FROM champions c
-LEFT JOIN champion_patches cp ON c.champion_id = cp.champion_id
-LEFT JOIN patches p ON cp.patch_id = p.patch_id
-ORDER BY c.name;
-```
-
-### Indexos: Per que les Queries son Rapides o Lentes
-
-Un index es com l'index d'un llibre — et porta directament a la pagina que busques sense llegir tot el llibre:
+Quan un servidor web rep una petició, assigna un thread per processar-la. El problema és que els threads de plataforma (els "normals" de Java) són cars:
 
 ```
-Sense index (full table scan):
-┌──────────────────────────────────────────┐
-│ Fila 1 → Fila 2 → Fila 3 → ... → Fila N │  O(n)
-│ Ha de llegir TOTES les files              │
-└──────────────────────────────────────────┘
-
-Amb index (B-Tree scan):
-         ┌───┐
-         │ M │         O(log n)
-        ╱     ╲
-    ┌───┐     ┌───┐
-    │ D │     │ T │
-   ╱     ╲   ╱     ╲
-  A-C   E-L  N-S   U-Z
+Thread de Plataforma:
+├── ~1 MB de memòria d'stack per thread
+├── Gestionat pel sistema operatiu (context switch costós)
+├── Limitat a ~200-500 threads en un pool típic
+└── Si el thread està bloquejat (esperant BD, HTTP), la memòria es malgasta
 ```
 
-```sql
--- Creem un index al camp "name" per accelerar cerques per nom
--- Sense index: O(n) — ha de llegir totes les files
--- Amb index: O(log n) — va directe al valor
-CREATE INDEX idx_champion_name ON champions(name);
+**Exemple pràctic**: Si el teu servidor té 200 threads i cada petició triga 100ms (50ms de BD + 50ms de lògica), pots servir ~2000 peticions/segon. Però si la BD va lenta (500ms), baixes a ~400 peticions/segon perquè els threads estan bloquejats esperant.
 
--- Index compost: util quan filtrem per dos camps alhora
-CREATE INDEX idx_role_winrate ON champions(role, win_rate);
+### El Diagrama del Problema
 
--- EXPLAIN mostra COM la BD executa la query
--- Permet veure si usa un index o fa un full table scan
-EXPLAIN SELECT * FROM champions WHERE name = 'Ahri';
+```
+=== Model Tradicional: Thread Pool Limitat ===
 
--- Comparacio: amb i sense index
--- Primer, sense index (ja que champion_id te index per ser PK)
-EXPLAIN SELECT * FROM champions WHERE games_played > 2000;
+Peticions entrants:          Thread Pool (200 threads):
+    [P1] ──────────────→     [T1] █████░░░░░ (50% esperant BD)
+    [P2] ──────────────→     [T2] █████░░░░░ (50% esperant BD)
+    [P3] ──────────────→     [T3] █████░░░░░ (50% esperant BD)
+    ...                       ...
+    [P200] ────────────→     [T200] █████░░░░░
+    [P201] ─── ESPERA! ──→   ⛔ Pool ple! El client espera...
+    [P202] ─── ESPERA! ──→   ⛔ Pool ple!
 
--- Creem index i tornem a mirar
-CREATE INDEX idx_games_played ON champions(games_played);
-EXPLAIN SELECT * FROM champions WHERE games_played > 2000;
+
+=== Model Virtual Threads: Sense Límit Pràctic ===
+
+Peticions entrants:          Virtual Threads (milions possibles):
+    [P1] ──────────────→     [VT1] █░ (2KB, allibera carrier quan espera BD)
+    [P2] ──────────────→     [VT2] █░
+    [P3] ──────────────→     [VT3] █░
+    ...                       ...
+    [P1000] ───────────→     [VT1000] █░
+    [P1001] ───────────→     [VT1001] █░  ← Cap problema!
+    [P5000] ───────────→     [VT5000] █░  ← Encara bé!
 ```
 
-**Quan crear indexos:**
-- Columnes que uses sovint en WHERE, JOIN o ORDER BY
-- Columnes amb alta cardinalitat (molts valors diferents)
+### Com Funcionen els Virtual Threads
 
-**Quan NO crear indexos:**
-- Taules petites (menys de 1000 files — el full scan es suficient)
-- Columnes amb poca variabilitat (ex: un camp boolea amb 50/50)
-- Taules amb moltes escriptures (cada INSERT/UPDATE ha d'actualitzar l'index)
+Els Virtual Threads són threads lleugers gestionats per la JVM (no pel sistema operatiu):
 
-### Propietats ACID
+```
+Virtual Thread:
+├── ~2 KB de memòria (vs ~1 MB dels de plataforma → 500x menys)
+├── Gestionat per la JVM, no pel SO
+├── Milions possibles en una sola JVM
+├── Quan es bloqueja (I/O), la JVM el "desmunta" del carrier thread
+└── El carrier thread queda lliure per executar un altre virtual thread
+```
 
-Les bases de dades relacionals garanteixen 4 propietats que fan les dades fiables:
+**Concepte clau — Carrier Thread**: La JVM manté un petit pool de threads reals (carrier threads). Quan un virtual thread es bloqueja (per exemple, esperant una resposta de la BD), la JVM el desmunta del carrier i hi munta un altre virtual thread. Això maximitza l'ús dels threads reals.
 
-| Propietat | Significat | Exemple |
-|---|---|---|
-| **Atomicity** | Tot o res — si una part falla, es desfà tot | Transferencia bancaria: treure d'un compte i posar a l'altre |
-| **Consistency** | La BD sempre esta en un estat valid | NOT NULL, FOREIGN KEY — la BD rebutja dades invalides |
-| **Isolation** | Transaccions concurrents no interfereixen | Dos usuaris comprant l'ultim producte alhora |
-| **Durability** | Un cop confirmat (COMMIT), no es perd | Encara que el servidor es reinicii |
+```
+Carrier Thread [CT1]:
+    temps 0ms:   executa VT1 (processant)
+    temps 10ms:  VT1 fa query a BD → JVM desmunta VT1, munta VT2
+    temps 15ms:  executa VT2 (processant)
+    temps 25ms:  VT2 fa HTTP call → JVM desmunta VT2, munta VT3
+    temps 30ms:  resposta BD de VT1 arriba → JVM munta VT1 en CT2
+    ...
+    // Un sol carrier thread serveix desenes de virtual threads!
+```
 
-### @Transactional a Spring
-
-L'anotacio `@Transactional` aplica ACID als nostres metodes:
+### Creació de Virtual Threads amb Java 21
 
 ```java
-import org.springframework.transaction.annotation.Transactional;
+// === Exemple bàsic: crear virtual threads manualment ===
+public class VirtualThreadDemo {
 
-/**
- * @Transactional: Spring obre una transaccio al inici del metode
- * i fa COMMIT si tot va be, o ROLLBACK si hi ha una excepcio.
- *
- * Analogia: transferencia bancaria
- * 1. Treure 100EUR del compte A
- * 2. Posar 100EUR al compte B
- * Si el pas 2 falla, el pas 1 es desfà automaticament.
- */
-@Transactional
-public void transferChampionStats(String fromId, String toId) {
-    // Si qualsevol operacio falla, TOTES es desfan (ROLLBACK)
-    ChampionEntity from = jpaRepository.findById(fromId)
-        .orElseThrow(() -> new RuntimeException("Campió origen no trobat"));
-    ChampionEntity to = jpaRepository.findById(toId)
-        .orElseThrow(() -> new RuntimeException("Campió destí no trobat"));
+    public static void main(String[] args) throws Exception {
 
-    // Transferim partides d'un campió a l'altre
-    int gamesToTransfer = from.getGamesPlayed() / 2;
-    from.setGamesPlayed(from.getGamesPlayed() - gamesToTransfer);
-    to.setGamesPlayed(to.getGamesPlayed() + gamesToTransfer);
+        // Opció 1: Crear un virtual thread directament
+        // Thread.ofVirtual() és la nova API de Java 21
+        Thread vt = Thread.ofVirtual()
+            .name("el-meu-virtual-thread")  // Nom per depuració
+            .start(() -> {
+                // Aquest codi s'executa en un virtual thread
+                System.out.println("Hola des de: " + Thread.currentThread());
+                // El thread és virtual — ocupa ~2KB, no 1MB
+            });
+        vt.join();  // Esperem que acabi
 
-    // JPA detecta els canvis automaticament ("dirty checking")
-    // No cal cridar save() explicitament dins una @Transactional
+        // Opció 2: Executor amb virtual threads
+        // Crea un thread nou per cada tasca — però són virtuals, així que és barat!
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // Llancem 10.000 tasques simultànies
+            // Amb threads de plataforma, això necessitaria ~10 GB de memòria
+            // Amb virtual threads, ~20 MB
+            for (int i = 0; i < 10_000; i++) {
+                final int taskId = i;
+                executor.submit(() -> {
+                    // Simulem una operació de I/O (query BD, HTTP call)
+                    Thread.sleep(Duration.ofMillis(100));
+                    System.out.println("Tasca " + taskId + " completada");
+                    return null;
+                });
+            }
+        }
+        // L'executor es tanca automàticament (try-with-resources)
+        // Totes 10.000 tasques han acabat en ~100ms (no 10000 * 100ms!)
+    }
 }
 ```
+
+### Integració amb Spring Boot 3
+
+Activar virtual threads a Spring Boot és extraordinàriament senzill:
+
+```properties
+# application.properties
+# Aquesta sola línia fa que Spring Boot faci servir virtual threads
+# per a TOTES les peticions HTTP del servidor Tomcat
+spring.threads.virtual.enabled=true
+```
+
+Amb aquesta línia:
+- Tomcat crea un virtual thread per cada petició HTTP entrant
+- No cal thread pool fix: cada petició té el seu propi virtual thread lleuger
+- Les operacions bloquejants (JPA queries, HTTP calls) no malgasten recursos
+- El rendiment sota càrrega millorarà significativament
+
+### Quan els Virtual Threads NO Ajuden
+
+```java
+// ❌ Operacions intensives de CPU: no milloren amb virtual threads
+// Exemple: càlcul matemàtic pur, compressió, encriptació
+public double calcularEstadistiques(List<Match> matches) {
+    // Això usa la CPU al 100%, no fa I/O
+    // Virtual threads no ajuden perquè no hi ha bloqueig
+    return matches.stream()
+        .mapToDouble(Match::getDuration)
+        .average()
+        .orElse(0.0);
+}
+
+// ✅ Operacions de I/O: milloren molt amb virtual threads
+// Exemple: queries BD, crides HTTP, lectura de fitxers
+public List<ChampionStats> getStatsFromMultipleSources() {
+    // Cada crida bloqueja esperant resposta → virtual threads brillen
+    var riotData = riotApiClient.getChampionStats();    // ~200ms esperant
+    var localData = championRepository.findAll();        // ~50ms esperant BD
+    return mergeStats(riotData, localData);
+}
+```
+
+### Benchmark: Platform Threads vs Virtual Threads
+
+```java
+// === Benchmark per comparar ambdós models ===
+// Simula peticions concurrents amb operacions de I/O
+public class ThreadBenchmark {
+
+    // Simula una operació que bloqueja el thread (com una query a BD)
+    static void simulateIOWork() {
+        try {
+            Thread.sleep(Duration.ofMillis(100)); // Simula 100ms de I/O
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        int totalTasks = 10_000;  // 10.000 "peticions" simultànies
+
+        // --- Benchmark amb Platform Threads (pool de 200) ---
+        System.out.println("=== Platform Threads (pool 200) ===");
+        long start = System.currentTimeMillis();
+
+        // Pool fix de 200 threads — el màxim habitual en producció
+        try (var executor = Executors.newFixedThreadPool(200)) {
+            var futures = new ArrayList<Future<?>>();
+            for (int i = 0; i < totalTasks; i++) {
+                futures.add(executor.submit(() -> simulateIOWork()));
+            }
+            // Esperem que acabin totes les tasques
+            for (var f : futures) f.get();
+        }
+
+        long platformTime = System.currentTimeMillis() - start;
+        System.out.println("Temps: " + platformTime + "ms");
+        // Resultat esperat: ~5000ms (10000 tasques / 200 threads * 100ms)
+
+        // --- Benchmark amb Virtual Threads ---
+        System.out.println("=== Virtual Threads ===");
+        start = System.currentTimeMillis();
+
+        // Un virtual thread per tasca — no cal pool fix!
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new ArrayList<Future<?>>();
+            for (int i = 0; i < totalTasks; i++) {
+                futures.add(executor.submit(() -> simulateIOWork()));
+            }
+            for (var f : futures) f.get();
+        }
+
+        long virtualTime = System.currentTimeMillis() - start;
+        System.out.println("Temps: " + virtualTime + "ms");
+        // Resultat esperat: ~100-200ms (totes 10000 corren quasi en paral·lel!)
+
+        // --- Comparació ---
+        System.out.println("\n=== Resultats ===");
+        System.out.println("Platform Threads: " + platformTime + "ms");
+        System.out.println("Virtual Threads:  " + virtualTime + "ms");
+        System.out.println("Speedup: " + (platformTime / virtualTime) + "x");
+        // Speedup esperat: ~25-50x per a operacions de I/O
+    }
+}
+```
+
+### Resultat Esperat del Benchmark
+
+```
+=== Platform Threads (pool 200) ===
+Temps: 5124ms
+
+=== Virtual Threads ===
+Temps: 187ms
+
+=== Resultats ===
+Platform Threads: 5124ms
+Virtual Threads:  187ms
+Speedup: 27x
+```
+
+La diferència és brutal perquè els virtual threads no malbaraten temps esperant: quan un es bloqueja, un altre ocupa el seu lloc al carrier thread immediatament.
 
 ---
 
 ## Activitat
 
-### Exercici: Practica SQL a la Consola H2
+### Part 1: Activa Virtual Threads a Spring Boot
 
-**Durada estimada:** 90 minuts
+1. Afegeix la propietat al teu `application.properties`:
+   ```properties
+   spring.threads.virtual.enabled=true
+   ```
+2. Arrenca l'aplicació i verifica que funciona igual que abans
 
-#### Preparacio (5 min)
+### Part 2: Crea el Benchmark
 
-1. Arrenca l'aplicacio: `mvn spring-boot:run`
-2. Obre la consola H2: `http://localhost:8080/h2-console`
-3. Connecta amb `jdbc:h2:mem:esportspulse`
+1. Crea la classe `ThreadBenchmark.java` al paquet `com.esportspulse.engine.benchmark`
+2. Executa-la amb `mvn exec:java` o directament des de l'IDE
+3. Anota els resultats
 
-#### Exercici 1: Insercions (10 min)
+### Part 3: Verifica amb un Endpoint de Prova
 
-Insereix manualment 7 campions a la taula `champions` amb les sentencies INSERT proporcionades a la teoria.
+```java
+// Afegeix temporalment aquest endpoint al controller per veure
+// que el thread que processa la petició és virtual
+@GetMapping("/thread-info")
+public ResponseEntity<Map<String, Object>> threadInfo() {
+    Thread current = Thread.currentThread();
+    return ResponseEntity.ok(Map.of(
+        "threadName", current.getName(),
+        "isVirtual", current.isVirtual(),  // Ha de ser true!
+        "threadClass", current.getClass().getSimpleName()
+    ));
+}
+```
 
-#### Exercici 2: Consultes basiques (15 min)
-
-Escriu i executa:
-1. `SELECT` de tots els campions amb win rate > 50%
-2. `SELECT` amb `ORDER BY win_rate DESC LIMIT 3`
-3. `SELECT` amb `LIKE` per trobar campions que continguin "a" al nom
-4. `UPDATE` per modificar el win rate d'un campió
-5. `DELETE` d'un campió concret
-
-#### Exercici 3: Agregacions (15 min)
-
-1. Calcula la mitjana de win rate de tots els campions
-2. Compta quants campions tenen mes de 2000 partides
-3. Afegeix la columna `role`, actualitza els rols i fes un `GROUP BY role`
-4. Usa `CASE` per classificar campions en tiers
-
-#### Exercici 4: JOINs (20 min)
-
-1. Crea la taula `patches` i `champion_patches`
-2. Insereix dades de patches
-3. Escriu un `INNER JOIN` per veure canvis per campió i patch
-4. Escriu un `LEFT JOIN` per veure TOTS els campions (amb o sense canvis)
-
-#### Exercici 5: Indexos i EXPLAIN (15 min)
-
-1. Executa `EXPLAIN SELECT * FROM champions WHERE name = 'Ahri';` **sense** index
-2. Crea l'index: `CREATE INDEX idx_champion_name ON champions(name);`
-3. Executa el mateix `EXPLAIN` i compara
-4. Crea un index a `games_played` i repeteix l'experiment
-
-#### Exercici 6: @Transactional (10 min)
-
-1. Llegeix el codi d'exemple de `transferChampionStats`
-2. Respon: que passaria si NO posem `@Transactional` i el segon `findById` falla?
-3. Escriu la resposta com a comentari al codi
+```bash
+# Verifica que el thread és virtual
+curl http://localhost:8080/api/champions/thread-info
+# Resposta esperada: {"threadName":"tomcat-handler-0","isVirtual":true,...}
+```
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] 7 campions inserits a la consola H2 amb INSERT
-- [ ] 5 queries SELECT executades (filtre, ordenacio, LIKE, UPDATE, DELETE)
-- [ ] Agregacions amb COUNT, AVG, GROUP BY i CASE funcionals
-- [ ] Taules `patches` i `champion_patches` creades amb JOINs funcionals
-- [ ] EXPLAIN executat abans i despres de crear un index — diferencia documentada
-- [ ] Pregunta sobre @Transactional resposta com a comentari
-- [ ] Captures de pantalla o notes de les queries i resultats
+- [ ] `spring.threads.virtual.enabled=true` afegit a `application.properties`
+- [ ] L'aplicació arrenca correctament amb virtual threads
+- [ ] Benchmark `ThreadBenchmark.java` creat i executat
+- [ ] Els resultats del benchmark mostren una diferència significativa (>10x)
+- [ ] L'endpoint `/thread-info` confirma `"isVirtual": true`
+- [ ] Commit: `feat(threads): enable virtual threads and add benchmark`

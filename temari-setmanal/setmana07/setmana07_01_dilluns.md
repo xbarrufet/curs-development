@@ -1,397 +1,445 @@
-# Setmana 07 — Dilluns: JUnit 5 Avançat — Tests Parametritzats, Nested i Cicle de Vida
+# Setmana 07 — Dilluns: Anti-patrons en Codi Generat per IA
 
 ## Objectiu del Dia
 
-Dominar les eines avançades de JUnit 5 per escriure tests que serveixin com a documentació viva del projecte. Al final del dia, el teu `ChampionManagementServiceTest` estarà organitzat amb `@Nested`, tindrà tests parametritzats per a validacions, i faràs servir el cicle de vida complet (`@BeforeEach`, `@AfterEach`, `@BeforeAll`, `@AfterAll`).
+Aprendre a llegir i criticar codi de forma professional. Identificar els 5 anti-patrons més perillosos que generen les IA (i també els humans) i saber corregir-los. Al final del dia sabràs fer una revisió de codi bàsica i detectar vulnerabilitats comunes.
 
 ---
 
 ## Teoria
 
-### Més Enllà de @Test: Tests com a Documentació Viva
+### El 80% del Teu Temps és Llegir Codi
 
-Fins ara hem escrit tests amb `@Test` simples. Però quan un servei té 15-20 tests, la llista es fa il·legible. JUnit 5 ens dona eines per **organitzar** i **documentar** els tests de manera que qualsevol persona pugui entendre què fa el servei només llegint els noms dels tests.
-
-### Cicle de Vida dels Tests
-
-Cada test s'executa en un entorn controlat. JUnit 5 segueix aquest cicle de vida:
+Un developer junior espera escriure codi tot el dia. La realitat professional:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  @BeforeAll (1 cop, static)                             │
-│    Inicialitzar recursos costosos: fitxers, config...   │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  @BeforeEach                                      │  │
-│  │    Crear estat fresc per a cada test               │  │
-│  │                                                    │  │
-│  │  @Test (execució del test)                         │  │
-│  │                                                    │  │
-│  │  @AfterEach                                        │  │
-│  │    Netejar estat després de cada test              │  │
-│  └───────────────────────────────────────────────────┘  │
-│                                                         │
-│  └─── Es repeteix per a CADA mètode @Test               │
-│                                                         │
-│  @AfterAll (1 cop, static)                              │
-│    Alliberar recursos costosos                          │
-└─────────────────────────────────────────────────────────┘
+Distribució real del temps d'un developer:
+┌──────────────────────────────────────────────────┐
+│ ████████████████████████████████████████ 80% Llegir  │
+│   → Entendre codi existent, reviews, debugging       │
+│ ████████ 20% Escriure                                │
+│   → Codi nou, refactoring                            │
+└──────────────────────────────────────────────────┘
 ```
 
-**Quan fer servir cadascun:**
+**Escenari real:** El teu primer dia a una empresa:
+1. Et donen accés a un repositori de 200.000 linies.
+2. Et donen un ticket Jira: "Bug: el winRate es mostra amb decimals incorrectes".
+3. Has de trobar on es calcula el `winRate`, entendre la logica, i corregir-ho.
 
-| Anotació      | Quan?                                    | Exemple a EsportsPulse                     |
-|---------------|------------------------------------------|--------------------------------------------|
-| `@BeforeAll`  | Setup costós compartit entre tots els tests | Carregar fitxer de configuració            |
-| `@BeforeEach` | Estat fresc per a cada test              | Crear un `Service` nou amb repositori buit |
-| `@AfterEach`  | Netejar efectes secundaris               | Tancar connexions, esborrar fitxers temp   |
-| `@AfterAll`   | Alliberar recursos compartits            | Tancar pool de connexions                  |
-
-```java
-// Exemple: cicle de vida complet a EsportsPulse
-// Demostrem quan s'executa cada part del lifecycle
-class ChampionManagementServiceLifecycleTest {
-
-    // S'executa UN COP abans de tots els tests
-    // Útil per a recursos costosos que no canvien entre tests
-    @BeforeAll
-    static void setupOnce() {
-        System.out.println(">>> Inicialitzant recursos compartits");
-    }
-
-    // Variable d'instància: es reinicialitza cada test gràcies a @BeforeEach
-    private ChampionManagementService service;
-    private InMemoryChampionRepository repository;
-
-    // S'executa ABANS de cada @Test
-    // Garanteix que cada test comença amb estat net
-    @BeforeEach
-    void setUp() {
-        // Creem un repositori buit per a cada test
-        // Així cap test depèn del resultat d'un altre
-        repository = new InMemoryChampionRepository();
-        service = new ChampionManagementService(repository);
-    }
-
-    @Test
-    void shouldRegisterNewChampion() {
-        // Aquest test treballa amb un repositori BUIT
-        // independentment de què facin els altres tests
-        service.register(new ChampionRecord("jinx", "Marksman", 51.5));
-        assertEquals(1, repository.count());
-    }
-
-    @Test
-    void shouldNotAffectOtherTests() {
-        // Gràcies a @BeforeEach, el repositori torna a estar BUIT
-        assertEquals(0, repository.count());
-    }
-
-    // S'executa DESPRÉS de cada @Test
-    // Normalment no cal en tests unitaris, però sí amb recursos externs
-    @AfterEach
-    void tearDown() {
-        System.out.println(">>> Netejant després del test");
-    }
-
-    // S'executa UN COP després de tots els tests
-    @AfterAll
-    static void cleanupOnce() {
-        System.out.println(">>> Alliberant recursos compartits");
-    }
-}
-```
-
-> **Regla d'or:** Fes servir `@BeforeEach` per defecte. Només usa `@BeforeAll` si la inicialització és realment costosa (> 100ms) i l'estat no es modifica entre tests.
+Ningu t'explicara el codi linia per linia. Has de saber llegir-lo sol.
 
 ---
 
-### @Nested: Organitzar Tests per Context
+### Principis de Clean Code
 
-`@Nested` permet agrupar tests dins de classes internes. Cada grup representa un **context** o **escenari** diferent:
+Abans d'entrar als anti-patrons, tres principis fonamentals:
+
+#### 1. Noms Significatius
 
 ```java
-// Organitzem els tests per escenari de negoci
-// La sortida de Maven es llegirà com documentació
-class ChampionManagementServiceTest {
+// ❌ Noms críptics — què fa això?
+public List<ChampionRecord> get(String s, int n) {
+    return repo.findAll().stream()
+        .filter(g -> g.name().contains(s))
+        .limit(n)
+        .toList();
+}
 
-    private ChampionManagementService service;
-    private InMemoryChampionRepository repository;
-
-    // Estat compartit per a tots els @Nested
-    @BeforeEach
-    void setUp() {
-        repository = new InMemoryChampionRepository();
-        service = new ChampionManagementService(repository);
-    }
-
-    // Grup 1: Tests de registre de campions
-    @Nested
-    @DisplayName("Quan registrem un campió")
-    class WhenRegisteringAChampion {
-
-        @Test
-        @DisplayName("ha de guardar-lo al repositori")
-        void shouldSaveToRepository() {
-            // Arrange: preparem les dades
-            ChampionRecord jinx = new ChampionRecord("jinx", "Marksman", 51.5);
-
-            // Act: executem l'acció
-            service.register(jinx);
-
-            // Assert: verifiquem el resultat
-            Optional<ChampionRecord> found = repository.findById("jinx");
-            assertTrue(found.isPresent(), "El campió hauria d'existir al repositori");
-            assertEquals("Marksman", found.get().role());
-        }
-
-        @Test
-        @DisplayName("ha de rebutjar un nom null")
-        void shouldRejectNullName() {
-            // Verifiquem que el servei valida les dades d'entrada
-            assertThrows(IllegalArgumentException.class,
-                () -> service.register(new ChampionRecord(null, "Mage", 50.0)));
-        }
-
-        @Test
-        @DisplayName("ha de rebutjar un nom buit")
-        void shouldRejectEmptyName() {
-            assertThrows(IllegalArgumentException.class,
-                () -> service.register(new ChampionRecord("", "Tank", 48.0)));
-        }
-    }
-
-    // Grup 2: Tests de cerca de campions
-    @Nested
-    @DisplayName("Quan cerquem campions")
-    class WhenSearchingChampions {
-
-        // @BeforeEach dins de @Nested afegeix setup addicional
-        // S'executa DESPRÉS del @BeforeEach del pare
-        @BeforeEach
-        void populateRepository() {
-            // Per als tests de cerca, necessitem dades al repositori
-            service.register(new ChampionRecord("jinx", "Marksman", 51.5));
-            service.register(new ChampionRecord("lux", "Mage", 52.0));
-            service.register(new ChampionRecord("thresh", "Support", 49.8));
-        }
-
-        @Test
-        @DisplayName("ha de retornar campions pel seu rol")
-        void shouldReturnChampionsByRole() {
-            List<ChampionRecord> marksmen = service.findByRole("Marksman");
-            assertEquals(1, marksmen.size());
-            assertEquals("jinx", marksmen.get(0).name());
-        }
-
-        @Test
-        @DisplayName("ha de retornar llista buida per un rol desconegut")
-        void shouldReturnEmptyForUnknownRole() {
-            List<ChampionRecord> result = service.findByRole("Assassin");
-            assertTrue(result.isEmpty(), "No hi ha assassins al repositori");
-        }
-    }
+// ✅ Noms descriptius — s'entén sense llegir el cos del mètode
+public List<ChampionRecord> searchByName(String keyword, int maxResults) {
+    // Filtra campions que continguin la paraula clau al nom
+    // i limita els resultats per evitar respostes massa grans
+    return championRepository.findAll().stream()
+        .filter(champion -> champion.name().contains(keyword))
+        .limit(maxResults)
+        .toList();
 }
 ```
 
-**Sortida de Maven (`mvn test`):**
+```python
+# ❌ Críptic
+def get(s, n):
+    return [c for c in repo.find_all() if s in c.name][:n]
 
+# ✅ Clar
+def search_champions_by_name(keyword: str, max_results: int) -> list[ChampionRecord]:
+    """Cerca campions que continguin la paraula clau al nom."""
+    # Retorna només els primers max_results per rendiment
+    return [c for c in champion_repository.find_all()
+            if keyword in c.name][:max_results]
 ```
-ChampionManagementServiceTest
-  Quan registrem un campió
-    ✓ ha de guardar-lo al repositori
-    ✓ ha de rebutjar un nom null
-    ✓ ha de rebutjar un nom buit
-  Quan cerquem campions
-    ✓ ha de retornar campions pel seu rol
-    ✓ ha de retornar llista buida per un rol desconegut
-```
 
-Fixa't: **la sortida es llegeix com a documentació**. Qualsevol persona pot entendre què fa el servei.
-
----
-
-### @ParameterizedTest: Un Test, Múltiples Inputs
-
-En lloc d'escriure 5 tests gairebé idèntics que només canvien el valor d'entrada, podem usar `@ParameterizedTest`:
-
-#### Amb @CsvSource (inputs simples)
+#### 2. Funcions Petites (Una Sola Responsabilitat)
 
 ```java
-// Testem la validació de winRate amb valors límit
-// Cada fila del CSV és un cas de test independent
-@Nested
-@DisplayName("Validació de winRate")
-class WinRateValidation {
+// ❌ Funció que fa massa coses: valida, cerca, transforma i retorna
+public String processChampion(String name, String role) {
+    if (name == null || name.isEmpty()) return "error";
+    var champ = repository.findByName(name);
+    if (champ == null) return "not found";
+    if (!champ.role().equals(role)) return "wrong role";
+    return champ.name() + " - " + champ.winRate() + "%";
+}
 
-    @ParameterizedTest(name = "winRate={0} hauria de ser vàlid={1}")
-    @CsvSource({
-        "0.00,  true",    // Límit inferior: winRate zero és vàlid
-        "52.30, true",    // Cas normal: winRate típic
-        "100.0, true",    // Límit superior: winRate màxim
-        "-1.00, false",   // Fora de rang: negatiu no és vàlid
-        "101.0, false"    // Fora de rang: supera 100%
-    })
-    void shouldValidateWinRate(double winRate, boolean expectedValid) {
-        if (expectedValid) {
-            // Si és vàlid, no ha de llançar excepció
-            assertDoesNotThrow(
-                () -> service.register(
-                    new ChampionRecord("test", "Mage", winRate)
-                )
-            );
-        } else {
-            // Si no és vàlid, ha de llançar IllegalArgumentException
-            assertThrows(IllegalArgumentException.class,
-                () -> service.register(
-                    new ChampionRecord("test", "Mage", winRate)
-                )
-            );
+// ✅ Cada funció fa una sola cosa
+public ChampionRecord findChampionOrThrow(String name) {
+    // Busca el campió o llança una excepció descriptiva
+    return repository.findByName(name)
+        .orElseThrow(() -> new ChampionNotFoundException(name));
+}
+
+public String formatChampionSummary(ChampionRecord champion) {
+    // Formata la informació del campió per mostrar a l'usuari
+    return "%s - %.1f%%".formatted(champion.name(), champion.winRate());
+}
+```
+
+#### 3. Early Return (Evitar Niuament Excessiu)
+
+```java
+// ❌ Piràmide de la mort (nesting profund)
+public void updateChampion(Long id, ChampionUpdateRequest request) {
+    if (id != null) {
+        var champion = repository.findById(id);
+        if (champion.isPresent()) {
+            if (request.isValid()) {
+                // finalment el codi útil, a 4 nivells de profunditat
+                champion.get().update(request);
+                repository.save(champion.get());
+            }
         }
     }
 }
-```
 
-#### Amb @MethodSource (inputs complexos)
+// ✅ Early return — el cas feliç queda al final, sense nesting
+public void updateChampion(Long id, ChampionUpdateRequest request) {
+    // Validacions ràpides al principi — fallen aviat si hi ha problemes
+    if (id == null) throw new IllegalArgumentException("L'ID no pot ser null");
 
-```java
-// Quan els inputs són objectes complexos, usem @MethodSource
-// El mètode estàtic retorna un Stream d'Arguments
-@ParameterizedTest(name = "Registrar campió: {0}")
-@MethodSource("provideValidChampions")
-@DisplayName("ha de registrar campions vàlids")
-void shouldRegisterValidChampions(ChampionRecord champion) {
-    // Act: registrem el campió
-    service.register(champion);
+    var champion = repository.findById(id)
+        .orElseThrow(() -> new ChampionNotFoundException(id));
 
-    // Assert: verifiquem que s'ha guardat
-    Optional<ChampionRecord> found = repository.findById(champion.name());
-    assertTrue(found.isPresent());
-    assertEquals(champion.role(), found.get().role());
-}
+    if (!request.isValid()) throw new InvalidRequestException(request);
 
-// Mètode que proporciona els casos de test
-// Ha de ser static i retornar Stream<Arguments>
-static Stream<Arguments> provideValidChampions() {
-    return Stream.of(
-        // Cada Arguments.of() és un cas de test
-        Arguments.of(new ChampionRecord("jinx", "Marksman", 51.5)),
-        Arguments.of(new ChampionRecord("lux", "Mage", 52.0)),
-        Arguments.of(new ChampionRecord("thresh", "Support", 49.8)),
-        Arguments.of(new ChampionRecord("garen", "Fighter", 50.1))
-    );
+    // Cas feliç: tot és correcte, actualitzem
+    champion.update(request);
+    repository.save(champion);
 }
 ```
 
 ---
 
-### @DisplayName: Noms Llegibles per a Humans
+### Els 5 Anti-patrons Més Perillosos del Codi IA
+
+#### Anti-patró 1: SQL Injection
+
+L'atac més antic i encara el més comú. La IA sovint concatena strings en queries.
 
 ```java
-// Sense @DisplayName: shouldReturnEmptyListWhenNoChampionsMatchRole
-// Amb @DisplayName: "ha de retornar llista buida quan cap campió coincideix amb el rol"
+// ❌ VULNERABLE — Concatenació directa de l'input de l'usuari
+// Un atacant pot enviar: name = "' OR '1'='1" i obtenir TOTS els campions
+var query = "SELECT * FROM champions WHERE name = '" + name + "'";
+var result = jdbcTemplate.queryForObject(query, Champion.class);
+
+// ✅ SEGUR — Parameterized query amb placeholder (?)
+// El driver JDBC escapa el valor, no es pot trencar la sintaxi SQL
+var query = "SELECT * FROM champions WHERE name = ?";
+var result = jdbcTemplate.queryForObject(query, Champion.class, name);
+```
+
+```python
+# ❌ VULNERABLE — f-string dins de SQL
+# Un atacant pot injectar: name = "'; DROP TABLE champions; --"
+def find_by_name(name: str) -> list[dict]:
+    cursor.execute(f"SELECT * FROM champions WHERE name = '{name}'")
+    return cursor.fetchall()
+
+# ✅ SEGUR — Parameterized query amb placeholders
+# El driver de la base de dades s'encarrega d'escapar l'input
+def find_by_name(name: str) -> list[dict]:
+    cursor.execute("SELECT * FROM champions WHERE name = %s", (name,))
+    return cursor.fetchall()
+```
+
+**Per què passa?** La IA aprèn de milions d'exemples, incloent codi antic i insegur. Concatenar strings és "més simple" i apareix en tutorials vells.
+
+---
+
+#### Anti-patró 2: Secrets Hardcoded
+
+La IA no entén que el codi anirà a un repositori públic.
+
+```java
+// ❌ PERILLOS — La clau API queda al repositori per sempre
+// Fins i tot si l'esborres, git recorda tots els commits anteriors
+private static final String API_KEY = "sk-abc123secretkey456";
+private static final String DB_PASSWORD = "admin123";
+
+// ✅ SEGUR — Variables d'entorn, mai al codi font
+// El fitxer .env NO es puja a git (està al .gitignore)
+private final String apiKey = System.getenv("RIOT_API_KEY");
+private final String dbPassword = System.getenv("DB_PASSWORD");
+```
+
+```python
+# ❌ PERILLOS — Secret visible a GitHub
+API_KEY = "sk-abc123secretkey456"
+DATABASE_URL = "postgresql://admin:admin123@localhost/esportspulse"
+
+# ✅ SEGUR — Ús de variables d'entorn amb python-dotenv
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Carrega variables del fitxer .env (que està al .gitignore)
+
+API_KEY = os.getenv("RIOT_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
+```
+
+**Fitxer `.env` (MAI a git):**
+```env
+RIOT_API_KEY=sk-abc123secretkey456
+DATABASE_URL=postgresql://admin:admin123@localhost/esportspulse
+```
+
+**Fitxer `.gitignore` (SEMPRE a git):**
+```gitignore
+# Secrets — mai pujar al repositori
+.env
+*.key
+credentials/
+```
+
+---
+
+#### Anti-patró 3: NullPointerException Amagat
+
+La IA sovint ignora que `findById` retorna `Optional` (recorda el patró Repository de la S2) i el "desempaqueta" sense comprovar si hi ha valor.
+
+```java
+// ❌ PERILLÓS — Si el campió no existeix, NullPointerException en producció
+// Això pot fer caure tota l'aplicació sense cap missatge útil
+public ChampionRecord getChampion(Long id) {
+    return repository.findById(id).get(); // Boom! NoSuchElementException
+}
+
+// ✅ SEGUR — Gestió explícita del cas "no trobat"
+// L'excepció és descriptiva: l'usuari sap què ha passat
+public ChampionRecord getChampion(Long id) {
+    return repository.findById(id)
+        .orElseThrow(() -> new ChampionNotFoundException(
+            "Campió amb ID %d no trobat".formatted(id)));
+}
+```
+
+```python
+# ❌ PERILLÓS — AttributeError si el campió no existeix
+# champion serà None, i None no té .name
+def get_champion(champion_id: int) -> dict:
+    champion = champion_repository.find_by_id(champion_id)
+    return {"name": champion.name}  # AttributeError: 'NoneType' has no attribute 'name'
+
+# ✅ SEGUR — Comprovació explícita amb error descriptiu
+def get_champion(champion_id: int) -> dict:
+    champion = champion_repository.find_by_id(champion_id)
+    if champion is None:
+        raise ChampionNotFoundError(f"Campió amb ID {champion_id} no trobat")
+    return {"name": champion.name}
+```
+
+---
+
+#### Anti-patró 4: Test que No Testa Res
+
+El pitjor anti-patró perquè et dona falsa seguretat. El test passa, però no valida res.
+
+**Nota:** Els exemples fan servir Mockito (`when`, `verify`, `@Mock`) i `pytest-mock`, que encara no hem vist (arribaran a S8). No cal que entenguis cada línia de sintaxi — fixa't només en el concepte: aquest primer test verifica el que li hem dit al mock que faci, no el comportament real del servei. És exactament l'exercici de llegir codi que no domines del tot, com dèiem al principi del dia.
+
+```java
+// ❌ FALS TEST — Testa el mock, no el servei real
+// Li dius al mock "retorna X" i després comproves que retorna X. Obvio!
 @Test
-@DisplayName("ha de retornar llista buida quan cap campió coincideix amb el rol")
-void shouldReturnEmptyListWhenNoChampionsMatchRole() {
-    // El nom del mètode segueix sent en anglès (convenció Java)
-    // Però @DisplayName mostra un text llegible a la sortida de Maven
-    List<ChampionRecord> result = service.findByRole("Assassin");
-    assertTrue(result.isEmpty());
+void testFindChampion() {
+    // Preparem el mock perquè retorni Jinx
+    var jinx = new ChampionRecord(1L, "Jinx", "ADC", 51.2);
+    when(repository.findById(1L)).thenReturn(Optional.of(jinx));
+
+    // Cridem el servei (que internament crida al mock)
+    var result = service.findById(1L);
+
+    // Comprovem que el resultat és... el que li hem dit al mock que retorni
+    // Això NO testa la lògica del servei, testa que Mockito funciona
+    assertEquals("Jinx", result.name());
+}
+
+// ✅ TEST REAL — Testa la lògica del servei, no el mock
+@Test
+void findById_whenChampionExists_returnsChampionRecord() {
+    // Arrange — preparem el mock
+    var jinx = new ChampionRecord(1L, "Jinx", "ADC", 51.2);
+    when(repository.findById(1L)).thenReturn(Optional.of(jinx));
+
+    // Act — cridem el servei
+    var result = service.findById(1L);
+
+    // Assert — comprovem comportament REAL del servei
+    assertNotNull(result);
+    assertEquals("Jinx", result.name());
+    verify(repository).findById(1L); // Verifiquem que ha cridat al repo
+}
+
+@Test
+void findById_whenChampionNotFound_throwsException() {
+    // AQUEST és el test important: què passa quan NO existeix?
+    when(repository.findById(999L)).thenReturn(Optional.empty());
+
+    // Verifiquem que el servei llança l'excepció correcta
+    assertThrows(ChampionNotFoundException.class,
+        () -> service.findById(999L));
 }
 ```
 
+```python
+# ❌ FALS TEST — No comprova res útil
+def test_find_champion(mocker):
+    mock_repo = mocker.patch("service.repository")
+    mock_repo.find_by_id.return_value = Champion(1, "Jinx", "ADC", 51.2)
+
+    result = service.find_by_id(1)
+
+    # Només comprova que el mock retorna el que li hem dit...
+    assert result.name == "Jinx"
+
+# ✅ TEST REAL — Testa els casos importants (happy path + errors)
+def test_find_champion_returns_record(mocker):
+    """Verifica que el servei retorna correctament un campió existent."""
+    mock_repo = mocker.patch("service.repository")
+    mock_repo.find_by_id.return_value = Champion(1, "Jinx", "ADC", 51.2)
+
+    result = service.find_by_id(1)
+
+    assert result.name == "Jinx"
+    mock_repo.find_by_id.assert_called_once_with(1)  # Verifica la crida
+
+def test_find_champion_not_found_raises(mocker):
+    """Verifica que el servei llança error quan el campió no existeix."""
+    mock_repo = mocker.patch("service.repository")
+    mock_repo.find_by_id.return_value = None
+
+    with pytest.raises(ChampionNotFoundError):
+        service.find_by_id(999)
+```
+
+**Regla d'or:** Si pots eliminar la linia que crida al servei i el test segueix passant, el test no testa res.
+
 ---
 
-### Piràmide de Tests
+#### Anti-patró 5: Excepció Silenciada
 
-```
-          /\
-         /  \        E2E (pocs, lents, alta confiança)
-        / E2E\       Ex: Arrancar Spring Boot + fer peticions HTTP
-       /______\
-      /        \     Integració (alguns, velocitat mitjana)
-     / Integr.  \    Ex: @DataJpaTest amb H2 real
-    /____________\
-   /              \  Unitaris (molts, ràpids, baixa confiança individual)
-  /   Unitaris     \ Ex: Service amb mock del Repository
- /__________________\
-```
-
-| Tipus       | Velocitat    | Confiança | Quantitat | Exemple EsportsPulse                    |
-|-------------|-------------|-----------|-----------|------------------------------------------|
-| Unitari     | ~1ms/test   | Baixa     | Molts     | `ChampionManagementServiceTest` amb mock |
-| Integració  | ~100ms/test | Mitjana   | Alguns    | `ChampionJpaRepositoryTest` amb H2       |
-| E2E         | ~1s/test    | Alta      | Pocs      | Arrancar tot Spring Boot + HTTP          |
-
----
-
-### Anatomia d'un Test: AAA / GWT
-
-Tot test ben escrit segueix una estructura de tres parts:
+La IA sovint genera blocs `catch` buits perquè "el codi compila".
 
 ```java
-@Test
-void shouldFilterChampionsByMinimumWinRate() {
-    // ARRANGE (Given): Preparar l'escenari
-    // Registrem campions amb diferents winRates
-    service.register(new ChampionRecord("jinx", "Marksman", 55.0));
-    service.register(new ChampionRecord("lux", "Mage", 48.0));
-    service.register(new ChampionRecord("thresh", "Support", 52.0));
+// ❌ PERILLÓS — L'error desapareix, el sistema falla en silenci
+// Hores de debugging perquè no hi ha cap rastre de l'error
+public List<ChampionRecord> importChampions(String filePath) {
+    try {
+        return fileReader.readChampions(filePath);
+    } catch (Exception e) {
+        // TODO: handle exception ← La IA deixa això i tu t'oblides
+        return List.of(); // Retorna llista buida com si tot anés bé
+    }
+}
 
-    // ACT (When): Executar l'acció que volem testejar
-    // Filtrem per winRate mínim de 50%
-    List<ChampionRecord> result = service.findByMinWinRate(50.0);
-
-    // ASSERT (Then): Verificar el resultat
-    // Esperem 2 campions: jinx (55%) i thresh (52%)
-    assertEquals(2, result.size());
-    assertTrue(result.stream().allMatch(c -> c.winRate() >= 50.0));
+// ✅ CORRECTE — Loguejar i relançar (o gestionar de veritat)
+public List<ChampionRecord> importChampions(String filePath) {
+    try {
+        return fileReader.readChampions(filePath);
+    } catch (IOException e) {
+        // Loguegem l'error amb context per poder depurar
+        log.error("Error important fitxer de campions: {}", filePath, e);
+        // Rellancem amb una excepció del nostre domini
+        throw new ChampionImportException("No s'ha pogut importar: " + filePath, e);
+    }
 }
 ```
 
-> **Consell:** Si no pots separar clarament les tres parts, potser el test fa massa coses. Divideix-lo.
+```python
+# ❌ PERILLÓS — pass silencia l'error completament
+def import_champions(file_path: str) -> list[Champion]:
+    try:
+        return file_reader.read_champions(file_path)
+    except Exception:
+        pass  # L'error desapareix, impossible depurar
+        return []
+
+# ✅ CORRECTE — Loguegem i rellancem
+import logging
+
+logger = logging.getLogger(__name__)
+
+def import_champions(file_path: str) -> list[Champion]:
+    try:
+        return file_reader.read_champions(file_path)
+    except IOError as e:
+        # Loguegem amb el context necessari per depurar
+        logger.error("Error important fitxer de campions: %s", file_path, exc_info=True)
+        raise ChampionImportError(f"No s'ha pogut importar: {file_path}") from e
+```
 
 ---
 
 ## Activitat
 
-### Exercici: Reescriure ChampionManagementServiceTest
+### Exercici 1: Detecta Anti-patrons (30 min)
 
-Pren el teu `ChampionManagementServiceTest` existent i reestructura'l amb les eines d'avui:
+Revisa el seguent codi i identifica **tots** els anti-patrons. Escriu la correcció per a cadascun.
 
-1. **Organitza amb `@Nested`:** Crea almenys 3 grups:
-   - `WhenRegisteringAChampion` — tests de registre
-   - `WhenSearchingChampions` — tests de cerca
-   - `WhenValidatingInputs` — tests de validació
+```java
+// ChampionService.java — Quants anti-patrons hi trobes?
+public class ChampionService {
+    private static final String API_KEY = "rgapi-1234-5678-abcd";
 
-2. **Afegeix `@ParameterizedTest`:**
-   - Usa `@CsvSource` per testejar validació de `winRate` (mínim 5 valors)
-   - Usa `@MethodSource` per testejar registre amb diferents campions vàlids
+    public Champion findChampion(String name) {
+        try {
+            var query = "SELECT * FROM champions WHERE name = '" + name + "'";
+            var result = jdbcTemplate.queryForObject(query, Champion.class);
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}
+```
 
-3. **Usa `@DisplayName`** a tots els tests i grups `@Nested`
+**Resposta esperada:** Has de trobar almenys 3 anti-patrons (SQL Injection, secret hardcoded, excepció silenciada + retorn null).
 
-4. **Implementa el cicle de vida:**
-   - `@BeforeEach` al nivell superior per crear `service` i `repository`
-   - `@BeforeEach` dins de `WhenSearchingChampions` per popular el repositori
+### Exercici 2: Prompt Engineering amb IA (30 min)
 
-5. **Executa `mvn test`** i verifica que la sortida es llegeix com a documentació
+1. Dona el codi de l'Exercici 1 a una IA (ChatGPT, Claude, Copilot).
+2. Demana-li: "Revisa aquest codi i identifica problemes de seguretat i qualitat."
+3. Compara la resposta de la IA amb la teva analisi manual.
+4. Escriu un document comparant:
+   - Que has trobat tu que la IA no ha trobat?
+   - Que ha trobat la IA que tu no havies vist?
+   - La IA ha generat algun fals positiu?
 
-### Criteris d'Èxit
+### Exercici 3: Refactoritza el Servei (45 min)
 
-- Almenys 10 tests organitzats en 3+ grups `@Nested`
-- Almenys 1 `@ParameterizedTest` amb `@CsvSource`
-- Almenys 1 `@ParameterizedTest` amb `@MethodSource`
-- Tots els tests tenen `@DisplayName` en català o anglès descriptiu
-- `mvn test` passa al 100%
+Refactoritza el `ChampionManagementService` del teu projecte aplicant:
+- Noms significatius (renombra si cal)
+- Early return
+- Gestió correcta de `Optional`
+- Excepcions descriptives (no nulls)
+- Comentaris que expliquin el **perquè**, no el **què**
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `ChampionManagementServiceTest` refactoritzat amb `@Nested`
-- [ ] Tests parametritzats amb `@CsvSource` i `@MethodSource`
-- [ ] `@DisplayName` a tots els tests i grups
-- [ ] `@BeforeEach` per a estat fresc a cada nivell
-- [ ] Sortida de `mvn test` llegible com a documentació
-- [ ] Tots els tests passen (`mvn test` verd)
-- [ ] Commit: `test(java): refactor tests with nested, parameterized and lifecycle`
+- [ ] He identificat els 5 anti-patrons als exemples de la teoria
+- [ ] He completat l'Exercici 1 amb totes les correccions
+- [ ] He fet l'Exercici 2 comparant la meva analisi amb la de la IA
+- [ ] He refactoritzat el servei del meu projecte aplicant Clean Code
+- [ ] Tot el codi compila (`mvn compile`) i els tests passen (`mvn test`)
+- [ ] Commit amb missatge: `refactor: apply clean code principles to service layer`

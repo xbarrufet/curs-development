@@ -1,443 +1,274 @@
-# Setmana 05 — Dilluns: Anti-patrons en Codi Generat per IA
+# Setmana 05 — Dilluns: Principis de Disseny d'APIs REST
 
 ## Objectiu del Dia
 
-Aprendre a llegir i criticar codi de forma professional. Identificar els 5 anti-patrons més perillosos que generen les IA (i també els humans) i saber corregir-los. Al final del dia sabràs fer una revisió de codi bàsica i detectar vulnerabilitats comunes.
+Entendre els fonaments del disseny d'APIs REST i aplicar-los al projecte EsportsPulse. Al final del dia tindras DTOs separats de les entitats, un mapper funcional i un controlador Spring Boot que compili i respongui peticions HTTP bàsiques.
 
 ---
 
 ## Teoria
 
-### El 80% del Teu Temps és Llegir Codi
+### Què és una API REST?
 
-Un developer junior espera escriure codi tot el dia. La realitat professional:
+REST (Representational State Transfer) és un estil d'arquitectura per a serveis web. Les seves idees clau són:
+
+1. **Recursos**: Tot és un recurs identificat per una URL (`/api/champions`, `/api/champions/42`)
+2. **Mètodes HTTP**: Cada operació utilitza el verb HTTP adequat
+3. **Sense estat**: Cada petició conté tota la informació necessària; el servidor no recorda peticions anteriors
+
+### Mètodes HTTP i Significat
+
+| Mètode   | Acció                  | Exemple                     | Cos de la Petició? |
+|----------|------------------------|-----------------------------|---------------------|
+| `GET`    | Llegir recurs(os)      | `GET /api/champions`        | No                  |
+| `POST`   | Crear recurs nou       | `POST /api/champions`       | Sí                  |
+| `PUT`    | Actualitzar recurs     | `PUT /api/champions/42`     | Sí                  |
+| `DELETE` | Esborrar recurs        | `DELETE /api/champions/42`  | No                  |
+
+### Codis d'Estat HTTP
+
+Els codis d'estat comuniquen el resultat de l'operació al client:
 
 ```
-Distribució real del temps d'un developer:
-┌──────────────────────────────────────────────────┐
-│ ████████████████████████████████████████ 80% Llegir  │
-│   → Entendre codi existent, reviews, debugging       │
-│ ████████ 20% Escriure                                │
-│   → Codi nou, refactoring                            │
-└──────────────────────────────────────────────────┘
+// Codis d'èxit
+200 OK            → La petició s'ha processat correctament (GET, PUT)
+201 Created       → S'ha creat un recurs nou (POST)
+204 No Content    → Operació correcta sense cos de resposta (DELETE)
+
+// Codis d'error del client
+400 Bad Request   → Les dades enviades no són vàlides (validació fallida)
+404 Not Found     → El recurs sol·licitat no existeix
+
+// Codis d'error del servidor
+500 Internal Server Error → Error inesperat al servidor
 ```
 
-**Escenari real:** El teu primer dia a una empresa:
-1. Et donen accés a un repositori de 200.000 linies.
-2. Et donen un ticket Jira: "Bug: el winRate es mostra amb decimals incorrectes".
-3. Has de trobar on es calcula el `winRate`, entendre la logica, i corregir-ho.
+> **Regla d'or**: El client mai ha d'endevinar què ha passat. El codi d'estat i el cos de la resposta han de ser suficients per entendre el resultat.
 
-Ningu t'explicara el codi linia per linia. Has de saber llegir-lo sol.
+### DTOs: Separar l'Entitat del Contracte de l'API
 
----
+Un error habitual és retornar directament l'entitat JPA com a resposta de l'API. Això crea un acoblament perillós: qualsevol canvi a la base de dades trenca els clients de l'API.
 
-### Principis de Clean Code
-
-Abans d'entrar als anti-patrons, tres principis fonamentals:
-
-#### 1. Noms Significatius
+**Per què cal separar?**
+- L'entitat pot tenir camps interns que no volem exposar (id tècnic, timestamps d'auditoria)
+- El format de l'API pot ser diferent del de la base de dades
+- Podem evolucionar l'API i la BD independentment
 
 ```java
-// ❌ Noms críptics — què fa això?
-public List<ChampionRecord> get(String s, int n) {
-    return repo.findAll().stream()
-        .filter(g -> g.name().contains(s))
-        .limit(n)
-        .toList();
-}
+// === Entitat JPA: representa la taula a la base de dades ===
+// Aquesta classe mapeja directament a la taula "champions" de la BD
+@Entity
+@Table(name = "champions")
+public class Champion {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;              // Clau primària autogenerada
+    private String name;          // Nom del campió (ex: "Ahri")
+    private String role;          // Rol principal (ex: "Mage")
+    private double winRate;       // Percentatge de victòries (0.0 - 100.0)
+    private int totalGames;       // Nombre total de partides jugades
 
-// ✅ Noms descriptius — s'entén sense llegir el cos del mètode
-public List<ChampionRecord> searchByName(String keyword, int maxResults) {
-    // Filtra campions que continguin la paraula clau al nom
-    // i limita els resultats per evitar respostes massa grans
-    return championRepository.findAll().stream()
-        .filter(champion -> champion.name().contains(keyword))
-        .limit(maxResults)
-        .toList();
+    // Getters i setters omesos per brevetat
 }
 ```
-
-```python
-# ❌ Críptic
-def get(s, n):
-    return [c for c in repo.find_all() if s in c.name][:n]
-
-# ✅ Clar
-def search_champions_by_name(keyword: str, max_results: int) -> list[ChampionRecord]:
-    """Cerca campions que continguin la paraula clau al nom."""
-    # Retorna només els primers max_results per rendiment
-    return [c for c in champion_repository.find_all()
-            if keyword in c.name][:max_results]
-```
-
-#### 2. Funcions Petites (Una Sola Responsabilitat)
 
 ```java
-// ❌ Funció que fa massa coses: valida, cerca, transforma i retorna
-public String processChampion(String name, String role) {
-    if (name == null || name.isEmpty()) return "error";
-    var champ = repository.findByName(name);
-    if (champ == null) return "not found";
-    if (!champ.role().equals(role)) return "wrong role";
-    return champ.name() + " - " + champ.winRate() + "%";
-}
-
-// ✅ Cada funció fa una sola cosa
-public ChampionRecord findChampionOrThrow(String name) {
-    // Busca el campió o llança una excepció descriptiva
-    return repository.findByName(name)
-        .orElseThrow(() -> new ChampionNotFoundException(name));
-}
-
-public String formatChampionSummary(ChampionRecord champion) {
-    // Formata la informació del campió per mostrar a l'usuari
-    return "%s - %.1f%%".formatted(champion.name(), champion.winRate());
-}
+// === DTO de resposta: el que el client rep ===
+// Usem un "record" de Java 21 — immutable i concís
+// Només exposem els camps que el client necessita
+public record ChampionDTO(
+    Long id,           // Identificador públic del campió
+    String name,       // Nom del campió
+    String role,       // Rol principal
+    double winRate,    // Percentatge de victòries
+    int totalGames    // Total de partides registrades
+) {}
 ```
 
-#### 3. Early Return (Evitar Niuament Excessiu)
+```java
+// === DTO de petició: el que el client envia per crear un campió ===
+// No inclou "id" perquè el servidor el genera automàticament
+// No inclou "totalGames" perquè comença a 0
+public record CreateChampionRequest(
+    String name,       // Nom del campió a crear
+    String role,       // Rol assignat
+    double winRate     // Win rate inicial
+) {}
+```
+
+### El Patró Mapper
+
+El Mapper és la classe que converteix entre entitat i DTO. Centralitzar aquesta lògica evita duplicar codi de conversió a tot arreu.
 
 ```java
-// ❌ Piràmide de la mort (nesting profund)
-public void updateChampion(Long id, ChampionUpdateRequest request) {
-    if (id != null) {
-        var champion = repository.findById(id);
-        if (champion.isPresent()) {
-            if (request.isValid()) {
-                // finalment el codi útil, a 4 nivells de profunditat
-                champion.get().update(request);
-                repository.save(champion.get());
-            }
-        }
+// === Mapper: converteix entre entitat i DTOs ===
+// Classe utilitària amb mètodes estàtics per simplicitat
+public class ChampionMapper {
+
+    // Converteix una entitat JPA a un DTO de resposta
+    // S'usa quan retornem dades al client
+    public static ChampionDTO toDTO(Champion entity) {
+        return new ChampionDTO(
+            entity.getId(),
+            entity.getName(),
+            entity.getRole(),
+            entity.getWinRate(),
+            entity.getTotalGames()
+        );
     }
-}
 
-// ✅ Early return — el cas feliç queda al final, sense nesting
-public void updateChampion(Long id, ChampionUpdateRequest request) {
-    // Validacions ràpides al principi — fallen aviat si hi ha problemes
-    if (id == null) throw new IllegalArgumentException("L'ID no pot ser null");
-
-    var champion = repository.findById(id)
-        .orElseThrow(() -> new ChampionNotFoundException(id));
-
-    if (!request.isValid()) throw new InvalidRequestException(request);
-
-    // Cas feliç: tot és correcte, actualitzem
-    champion.update(request);
-    repository.save(champion);
-}
-```
-
----
-
-### Els 5 Anti-patrons Més Perillosos del Codi IA
-
-#### Anti-patró 1: SQL Injection
-
-L'atac més antic i encara el més comú. La IA sovint concatena strings en queries.
-
-```java
-// ❌ VULNERABLE — Concatenació directa de l'input de l'usuari
-// Un atacant pot enviar: name = "' OR '1'='1" i obtenir TOTS els campions
-@Query("SELECT c FROM Champion c WHERE c.name = '" + name + "'")
-List<Champion> findByName(String name);
-
-// ✅ SEGUR — Parameterized query amb @Param
-// Spring substitueix el paràmetre de forma segura, escapant caràcters especials
-@Query("SELECT c FROM Champion c WHERE c.name = :name")
-List<Champion> findByName(@Param("name") String name);
-```
-
-```python
-# ❌ VULNERABLE — f-string dins de SQL
-# Un atacant pot injectar: name = "'; DROP TABLE champions; --"
-def find_by_name(name: str) -> list[dict]:
-    cursor.execute(f"SELECT * FROM champions WHERE name = '{name}'")
-    return cursor.fetchall()
-
-# ✅ SEGUR — Parameterized query amb placeholders
-# El driver de la base de dades s'encarrega d'escapar l'input
-def find_by_name(name: str) -> list[dict]:
-    cursor.execute("SELECT * FROM champions WHERE name = %s", (name,))
-    return cursor.fetchall()
-```
-
-**Per què passa?** La IA aprèn de milions d'exemples, incloent codi antic i insegur. Concatenar strings és "més simple" i apareix en tutorials vells.
-
----
-
-#### Anti-patró 2: Secrets Hardcoded
-
-La IA no entén que el codi anirà a un repositori públic.
-
-```java
-// ❌ PERILLOS — La clau API queda al repositori per sempre
-// Fins i tot si l'esborres, git recorda tots els commits anteriors
-private static final String API_KEY = "sk-abc123secretkey456";
-private static final String DB_PASSWORD = "admin123";
-
-// ✅ SEGUR — Variables d'entorn, mai al codi font
-// El fitxer .env NO es puja a git (està al .gitignore)
-private final String apiKey = System.getenv("RIOT_API_KEY");
-private final String dbPassword = System.getenv("DB_PASSWORD");
-```
-
-```python
-# ❌ PERILLOS — Secret visible a GitHub
-API_KEY = "sk-abc123secretkey456"
-DATABASE_URL = "postgresql://admin:admin123@localhost/esportspulse"
-
-# ✅ SEGUR — Ús de variables d'entorn amb python-dotenv
-import os
-from dotenv import load_dotenv
-
-load_dotenv()  # Carrega variables del fitxer .env (que està al .gitignore)
-
-API_KEY = os.getenv("RIOT_API_KEY")
-DATABASE_URL = os.getenv("DATABASE_URL")
-```
-
-**Fitxer `.env` (MAI a git):**
-```env
-RIOT_API_KEY=sk-abc123secretkey456
-DATABASE_URL=postgresql://admin:admin123@localhost/esportspulse
-```
-
-**Fitxer `.gitignore` (SEMPRE a git):**
-```gitignore
-# Secrets — mai pujar al repositori
-.env
-*.key
-credentials/
-```
-
----
-
-#### Anti-patró 3: NullPointerException Amagat
-
-La IA sovint ignora que `findById` retorna `Optional` en Spring Boot.
-
-```java
-// ❌ PERILLÓS — Si el campió no existeix, NullPointerException en producció
-// Això pot fer caure tota l'aplicació sense cap missatge útil
-public ChampionRecord getChampion(Long id) {
-    return repository.findById(id).get(); // Boom! NoSuchElementException
-}
-
-// ✅ SEGUR — Gestió explícita del cas "no trobat"
-// L'excepció és descriptiva: l'usuari sap què ha passat
-public ChampionRecord getChampion(Long id) {
-    return repository.findById(id)
-        .orElseThrow(() -> new ChampionNotFoundException(
-            "Campió amb ID %d no trobat".formatted(id)));
-}
-```
-
-```python
-# ❌ PERILLÓS — AttributeError si el campió no existeix
-# champion serà None, i None no té .name
-def get_champion(champion_id: int) -> dict:
-    champion = champion_repository.find_by_id(champion_id)
-    return {"name": champion.name}  # AttributeError: 'NoneType' has no attribute 'name'
-
-# ✅ SEGUR — Comprovació explícita amb error descriptiu
-def get_champion(champion_id: int) -> dict:
-    champion = champion_repository.find_by_id(champion_id)
-    if champion is None:
-        raise ChampionNotFoundError(f"Campió amb ID {champion_id} no trobat")
-    return {"name": champion.name}
-```
-
----
-
-#### Anti-patró 4: Test que No Testa Res
-
-El pitjor anti-patró perquè et dona falsa seguretat. El test passa, però no valida res.
-
-```java
-// ❌ FALS TEST — Testa el mock, no el servei real
-// Li dius al mock "retorna X" i després comproves que retorna X. Obvio!
-@Test
-void testFindChampion() {
-    // Preparem el mock perquè retorni Jinx
-    var jinx = new ChampionRecord(1L, "Jinx", "ADC", 51.2);
-    when(repository.findById(1L)).thenReturn(Optional.of(jinx));
-
-    // Cridem el servei (que internament crida al mock)
-    var result = service.findById(1L);
-
-    // Comprovem que el resultat és... el que li hem dit al mock que retorni
-    // Això NO testa la lògica del servei, testa que Mockito funciona
-    assertEquals("Jinx", result.name());
-}
-
-// ✅ TEST REAL — Testa la lògica del servei, no el mock
-@Test
-void findById_whenChampionExists_returnsChampionRecord() {
-    // Arrange — preparem el mock
-    var jinx = new ChampionRecord(1L, "Jinx", "ADC", 51.2);
-    when(repository.findById(1L)).thenReturn(Optional.of(jinx));
-
-    // Act — cridem el servei
-    var result = service.findById(1L);
-
-    // Assert — comprovem comportament REAL del servei
-    assertNotNull(result);
-    assertEquals("Jinx", result.name());
-    verify(repository).findById(1L); // Verifiquem que ha cridat al repo
-}
-
-@Test
-void findById_whenChampionNotFound_throwsException() {
-    // AQUEST és el test important: què passa quan NO existeix?
-    when(repository.findById(999L)).thenReturn(Optional.empty());
-
-    // Verifiquem que el servei llança l'excepció correcta
-    assertThrows(ChampionNotFoundException.class,
-        () -> service.findById(999L));
-}
-```
-
-```python
-# ❌ FALS TEST — No comprova res útil
-def test_find_champion(mocker):
-    mock_repo = mocker.patch("service.repository")
-    mock_repo.find_by_id.return_value = Champion(1, "Jinx", "ADC", 51.2)
-
-    result = service.find_by_id(1)
-
-    # Només comprova que el mock retorna el que li hem dit...
-    assert result.name == "Jinx"
-
-# ✅ TEST REAL — Testa els casos importants (happy path + errors)
-def test_find_champion_returns_record(mocker):
-    """Verifica que el servei retorna correctament un campió existent."""
-    mock_repo = mocker.patch("service.repository")
-    mock_repo.find_by_id.return_value = Champion(1, "Jinx", "ADC", 51.2)
-
-    result = service.find_by_id(1)
-
-    assert result.name == "Jinx"
-    mock_repo.find_by_id.assert_called_once_with(1)  # Verifica la crida
-
-def test_find_champion_not_found_raises(mocker):
-    """Verifica que el servei llança error quan el campió no existeix."""
-    mock_repo = mocker.patch("service.repository")
-    mock_repo.find_by_id.return_value = None
-
-    with pytest.raises(ChampionNotFoundError):
-        service.find_by_id(999)
-```
-
-**Regla d'or:** Si pots eliminar la linia que crida al servei i el test segueix passant, el test no testa res.
-
----
-
-#### Anti-patró 5: Excepció Silenciada
-
-La IA sovint genera blocs `catch` buits perquè "el codi compila".
-
-```java
-// ❌ PERILLÓS — L'error desapareix, el sistema falla en silenci
-// Hores de debugging perquè no hi ha cap rastre de l'error
-public List<ChampionRecord> importChampions(String filePath) {
-    try {
-        return fileReader.readChampions(filePath);
-    } catch (Exception e) {
-        // TODO: handle exception ← La IA deixa això i tu t'oblides
-        return List.of(); // Retorna llista buida com si tot anés bé
-    }
-}
-
-// ✅ CORRECTE — Loguejar i relançar (o gestionar de veritat)
-public List<ChampionRecord> importChampions(String filePath) {
-    try {
-        return fileReader.readChampions(filePath);
-    } catch (IOException e) {
-        // Loguegem l'error amb context per poder depurar
-        log.error("Error important fitxer de campions: {}", filePath, e);
-        // Rellancem amb una excepció del nostre domini
-        throw new ChampionImportException("No s'ha pogut importar: " + filePath, e);
+    // Converteix un DTO de creació a una entitat JPA
+    // S'usa quan el client envia dades per crear un campió
+    public static Champion toEntity(CreateChampionRequest request) {
+        Champion champion = new Champion();
+        champion.setName(request.name());       // Assignem el nom del request
+        champion.setRole(request.role());       // Assignem el rol del request
+        champion.setWinRate(request.winRate()); // Assignem el win rate inicial
+        champion.setTotalGames(0);              // Un campió nou comença amb 0 partides
+        return champion;
     }
 }
 ```
 
-```python
-# ❌ PERILLÓS — pass silencia l'error completament
-def import_champions(file_path: str) -> list[Champion]:
-    try:
-        return file_reader.read_champions(file_path)
-    except Exception:
-        pass  # L'error desapareix, impossible depurar
-        return []
+### Spring Boot Controllers
 
-# ✅ CORRECTE — Loguegem i rellancem
-import logging
+Spring Boot utilitza anotacions per definir endpoints HTTP:
 
-logger = logging.getLogger(__name__)
+```java
+// === Controlador REST per a Champions ===
+// @RestController indica que tots els mètodes retornen dades (JSON), no vistes HTML
+// @RequestMapping estableix el prefix comú per a totes les rutes d'aquest controlador
+@RestController
+@RequestMapping("/api/champions")
+public class ChampionController {
 
-def import_champions(file_path: str) -> list[Champion]:
-    try:
-        return file_reader.read_champions(file_path)
-    except IOError as e:
-        # Loguegem amb el context necessari per depurar
-        logger.error("Error important fitxer de campions: %s", file_path, exc_info=True)
-        raise ChampionImportError(f"No s'ha pogut importar: {file_path}") from e
+    // Injectem el servei que conté la lògica de negoci
+    private final ChampionService service;
+
+    // Constructor injection: Spring Boot injecta automàticament el servei
+    public ChampionController(ChampionService service) {
+        this.service = service;
+    }
+
+    // GET /api/champions → Retorna la llista de tots els campions
+    // ResponseEntity ens permet controlar el codi d'estat HTTP
+    @GetMapping
+    public ResponseEntity<List<ChampionDTO>> getAll() {
+        // Obtenim les entitats, les convertim a DTOs i retornem amb 200 OK
+        List<ChampionDTO> champions = service.findAll()
+            .stream()
+            .map(ChampionMapper::toDTO)    // Converteix cada entitat a DTO
+            .toList();                      // Recull en una llista
+        return ResponseEntity.ok(champions); // 200 OK amb la llista
+    }
+
+    // GET /api/champions/{id} → Retorna un campió concret pel seu ID
+    // @PathVariable extreu el valor de la URL (ex: /api/champions/42 → id=42)
+    @GetMapping("/{id}")
+    public ResponseEntity<ChampionDTO> getById(@PathVariable Long id) {
+        return service.findById(id)
+            .map(ChampionMapper::toDTO)                        // Si existeix, convertim a DTO
+            .map(ResponseEntity::ok)                           // Emboliquem amb 200 OK
+            .orElse(ResponseEntity.notFound().build());        // Si no existeix, 404
+    }
+
+    // POST /api/champions → Crea un campió nou
+    // @RequestBody indica que el cos de la petició JSON es deserialitza al record
+    @PostMapping
+    public ResponseEntity<ChampionDTO> create(@RequestBody CreateChampionRequest request) {
+        // Convertim el request a entitat, el guardem, i retornem el DTO creat
+        Champion entity = ChampionMapper.toEntity(request);
+        Champion saved = service.save(entity);
+        ChampionDTO dto = ChampionMapper.toDTO(saved);
+        // 201 Created és el codi correcte per a creació de recursos
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+}
+```
+
+### Flux Complet d'una Petició
+
+```
+Client (Postman/curl)
+    ↓ POST /api/champions  { "name": "Ahri", "role": "Mage", "winRate": 52.3 }
+    ↓
+ChampionController.create()
+    ↓ Rep CreateChampionRequest
+    ↓
+ChampionMapper.toEntity()
+    ↓ Converteix request → entitat JPA
+    ↓
+ChampionService.save()
+    ↓ Lògica de negoci + persistència
+    ↓
+ChampionMapper.toDTO()
+    ↓ Converteix entitat guardada → DTO de resposta
+    ↓
+Client rep: 201 Created { "id": 1, "name": "Ahri", "role": "Mage", "winRate": 52.3, "totalGames": 0 }
 ```
 
 ---
 
 ## Activitat
 
-### Exercici 1: Detecta Anti-patrons (30 min)
+### Part 1: Escriu l'especificació de l'API (api-spec.md)
 
-Revisa el seguent codi i identifica **tots** els anti-patrons. Escriu la correcció per a cadascun.
+Abans d'escriure codi, documenta el que construiràs. Crea `docs/api-spec.md` amb:
 
-```java
-// ChampionService.java — Quants anti-patrons hi trobes?
-public class ChampionService {
-    private static final String API_KEY = "rgapi-1234-5678-abcd";
+```markdown
+# Champions API — Especificació
 
-    public Champion findChampion(String name) {
-        try {
-            var query = "SELECT * FROM champions WHERE name = '" + name + "'";
-            var result = jdbcTemplate.queryForObject(query, Champion.class);
-            return result;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-}
+## Endpoints
+
+### GET /api/champions
+- Descripció: Retorna tots els campions
+- Resposta: 200 OK — Array de ChampionDTO
+
+### GET /api/champions/{id}
+- Descripció: Retorna un campió pel seu ID
+- Resposta: 200 OK — ChampionDTO
+- Error: 404 Not Found — si l'ID no existeix
+
+### POST /api/champions
+- Descripció: Crea un campió nou
+- Cos: CreateChampionRequest (name, role, winRate)
+- Resposta: 201 Created — ChampionDTO creat
+- Error: 400 Bad Request — si les dades no són vàlides
 ```
 
-**Resposta esperada:** Has de trobar almenys 3 anti-patrons (SQL Injection, secret hardcoded, excepció silenciada + retorn null).
+### Part 2: Implementa els DTOs i el Mapper
 
-### Exercici 2: Prompt Engineering amb IA (30 min)
+1. Crea els fitxers `ChampionDTO.java`, `CreateChampionRequest.java` i `ChampionMapper.java`
+2. Col·loca'ls al paquet `com.esportspulse.engine.dto` (els DTOs) i `com.esportspulse.engine.mapper` (el mapper)
 
-1. Dona el codi de l'Exercici 1 a una IA (ChatGPT, Claude, Copilot).
-2. Demana-li: "Revisa aquest codi i identifica problemes de seguretat i qualitat."
-3. Compara la resposta de la IA amb la teva analisi manual.
-4. Escriu un document comparant:
-   - Que has trobat tu que la IA no ha trobat?
-   - Que ha trobat la IA que tu no havies vist?
-   - La IA ha generat algun fals positiu?
+### Part 3: Crea el Controlador
 
-### Exercici 3: Refactoritza el Servei (45 min)
+1. Crea `ChampionController.java` al paquet `com.esportspulse.engine.controller`
+2. Implementa `GET /api/champions`, `GET /api/champions/{id}` i `POST /api/champions`
+3. Comprova que `mvn compile` funciona sense errors
 
-Refactoritza el `ChampionManagementService` del teu projecte aplicant:
-- Noms significatius (renombra si cal)
-- Early return
-- Gestió correcta de `Optional`
-- Excepcions descriptives (no nulls)
-- Comentaris que expliquin el **perquè**, no el **què**
+### Part 4: Verifica amb curl
+
+```bash
+# Arrenca l'aplicació
+mvn spring-boot:run
+
+# Crea un campió
+curl -X POST http://localhost:8080/api/champions \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Ahri", "role": "Mage", "winRate": 52.3}'
+
+# Llista tots els campions
+curl http://localhost:8080/api/champions
+```
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] He identificat els 5 anti-patrons als exemples de la teoria
-- [ ] He completat l'Exercici 1 amb totes les correccions
-- [ ] He fet l'Exercici 2 comparant la meva analisi amb la de la IA
-- [ ] He refactoritzat el servei del meu projecte aplicant Clean Code
-- [ ] Tot el codi compila (`mvn compile`) i els tests passen (`mvn test`)
-- [ ] Commit amb missatge: `refactor: apply clean code principles to service layer`
+- [ ] Fitxer `docs/api-spec.md` escrit amb tots els endpoints documentats
+- [ ] Records `ChampionDTO` i `CreateChampionRequest` creats al paquet `dto`
+- [ ] Classe `ChampionMapper` amb mètodes `toDTO()` i `toEntity()`
+- [ ] `ChampionController` amb `@RestController` i endpoints GET/POST
+- [ ] `mvn compile` passa sense errors
+- [ ] Commit: `feat(api): add champion DTOs, mapper and REST controller`

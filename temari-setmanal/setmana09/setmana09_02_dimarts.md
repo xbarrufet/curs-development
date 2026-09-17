@@ -1,299 +1,314 @@
-# Setmana 09 — Dimarts: Endpoints CRUD Complets amb JPA
+# Setmana 09 — Dimarts: Dockerfile: Empaquetar la Teva Aplicació
 
 ## Objectiu del Dia
 
-Completar tots els endpoints CRUD (Create, Read, Update, Delete) per a l'API de Champions, integrats amb JPA i base de dades H2. Al final del dia, els 5 endpoints han de funcionar amb validació, filtres i paginació.
+Escriure Dockerfiles per al backend Java i el servei Python del projecte, construir les imatges i executar-les com a contenidors independents. Al final del dia has de poder fer `docker build` i `docker run` per a cadascun dels dos serveis i veure que responen correctament.
 
 ---
 
 ## Teoria
 
-### Arquitectura en Capes
+### Què és un Dockerfile?
 
-Spring Boot segueix una arquitectura en capes on cada capa té una responsabilitat clara:
+Un Dockerfile és una **recepta** que descriu, pas a pas, com construir una imatge Docker. Una imatge és una plantilla immutable que conté tot el que necessita la teva aplicació per funcionar: sistema operatiu base, dependències, codi compilat i instruccions d'arrencada.
 
-```
-Controller (Rep peticions HTTP, retorna respostes)
-    ↓
-Service (Lògica de negoci, validacions complexes)
-    ↓
-Repository (Accés a base de dades via JPA)
-    ↓
-Database (H2 en desenvolupament, PostgreSQL en producció)
-```
+Pensa-hi com una recepta de cuina:
+- **FROM** — el plat base (la imatge sobre la qual construïm)
+- **COPY** — afegir ingredients (copiar fitxers al contenidor)
+- **RUN** — cuinar (executar comandes durant la construcció)
+- **CMD** — servir el plat (la comanda que s'executa quan arrenca el contenidor)
+- **EXPOSE** — documentar quin port utilitza l'aplicació
 
-> **Per què capes?** Si demà canviem de H2 a PostgreSQL, només cal tocar la configuració. Si canviem la lògica de negoci, el controller no es veu afectat. Cada capa es pot testejar independentment.
+```dockerfile
+# Cada instrucció crea una "capa" (layer) de la imatge.
+# Docker guarda en cache cada capa. Si no canvia, no la reconstrueix.
+# Per això l'ordre importa: posar primer el que canvia menys.
 
-### Configuració de H2 i JPA
-
-```properties
-# application.properties — Configuració de la base de dades H2 en memòria
-# H2 és una BD lleugera que viu dins la JVM, ideal per desenvolupament
-spring.datasource.url=jdbc:h2:mem:esportspulse
-spring.datasource.driver-class-name=org.h2.Driver
-spring.datasource.username=sa
-spring.datasource.password=
-
-# JPA: Hibernate crea les taules automàticament a partir de les entitats
-spring.jpa.hibernate.ddl-auto=create-drop
-# Mostrem les queries SQL al log per depurar
-spring.jpa.show-sql=true
-
-# Consola web de H2: permet veure les taules des del navegador
-spring.h2-console.enabled=true
-# Accessible a: http://localhost:8080/h2-console
+FROM eclipse-temurin:21-jre        # Imatge base amb Java 21 (només JRE, no JDK)
+COPY target/app.jar /app/app.jar   # Copiar el JAR compilat dins la imatge
+EXPOSE 8080                        # Documentar que l'app escolta al port 8080
+CMD ["java", "-jar", "/app/app.jar"]  # Comanda per arrencar el contenidor
 ```
 
-### Repository JPA
+> **Imatge vs Contenidor:** Una imatge és la recepta congelada; un contenidor és un plat servit. Pots crear molts contenidors a partir de la mateixa imatge.
 
-```java
-// === Repository: interfície que JPA implementa automàticament ===
-// Extenem JpaRepository, que ens dona CRUD complet sense escriure SQL
-// Els tipus genèrics són: <Entitat, Tipus de la clau primària>
-@Repository
-public interface ChampionRepository extends JpaRepository<Champion, Long> {
+### Les Instruccions Principals
 
-    // JPA genera la query automàticament a partir del nom del mètode!
-    // findByRole("Mage") → SELECT * FROM champions WHERE role = 'Mage'
-    List<Champion> findByRole(String role);
+| Instrucció | Què fa | Exemple |
+|------------|--------|---------|
+| `FROM` | Defineix la imatge base | `FROM python:3.12-slim` |
+| `WORKDIR` | Estableix el directori de treball dins el contenidor | `WORKDIR /app` |
+| `COPY` | Copia fitxers del host al contenidor | `COPY src/ /app/src/` |
+| `RUN` | Executa una comanda durant el build | `RUN pip install -r requirements.txt` |
+| `CMD` | Comanda per defecte quan arrenca el contenidor | `CMD ["python", "main.py"]` |
+| `EXPOSE` | Documenta el port que utilitza l'aplicació | `EXPOSE 5000` |
+| `ENV` | Defineix variables d'entorn | `ENV JAVA_OPTS="-Xmx512m"` |
 
-    // Podem combinar condicions amb "And"
-    // Busca campions amb un nom que contingui el text i un mínim de partides
-    List<Champion> findByNameContainingIgnoreCaseAndTotalGamesGreaterThanEqual(
-        String name, int minGames
-    );
-}
+### Multi-stage Builds: Imatges Petites i Segures
+
+Quan compiles un projecte Java, necessites el JDK (Java Development Kit) i Maven. Però en producció, només necessites el JRE (Java Runtime Environment) i el JAR compilat. Incloure eines de compilació a la imatge final és:
+- **Malbaratament d'espai** — el JDK ocupa centenars de MB innecessaris
+- **Risc de seguretat** — menys eines = menys superfície d'atac
+
+La solució és el **multi-stage build**: una primera etapa compila, una segona etapa només copia el resultat.
+
+```dockerfile
+# === ETAPA 1: Compilació ===
+# Usem una imatge amb JDK + Maven per compilar el projecte.
+# Aquesta etapa es descarta al final; no forma part de la imatge final.
+FROM eclipse-temurin:21-jdk AS builder
+
+# Establim el directori de treball dins el contenidor
+WORKDIR /build
+
+# Primer copiem NOMÉS el pom.xml per aprofitar la cache de Docker.
+# Si les dependències no canvien, Docker reutilitza la capa anterior.
+COPY pom.xml .
+
+# Descarreguem les dependències (sense compilar el codi).
+# -B = mode batch (sense output interactiu)
+# go-offline = descarrega tot el que necessita Maven
+RUN mvn dependency:go-offline -B
+
+# Ara copiem el codi font. Si només canvia el codi,
+# Docker reutilitza la capa de dependències (molt més ràpid).
+COPY src/ src/
+
+# Compilem el projecte i creem el JAR.
+# -DskipTests perquè els tests es passen en CI, no durant el build de la imatge.
+RUN mvn package -DskipTests -B
+
+# === ETAPA 2: Imatge Final ===
+# Usem una imatge lleugera amb NOMÉS el JRE (no JDK, no Maven).
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# Copiem NOMÉS el JAR compilat des de l'etapa builder.
+# Tot el JDK, Maven i codi font queden fora de la imatge final.
+COPY --from=builder /build/target/*.jar app.jar
+
+# Documentem el port que utilitza Spring Boot per defecte
+EXPOSE 8080
+
+# Comanda per arrencar l'aplicació
+CMD ["java", "-jar", "app.jar"]
 ```
 
-### Validació amb Bean Validation
+Comparem mides:
 
-Les anotacions de validació comproven automàticament les dades d'entrada:
+| Imatge | Mida aproximada |
+|--------|-----------------|
+| `eclipse-temurin:21-jdk` (tot inclòs) | ~450 MB |
+| `eclipse-temurin:21-jre-alpine` (només JRE) | ~190 MB |
+| La nostra imatge final (JRE + JAR) | ~200 MB |
 
-```java
-// === Request DTO amb validació ===
-// Cada camp té anotacions que defineixen les regles de validació
-// Si una regla falla, Spring retorna 400 Bad Request automàticament
-public record CreateChampionRequest(
+> **Per què Alpine?** Alpine Linux és una distribució minimalista (~5 MB). Combinada amb JRE, obtenim una imatge molt més lleugera.
 
-    @NotBlank(message = "El nom del campió és obligatori")
-    // @NotBlank: no pot ser null, ni buit, ni només espais
-    String name,
+### .dockerignore: No Copiar Escombraries
 
-    @NotBlank(message = "El rol és obligatori")
-    String role,
+Igual que `.gitignore` evita pujar fitxers innecessaris a Git, `.dockerignore` evita copiar-los dins la imatge Docker:
 
-    @Min(value = 0, message = "El win rate no pot ser negatiu")
-    @Max(value = 100, message = "El win rate no pot superar 100")
-    // @Min/@Max: defineixen el rang de valors acceptats
-    double winRate
-) {}
+```dockerignore
+# No copiar res que no sigui necessari per al build
+target/
+.git/
+.gitignore
+*.md
+.idea/
+*.iml
+__pycache__/
+.venv/
+.env
 ```
 
-```java
-// === Request DTO per a actualitzacions (PUT) ===
-// Similar al de creació, però pot incloure camps addicionals
-public record UpdateChampionRequest(
-
-    @NotBlank(message = "El nom del campió és obligatori")
-    String name,
-
-    @NotBlank(message = "El rol és obligatori")
-    String role,
-
-    @Min(value = 0, message = "El win rate no pot ser negatiu")
-    @Max(value = 100, message = "El win rate no pot superar 100")
-    double winRate,
-
-    @Min(value = 0, message = "El total de partides no pot ser negatiu")
-    int totalGames
-) {}
-```
-
-### Controller CRUD Complet
-
-```java
-@RestController
-@RequestMapping("/api/champions")
-public class ChampionController {
-
-    private final ChampionService service;
-
-    public ChampionController(ChampionService service) {
-        this.service = service;
-    }
-
-    // GET /api/champions?name=X&role=Y&minGames=Z
-    // @RequestParam amb required=false fa que els filtres siguin opcionals
-    // El client pot combinar filtres com vulgui
-    @GetMapping
-    public ResponseEntity<List<ChampionDTO>> getAll(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String role,
-            @RequestParam(required = false) Integer minGames) {
-        List<ChampionDTO> result = service.findWithFilters(name, role, minGames)
-            .stream()
-            .map(ChampionMapper::toDTO)
-            .toList();
-        return ResponseEntity.ok(result);
-    }
-
-    // GET /api/champions/{id}
-    // Retorna 200 si existeix, 404 si no
-    @GetMapping("/{id}")
-    public ResponseEntity<ChampionDTO> getById(@PathVariable Long id) {
-        return service.findById(id)
-            .map(ChampionMapper::toDTO)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-    }
-
-    // POST /api/champions
-    // @Valid activa les validacions del DTO — sense @Valid, les anotacions s'ignoren!
-    @PostMapping
-    public ResponseEntity<ChampionDTO> create(
-            @Valid @RequestBody CreateChampionRequest request) {
-        Champion entity = ChampionMapper.toEntity(request);
-        Champion saved = service.save(entity);
-        // 201 Created amb la URL del recurs creat a la capçalera Location
-        URI location = URI.create("/api/champions/" + saved.getId());
-        return ResponseEntity.created(location).body(ChampionMapper.toDTO(saved));
-    }
-
-    // PUT /api/champions/{id}
-    // Actualitza un campió existent. Si no existeix, retorna 404.
-    @PutMapping("/{id}")
-    public ResponseEntity<ChampionDTO> update(
-            @PathVariable Long id,
-            @Valid @RequestBody UpdateChampionRequest request) {
-        return service.findById(id)
-            .map(existing -> {
-                // Actualitzem els camps de l'entitat existent amb els valors del request
-                existing.setName(request.name());
-                existing.setRole(request.role());
-                existing.setWinRate(request.winRate());
-                existing.setTotalGames(request.totalGames());
-                Champion updated = service.save(existing);
-                return ResponseEntity.ok(ChampionMapper.toDTO(updated));
-            })
-            .orElse(ResponseEntity.notFound().build());  // 404 si no existeix
-    }
-
-    // DELETE /api/champions/{id}
-    // 204 No Content indica èxit sense cos de resposta
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        try {
-            service.deleteById(id);
-            return ResponseEntity.noContent().build();  // 204: esborrat correctament
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();   // 404: no existia
-        }
-    }
-}
-```
-
-### Paginació amb Pageable
-
-Quan tens milers de registres, no vols retornar-los tots de cop:
-
-```java
-// Endpoint paginat: GET /api/champions/paged?page=0&size=10&sort=name,asc
-@GetMapping("/paged")
-public ResponseEntity<Page<ChampionDTO>> getAllPaged(
-        // Pageable s'injecta automàticament des dels query params
-        // page: número de pàgina (0-based)
-        // size: elements per pàgina
-        // sort: camp i direcció d'ordenació
-        Pageable pageable) {
-
-    // repository.findAll(pageable) retorna un Page<Champion>
-    Page<ChampionDTO> page = service.findAllPaged(pageable)
-        .map(ChampionMapper::toDTO);   // Transforma cada element de la pàgina
-
-    return ResponseEntity.ok(page);
-    // La resposta inclou metadades:
-    // { "content": [...], "totalElements": 150, "totalPages": 15, "number": 0 }
-}
-```
-
-```java
-// Al Service:
-public Page<Champion> findAllPaged(Pageable pageable) {
-    return repository.findAll(pageable);  // JpaRepository ja suporta Pageable
-}
-```
-
-### Gestió d'Errors Global
-
-```java
-// === Handler global d'excepcions ===
-// @RestControllerAdvice intercepta excepcions de qualsevol controller
-// Centralitza la gestió d'errors en un sol lloc
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    // Captura errors de validació (@Valid que falla)
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(
-            MethodArgumentNotValidException ex) {
-        // Recollim tots els errors de validació en un mapa camp → missatge
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(error ->
-            errors.put(error.getField(), error.getDefaultMessage())
-        );
-        return ResponseEntity.badRequest().body(errors);  // 400 amb detalls
-    }
-
-    // Captura quan no es troba un recurs
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<Map<String, String>> handleNotFound(
-            EntityNotFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(Map.of("error", ex.getMessage()));
-    }
-}
-```
+> **Per què importa?** Sense `.dockerignore`, un `COPY . .` copiaria el directori `.git` (potencialment centenars de MB), fitxers temporals i secrets com `.env`.
 
 ---
 
 ## Activitat
 
-### Part 1: Implementa el CRUD Complet
+### Part 1: Dockerfile per al Backend Java
 
-1. Actualitza `CreateChampionRequest` amb validacions `@Valid`
-2. Crea `UpdateChampionRequest` amb validacions
-3. Afegeix els endpoints PUT i DELETE al controller
-4. Afegeix l'endpoint paginat
+**1.1. Crea el fitxer `backend-java/Dockerfile`:**
 
-### Part 2: Testa amb curl
+```dockerfile
+# ===================================================================
+# Dockerfile per al backend Java (Spring Boot + Maven)
+# Multi-stage build: compila amb JDK, executa amb JRE
+# ===================================================================
 
-```bash
-# Crea campions, llista, filtra, actualitza, esborra i verifica errors
-curl -X POST http://localhost:8080/api/champions \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Ahri", "role": "Mage", "winRate": 52.3}'
+# --- Etapa 1: Compilar el projecte ---
+FROM eclipse-temurin:21-jdk AS builder
+WORKDIR /build
 
-curl http://localhost:8080/api/champions                           # Llista tots
-curl "http://localhost:8080/api/champions?role=Mage"               # Filtra per rol
-curl -X DELETE http://localhost:8080/api/champions/1               # Esborra
-curl -v http://localhost:8080/api/champions/1                      # 404 esperat
-curl -X POST http://localhost:8080/api/champions \
-  -H "Content-Type: application/json" \
-  -d '{"name": "", "role": "Mage", "winRate": 150}'               # 400 esperat
+# Copiar primer el pom.xml per cachear dependències
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copiar el codi font i compilar
+COPY src/ src/
+RUN mvn package -DskipTests -B
+
+# --- Etapa 2: Imatge d'execució ---
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# Copiar només el JAR des de l'etapa de compilació
+COPY --from=builder /build/target/*.jar app.jar
+
+# El backend escolta al port 8080
+EXPOSE 8080
+
+# Arrencar l'aplicació
+# -Djava.security.egd: millora la velocitat d'arrencada en contenidors
+CMD ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
 ```
 
-### Part 3: Implementa el GlobalExceptionHandler
+**1.2. Crea el fitxer `backend-java/.dockerignore`:**
 
-Crea la classe `GlobalExceptionHandler` per gestionar errors de forma uniforme.
+```dockerignore
+target/
+.git/
+.gitignore
+*.md
+.idea/
+*.iml
+```
+
+**1.3. Construeix i executa:**
+
+```bash
+# Situats a la carpeta backend-java/
+cd backend-java
+
+# Construir la imatge. -t = tag (nom de la imatge)
+# El "." final indica que el context de build és el directori actual
+docker build -t esportspulse-backend:latest .
+
+# Comprovar que la imatge s'ha creat
+docker images | grep esportspulse
+
+# Executar el contenidor
+# -d = detached (en segon pla)
+# -p 8080:8080 = mapejar el port 8080 del host al 8080 del contenidor
+# --name = donar un nom al contenidor (per identificar-lo fàcilment)
+docker run -d -p 8080:8080 --name backend esportspulse-backend:latest
+
+# Verificar que funciona
+curl http://localhost:8080/actuator/health
+# Hauria de retornar: {"status":"UP"}
+
+# Veure els logs del contenidor
+docker logs backend
+```
+
+### Part 2: Dockerfile per al Servei Python
+
+**2.1. Crea el fitxer `ai-python/Dockerfile`:**
+
+```dockerfile
+# ===================================================================
+# Dockerfile per al servei Python (FastAPI o Flask)
+# Imatge slim: sense eines de compilació innecessàries
+# ===================================================================
+
+# Usem python:3.12-slim en lloc de python:3.12
+# slim = sense compiladors C, man pages, etc. (~150 MB vs ~1 GB)
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copiar PRIMER les dependències per aprofitar la cache de Docker.
+# Si requirements.txt no canvia, Docker no reinstal·la els paquets.
+COPY requirements.txt .
+
+# Instal·lar dependències Python
+# --no-cache-dir: no guardar cache de pip (redueix mida de la imatge)
+# --no-compile: no generar fitxers .pyc durant la instal·lació
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Ara copiar el codi font
+# Si només canvia el codi, les dependències ja estan en cache
+COPY src/ src/
+
+# El servei Python escolta al port 5000
+EXPOSE 5000
+
+# Arrencar l'aplicació amb uvicorn (servidor ASGI per a FastAPI)
+# --host 0.0.0.0: acceptar connexions de fora del contenidor
+# (per defecte escoltaria només a 127.0.0.1, invisible des del host)
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000"]
+```
+
+**2.2. Crea el fitxer `ai-python/.dockerignore`:**
+
+```dockerignore
+__pycache__/
+.venv/
+.git/
+.gitignore
+*.md
+.env
+*.pyc
+.pytest_cache/
+```
+
+**2.3. Construeix i executa:**
+
+```bash
+# Situats a la carpeta ai-python/
+cd ai-python
+
+# Construir la imatge
+docker build -t esportspulse-ai:latest .
+
+# Comprovar la mida de la imatge
+docker images | grep esportspulse
+
+# Executar el contenidor
+# -p 5000:5000 = mapejar port 5000
+docker run -d -p 5000:5000 --name ai-service esportspulse-ai:latest
+
+# Verificar que funciona
+curl http://localhost:5000/health
+# Hauria de retornar: {"status":"ok"}
+
+# Veure els logs
+docker logs ai-service
+```
+
+### Part 3: Verificació i Neteja
+
+```bash
+# Llistar tots els contenidors en execució
+docker ps
+
+# Hauries de veure:
+# CONTAINER ID   IMAGE                       PORTS                    NAMES
+# abc123         esportspulse-backend:latest  0.0.0.0:8080->8080/tcp  backend
+# def456         esportspulse-ai:latest       0.0.0.0:5000->5000/tcp  ai-service
+
+# Aturar els contenidors
+docker stop backend ai-service
+
+# Eliminar els contenidors aturats
+docker rm backend ai-service
+
+# (Opcional) Eliminar les imatges si vols alliberar espai
+# docker rmi esportspulse-backend:latest esportspulse-ai:latest
+```
+
+> **Nota:** Cada cop que canviïs el codi i vulguis actualitzar el contenidor, has de reconstruir la imatge (`docker build`) i recrear el contenidor (`docker run`). Demà veurem Docker Compose, que simplifica aquest procés.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Els 5 endpoints funcionen: GET (llista), GET (per id), POST, PUT, DELETE
-- [ ] La validació retorna 400 amb missatges clars quan les dades no són vàlides
-- [ ] GET d'un ID inexistent retorna 404
-- [ ] DELETE d'un ID inexistent retorna 404
-- [ ] L'endpoint paginat retorna metadades (`totalElements`, `totalPages`)
-- [ ] `GlobalExceptionHandler` gestiona errors de validació i entity not found
-- [ ] Commit: `feat(api): complete CRUD endpoints with validation and pagination`
+- [ ] `backend-java/Dockerfile` utilitza multi-stage build amb `eclipse-temurin:21`
+- [ ] `ai-python/Dockerfile` utilitza `python:3.12-slim` i instal·la dependències abans de copiar el codi
+- [ ] Ambdós Dockerfiles tenen `.dockerignore` corresponent
+- [ ] `docker build` funciona sense errors per a ambdós serveis
+- [ ] `docker run` arrenca els contenidors i responen als seus ports respectius
+- [ ] `docker images | grep esportspulse` mostra les dues imatges amb mides raonables (backend <250 MB, Python <300 MB)
+- [ ] Tots els fitxers estan commitejats amb un missatge descriptiu (p.ex. `feat(docker): add Dockerfiles for Java backend and Python service`)

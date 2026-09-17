@@ -151,7 +151,7 @@ public class ChampionRecordFactory {
     // (simplificat — en un projecte real usaries Jackson o Gson)
     private String extractField(String json, String field) {
         // Implementacio simplificada per a la demo
-        // A la Setmana 5 usarem una llibreria de parsing real
+        // A la Setmana 4 usarem una llibreria de parsing real
         return "";  // Placeholder
     }
 }

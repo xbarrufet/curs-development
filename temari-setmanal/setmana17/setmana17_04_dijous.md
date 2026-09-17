@@ -107,7 +107,7 @@ claude "/review-esportspulse"
 
 ### Git Hooks: Automatitzar Verificacions
 
-A S5 vas aprendre sobre `pre-commit` hooks (verificar format, linting). Ara apliquem el mateix patró a una escala més gran: **`pre-push` hooks que executen evals**.
+A S7 vas aprendre sobre `pre-commit` hooks (verificar format, linting). Ara apliquem el mateix patró a una escala més gran: **`pre-push` hooks que executen evals**.
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐

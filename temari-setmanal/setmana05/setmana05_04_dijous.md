@@ -1,327 +1,318 @@
-# Setmana 05 — Dijous: Especificacions de Refactoring, Code Review i Pre-commit Hooks
+# Setmana 05 — Dijous: CLI Python i Tests d'Integració
 
 ## Objectiu del Dia
 
-Aprendre a escriure especificacions de refactoring que un agent IA (o un company) pugui seguir. Dominar el code review com a eina professional. Configurar pre-commit hooks per automatitzar la validacio d'estil. Al final del dia sabras escriure specs precises, fer reviews constructives i tenir guardianes automàtics al teu repositori.
+Crear un client CLI en Python que consumeixi l'API REST de Java, i escriure tests d'integració amb Spring Boot. Al final del dia tindràs un CLI funcional, tests que validen el cicle complet CRUD i un PR creat.
 
 ---
 
 ## Teoria
 
-### Code Review com a Habilitat Professional
+### Per Què un CLI en Python?
 
-El code review no es buscar errors (per això tenim tests i CI). Es una conversa professional sobre la qualitat del codi.
-
-#### Què Buscar en un Code Review
+El projecte EsportsPulse és políglota: el backend és Java i els serveis d'intel·ligència artificial són Python. El CLI és el primer pont entre els dos mons:
 
 ```
-Ordre de prioritat (de més a menys important):
-
-1. 🔒 Seguretat     → SQL Injection, secrets exposats, input no validat
-2. ✅ Correcció     → El codi fa el que diu que fa?
-3. 🧪 Tests         → Hi ha tests? Cobreixen els casos importants?
-4. 🏗️ Mantenibilitat → Es pot entendre en 6 mesos? Noms clars?
-5. ⚡ Rendiment     → Hi ha bucles innecessaris o queries N+1?
-6. 📝 Estil         → L'automatitza Checkstyle/ruff, no ho revisis tu
+CLI Python (requests)  ──HTTP──→  API Java (Spring Boot)  ──JPA──→  H2 DB
+     ↑                                   ↑
+  L'usuari interactua               Endpoints REST
+  des de la terminal               que hem creat
 ```
 
-**Regla:** Mai comentes sobre estil manualment. Per a això tenim eines automàtiques (Checkstyle, ruff). El teu temps de reviewer es massa valuós per discutir espais.
+### Client HTTP amb requests
 
----
+Primer cal instal·lar la dependència: `pip install requests` (afegir `requests>=2.31.0` a `requirements.txt`).
 
-#### Com Escriure Comentaris de Review
+```python
+# === champions_client.py ===
+# Client HTTP que encapsula les crides a l'API de Champions
+# Separar el client del CLI facilita el testing i la reutilització
 
-La formula: **Observació + Impacte + Suggeriment**
+import requests
 
-```
-❌ MAL comentari:
-"Això està malament."
-→ No explica QUÈ ni PER QUÈ. Desmotiva.
+class ChampionsClient:
+    """Client per a l'API REST de Champions d'EsportsPulse."""
 
-❌ MAL comentari:
-"Hauries d'usar Optional aquí."
-→ No explica per què. Sembla una ordre.
+    def __init__(self, base_url="http://localhost:8080/api"):
+        # URL base de l'API — configurable per entorns diferents
+        self.base_url = base_url
+        # Timeout de 10 segons per evitar que el CLI es quedi penjat
+        self.timeout = 10
 
-✅ BON comentari:
-"Observació: `findById()` retorna Optional, però aquí cridem `.get()` directament.
-Impacte: Si l'ID no existeix, llançarà NoSuchElementException sense context.
-Suggeriment: Considera `.orElseThrow(() -> new ChampionNotFoundException(id))`
-per donar un missatge d'error descriptiu."
-→ Explica el problema, l'impacte, i proposa solució.
-```
+    def list_champions(self, name=None, role=None, min_games=None):
+        """Obté la llista de campions, opcionalment filtrada."""
+        # Construïm els query params dinàmicament
+        # Només incloem els paràmetres que tenen valor (no None)
+        params = {}
+        if name:
+            params["name"] = name
+        if role:
+            params["role"] = role
+        if min_games is not None:
+            params["minGames"] = min_games
 
-**En Python:**
+        # GET /api/champions?name=X&role=Y
+        response = requests.get(
+            f"{self.base_url}/champions",
+            params=params,        # requests codifica els params automàticament
+            timeout=self.timeout
+        )
+        # raise_for_status() llença una excepció si el status és 4xx o 5xx
+        response.raise_for_status()
+        # .json() parseja el cos de la resposta com a diccionari/llista Python
+        return response.json()
 
-```
-✅ BON comentari:
-"Observació: Aquí capturem Exception genèric amb `except Exception: pass`.
-Impacte: Si falla la connexió a la BD, l'error es perd i el servei retorna
-una llista buida com si tot anés bé. L'usuari veu "0 campions" sense saber per què.
-Suggeriment: Captura l'excepció específica (IOError) i logeja-la amb `logger.error()`."
-```
+    def get_champion(self, champion_id):
+        """Obté un campió pel seu ID."""
+        response = requests.get(
+            f"{self.base_url}/champions/{champion_id}",
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        return response.json()
 
----
+    def create_champion(self, name, role, win_rate):
+        """Crea un campió nou a l'API."""
+        # El cos de la petició POST és un diccionari que requests serialitza a JSON
+        payload = {
+            "name": name,
+            "role": role,
+            "winRate": win_rate
+        }
+        response = requests.post(
+            f"{self.base_url}/champions",
+            json=payload,          # json= serialitza i posa Content-Type automàticament
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        return response.json()
 
-### Escriure Especificacions de Refactoring
-
-Una "spec" és un document que descriu **exactament** què vols que faci un agent (humà o IA). La qualitat de la spec determina la qualitat del resultat.
-
-#### Estructura d'una Spec
-
-```markdown
-# Spec: Refactoritzar ChampionManagementService
-
-## Objectiu
-Separar la lògica de cerca de la lògica de persistència al servei de campions.
-
-## Context
-Actualment, `ChampionManagementService` té 15 mètodes que mesclen:
-- Cerca (findByName, searchByRole, filterByWinRate)
-- CRUD (create, update, delete)
-- Validació (validateChampion, checkDuplicate)
-
-## Regles
-1. Crear `ChampionSearchService` amb els mètodes de cerca
-2. Mantenir `ChampionManagementService` amb CRUD i validació
-3. Tots els mètodes existents han de seguir funcionant (backward compatible)
-4. No canviar les signatures públiques dels mètodes
-5. Afegir @Transactional als mètodes que modifiquen dades
-
-## Tests Esperats
-- Tots els tests existents han de continuar passant SENSE modificacions
-- Afegir test: `searchByRole_whenNoResults_returnsEmptyList`
-- Afegir test: `create_whenDuplicate_throwsDuplicateException`
-
-## Criteris d'Acceptació
-- [ ] mvn test passa amb 0 errors
-- [ ] mvn checkstyle:check passa
-- [ ] Cap mètode té més de 20 línies
-- [ ] Cap classe té més de 200 línies
-```
-
-#### Per Què les Specs Importen
-
-```
-Spec vaga:
-"Refactoritza el servei de campions perquè sigui més net."
-→ La IA/company no sap què vol dir "més net"
-→ Necessites 5 iteracions per arribar al resultat
-
-Spec precisa:
-(La de l'exemple de dalt)
-→ La IA/company sap exactament què fer
-→ Resultat correcte al primer intent (o molt proper)
+    def delete_champion(self, champion_id):
+        """Esborra un campió pel seu ID."""
+        response = requests.delete(
+            f"{self.base_url}/champions/{champion_id}",
+            timeout=self.timeout
+        )
+        response.raise_for_status()  # 204 No Content — no hi ha cos a parsejar
 ```
 
-**Regla:** Si no pots escriure la spec, no entens prou bé el problema. Escriure la spec ES l'acte de pensar.
+### CLI amb argparse
 
----
+```python
+# === cli.py ===
+# Interfície de línia de comandes per interactuar amb l'API de Champions
+# Utilitza argparse per definir subcomandes amb arguments tipats
 
-### Pre-commit Hooks — Guardianes Automàtics
+import argparse
+import sys
+from champions_client import ChampionsClient
 
-Un pre-commit hook es un script que s'executa **automàticament** abans de cada commit. Si falla, el commit no es crea.
+def main():
+    parser = argparse.ArgumentParser(description="EsportsPulse CLI — Gestiona campions")
+    parser.add_argument("--base-url", default="http://localhost:8080/api")
+    subparsers = parser.add_subparsers(dest="command", help="Comanda a executar")
 
-```
-Flux amb pre-commit hook:
+    # Subcomanda: list-champions (amb filtres opcionals)
+    lp = subparsers.add_parser("list-champions", help="Llista campions")
+    lp.add_argument("--name", help="Filtra per nom")
+    lp.add_argument("--role", help="Filtra per rol")
+    lp.add_argument("--min-games", type=int, help="Mínim de partides")
 
-git commit -m "feat: add search"
-       │
-       ▼
-  Pre-commit hook s'executa:
-  1. Checkstyle (Java)     → ✅ Passa
-  2. Ruff (Python)         → ❌ Falla!
-     Error: unused import 'os'
-       │
-       ▼
-  COMMIT REBUTJAT ❌
-  "Fix the issues and try again"
-       │
-       ▼
-  Developer arregla el problema
-  git commit -m "feat: add search"  → ✅ Commit creat
-```
+    # Subcomanda: get-champion
+    gp = subparsers.add_parser("get-champion", help="Obté un campió per ID")
+    gp.add_argument("id", type=int)
 
----
+    # Subcomanda: create-champion
+    cp = subparsers.add_parser("create-champion", help="Crea un campió nou")
+    cp.add_argument("--name", required=True)
+    cp.add_argument("--role", required=True)
+    cp.add_argument("--win-rate", type=float, required=True)
 
-#### Instal·lar Pre-commit (eina multiplataforma)
+    # Subcomanda: delete-champion
+    dp = subparsers.add_parser("delete-champion", help="Esborra un campió")
+    dp.add_argument("id", type=int)
 
-```bash
-# Instal·la l'eina pre-commit (funciona amb Python, Java, JS, etc.)
-pip install pre-commit
-```
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
 
-#### Configurar `.pre-commit-config.yaml`
+    client = ChampionsClient(base_url=args.base_url)
+    try:
+        execute_command(client, args)
+    except Exception as e:
+        handle_error(e)
+        sys.exit(1)
 
-```yaml
-# .pre-commit-config.yaml
-# Defineix quins hooks s'executen abans de cada commit
 
-repos:
-  # Hook per Python: ruff (linter ultra-ràpid)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0                    # Versió del hook
-    hooks:
-      - id: ruff                    # Lint: detecta errors d'estil i bugs
-        args: [ --fix ]             # Corregeix automàticament si pot
-      - id: ruff-format             # Format: reformata el codi automàticament
+def execute_command(client, args):
+    """Executa la comanda especificada per l'usuari."""
+    if args.command == "list-champions":
+        champions = client.list_champions(args.name, args.role, args.min_games)
+        if not champions:
+            print("No s'han trobat campions.")
+            return
+        # Format tabular per a fàcil lectura
+        print(f"{'ID':<5} {'Nom':<15} {'Rol':<12} {'Win Rate':<10} {'Partides'}")
+        print("-" * 52)
+        for c in champions:
+            print(f"{c['id']:<5} {c['name']:<15} {c['role']:<12} "
+                  f"{c['winRate']:<10.1f} {c['totalGames']}")
+    elif args.command == "get-champion":
+        c = client.get_champion(args.id)
+        print(f"ID: {c['id']} | {c['name']} | {c['role']} | "
+              f"WR: {c['winRate']}% | Partides: {c['totalGames']}")
+    elif args.command == "create-champion":
+        created = client.create_champion(args.name, args.role, args.win_rate)
+        print(f"Campió creat amb ID: {created['id']} — {created['name']}")
+    elif args.command == "delete-champion":
+        client.delete_champion(args.id)
+        print(f"Campió amb ID {args.id} esborrat correctament.")
 
-  # Hook per fitxers generals
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: trailing-whitespace     # Elimina espais al final de les línies
-      - id: end-of-file-fixer       # Assegura newline al final del fitxer
-      - id: check-yaml              # Valida que els YAML són correctes
-      - id: check-added-large-files # Evita pujar fitxers grans per accident
-        args: [ '--maxkb=500' ]     # Màxim 500KB per fitxer
-      - id: detect-private-key      # Detecta claus privades al codi
-```
 
-```bash
-# Instal·la els hooks al repositori (crea .git/hooks/pre-commit)
-pre-commit install
+def handle_error(error):
+    """Gestiona errors HTTP i de connexió de forma amigable."""
+    import requests as req
+    if isinstance(error, req.exceptions.ConnectionError):
+        print("ERROR: No s'ha pogut connectar amb l'API.")
+    elif isinstance(error, req.exceptions.HTTPError):
+        status = error.response.status_code
+        if status == 404:
+            print("ERROR: Recurs no trobat (404).")
+        elif status == 400:
+            # Mostrem els detalls de validació si n'hi ha
+            print("ERROR: Dades no vàlides (400).")
+            try:
+                for field, msg in error.response.json().items():
+                    print(f"  - {field}: {msg}")
+            except ValueError:
+                print(f"  {error.response.text}")
+        else:
+            print(f"ERROR HTTP {status}: {error.response.text}")
+    else:
+        print(f"ERROR inesperat: {error}")
 
-# Executa manualment sobre tots els fitxers (útil la primera vegada)
-pre-commit run --all-files
-```
-
----
-
-#### Checkstyle com a Hook per Java
-
-Per Java, podem usar un script personalitzat com a pre-commit hook:
-
-```bash
-#!/bin/bash
-# .git/hooks/pre-commit (fer executable amb chmod +x)
-# Executa Checkstyle abans de cada commit
-
-echo "Executant Checkstyle..."
-
-# Executa checkstyle al directori Java del projecte
-cd java/ && mvn checkstyle:check --batch-mode -q
-
-# Si checkstyle falla (exit code != 0), el commit es rebutja
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "❌ Checkstyle ha fallat. Corregeix els errors abans de fer commit."
-    echo "   Executa: mvn checkstyle:check per veure els detalls."
-    exit 1    # Exit code 1 = el commit es cancel·la
-fi
-
-echo "✅ Checkstyle ha passat."
-exit 0        # Exit code 0 = el commit continua
-```
-
-```bash
-# Fer el script executable (necessari a Linux/Mac)
-chmod +x .git/hooks/pre-commit
+if __name__ == "__main__":
+    main()
 ```
 
----
+### Tests d'Integració amb Spring Boot
 
-#### Ruff per Python — Configuració
+Els tests d'integració verifiquen que totes les capes funcionen juntes (controller + service + repository + BD):
 
-```toml
-# pyproject.toml o ruff.toml — Configuració de ruff per al projecte
-[tool.ruff]
-# Longitud màxima de línia
-line-length = 100
+```java
+// === Test d'integració: arrenca Spring Boot complet amb BD H2 ===
+// @SpringBootTest arrenca tota l'aplicació com si fos producció
+// webEnvironment = RANDOM_PORT evita conflictes de port amb altres tests
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class ChampionApiIntegrationTest {
 
-# Regles activades (cada lletra és una categoria)
-select = [
-    "E",    # pycodestyle errors (estil bàsic)
-    "F",    # pyflakes (variables no usades, imports duplicats)
-    "I",    # isort (ordre dels imports)
-    "N",    # pep8-naming (noms de variables i funcions)
-    "UP",   # pyupgrade (modernitzar codi antic)
-    "B",    # flake8-bugbear (bugs comuns)
-    "S",    # flake8-bandit (seguretat)
-]
+    // TestRestTemplate: client HTTP per fer peticions reals al servidor
+    @Autowired
+    private TestRestTemplate restTemplate;
 
-# Regles ignorades
-ignore = [
-    "S101",  # Permetre 'assert' als tests
-]
-```
+    // Repositori per preparar dades de test
+    @Autowired
+    private ChampionRepository repository;
 
-```bash
-# Executar ruff manualment
-ruff check .                    # Només reportar errors
-ruff check . --fix              # Corregir automàticament el que pugui
-ruff format .                   # Reformatar tot el codi
+    // Netegem la BD abans de cada test per evitar dependències entre tests
+    @BeforeEach
+    void setUp() {
+        repository.deleteAll();
+    }
+
+    @Test
+    void shouldCreateAndRetrieveChampion() {
+        // POST per crear, després GET per verificar que existeix
+        var request = new CreateChampionRequest("Ahri", "Mage", 52.3);
+        var createResp = restTemplate.postForEntity(
+            "/api/champions", request, ChampionDTO.class);
+        assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // GET del campió creat — les dades han de coincidir
+        var getResp = restTemplate.getForEntity(
+            "/api/champions/" + createResp.getBody().id(), ChampionDTO.class);
+        assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getResp.getBody().name()).isEqualTo("Ahri");
+        assertThat(getResp.getBody().winRate()).isEqualTo(52.3);
+    }
+
+    @Test
+    void shouldReturnNotFoundForNonExistentChampion() {
+        // GET d'un ID que no existeix ha de retornar 404
+        ResponseEntity<String> response = restTemplate.getForEntity(
+            "/api/champions/9999",
+            String.class
+        );
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void shouldReturnBadRequestForInvalidData() {
+        // Enviem dades invàlides: nom buit i win rate fora de rang
+        CreateChampionRequest invalidRequest = new CreateChampionRequest("", "Mage", 150.0);
+        ResponseEntity<String> response = restTemplate.postForEntity(
+            "/api/champions", invalidRequest, String.class
+        );
+        // L'API ha de retornar 400 Bad Request amb els errors de validació
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void shouldDeleteAndVerifyGone() {
+        // Creem, esborrem, i verifiquem que GET retorna 404
+        ResponseEntity<ChampionDTO> created = restTemplate.postForEntity(
+            "/api/champions",
+            new CreateChampionRequest("Jinx", "Marksman", 51.8),
+            ChampionDTO.class
+        );
+        Long id = created.getBody().id();
+        restTemplate.delete("/api/champions/" + id);
+
+        ResponseEntity<String> getResponse = restTemplate.getForEntity(
+            "/api/champions/" + id, String.class
+        );
+        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+}
 ```
 
 ---
 
 ## Activitat
 
-### Exercici 1: Escriure una Spec de Refactoring (30 min)
+### Part 1: Crea el CLI Python
 
-Escriu una spec per refactoritzar el `ChampionManagementService` del teu projecte EsportsPulse. La spec ha de seguir l'estructura:
+1. Crea `ai-python/src/champions_client.py` amb la classe `ChampionsClient`
+2. Crea `ai-python/src/cli.py` amb les subcomandes: `list-champions`, `get-champion`, `create-champion`, `delete-champion`
+3. Afegeix `requests` a `requirements.txt`
 
-1. **Objectiu** — Què vols aconseguir (1-2 frases)
-2. **Context** — Estat actual del codi
-3. **Regles** — Restriccions que s'han de complir
-4. **Tests Esperats** — Quins tests han de passar
-5. **Criteris d'Acceptació** — Checklist verificable
-
-### Exercici 2: Dona la Spec a un Agent IA (30 min)
-
-1. Copia la spec de l'Exercici 1 i dona-la a una IA (Claude, ChatGPT, Cursor).
-2. Avalua el resultat:
-   - Ha seguit totes les regles?
-   - Els tests que ha generat cobreixen els casos importants?
-   - Ha mantingut backward compatibility?
-3. Compara amb el que hauries fet manualment.
-4. **Reflexió:** Quant de temps has estalviat? La qualitat es comparable?
-
-### Exercici 3: Configurar Pre-commit Hooks (30 min)
-
-1. Instal·la `pre-commit`:
+### Part 2: Testa el CLI contra l'API Java
 
 ```bash
-pip install pre-commit
+# Arrenca l'API i prova totes les comandes
+cd backend-java && mvn spring-boot:run &
+python ai-python/src/cli.py create-champion --name "Ahri" --role "Mage" --win-rate 52.3
+python ai-python/src/cli.py list-champions
+python ai-python/src/cli.py get-champion 1
+python ai-python/src/cli.py get-champion 9999    # Ha de mostrar error 404
 ```
 
-2. Crea el fitxer `.pre-commit-config.yaml` al directori arrel del projecte (veure secció de teoria).
+### Part 3: Escriu Tests d'Integració i Crea el PR
 
-3. Instal·la els hooks:
-
-```bash
-pre-commit install
-```
-
-4. Prova que funciona:
-
-```bash
-# Introdueix un error d'estil intencionat (per exemple, import no usat)
-# Intenta fer commit — ha de fallar
-git add .
-git commit -m "test: pre-commit hook"
-
-# Corregeix l'error i torna a intentar
-```
-
-### Exercici 4: Code Review entre Companys (30 min)
-
-Intercanvia el teu codi amb un company de classe. Fes una revisió seguint:
-
-1. Revisa **seguretat** primer: hi ha secrets? SQL injection? Input no validat?
-2. Revisa **correcció**: El codi fa el que diu?
-3. Revisa **tests**: Quins casos importants falten?
-4. Escriu 3 comentaris seguint la formula Observacio + Impacte + Suggeriment.
-
-Si no tens company, revisa el teu propi codi de la setmana 4 amb ulls frescos.
+1. Crea `ChampionApiIntegrationTest.java` amb els tests de la teoria
+2. Executa `mvn clean verify` per assegurar que tot passa
+3. Crea la branca `feature/week5-rest-api` i obre un PR amb tots els canvis de la setmana
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] He escrit una spec de refactoring completa amb tots els apartats
-- [ ] He donat la spec a una IA i he avaluat el resultat
-- [ ] He configurat `.pre-commit-config.yaml` al meu projecte
-- [ ] Els pre-commit hooks funcionen (he provat que rebutgen codi amb errors)
-- [ ] He fet (o simulat) un code review amb 3 comentaris constructius
-- [ ] Entenc la formula Observacio + Impacte + Suggeriment
-- [ ] Commit amb missatge: `chore: add pre-commit hooks with ruff and checkstyle`
+- [ ] `champions_client.py` funciona amb tots els mètodes HTTP (GET, POST, PUT, DELETE)
+- [ ] CLI amb subcomandes: `list-champions`, `get-champion`, `create-champion`, `delete-champion`
+- [ ] El CLI gestiona errors: connexió, 404, 400 amb missatges clars
+- [ ] Tests d'integració amb `@SpringBootTest` i `TestRestTemplate`
+- [ ] Tests cobreixen: create+get, delete+get404, validació 400, update, llista
+- [ ] `mvn clean verify` passa sense errors
+- [ ] PR creat amb descripció clara de tots els canvis de la setmana
+- [ ] Commit: `feat(api): add Python CLI consumer and integration tests`

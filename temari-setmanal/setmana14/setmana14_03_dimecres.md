@@ -62,7 +62,7 @@ query = "ADC nerfs"
 
 ### Qdrant: La Base de Dades Vectorial
 
-Qdrant és una base de dades especialitzada en vectors. Ja el tens al `docker-compose.yml` des de la Setmana 8:
+Qdrant és una base de dades especialitzada en vectors. Ja el tens al `docker-compose.yml` des de la Setmana 9:
 
 ```yaml
 # Fragment del docker-compose.yml (ja existent)

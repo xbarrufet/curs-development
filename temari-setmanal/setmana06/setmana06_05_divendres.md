@@ -1,524 +1,905 @@
-# Setmana 06 — Divendres: Entorn Python, Integracio Completa i Pull Request
+# Setmana 06 — Divendres: Correlation IDs i Exercici Integrador — Parallel Champion Extractor
 
 ## Objectiu del Dia
 
-Configurar correctament l'entorn Python amb `venv` i `pyproject.toml`, executar el flux complet d'integracio (registrar campions, cercar, verificar) tant a Java com a Python, i crear la Pull Request de la setmana amb tot el treball integrat.
+Entendre com depurar problemes quan tens desenes de peticions concurrents barrejades als logs, implementant Correlation IDs — identificadors unics que segueixen una peticio des que entra al sistema fins que surt. Despres, integraras tot el que has apres aquesta setmana (threads, `CompletableFuture`, Virtual Threads, `asyncio`) en un projecte complet: un extractor de dades de campions de League of Legends que crida l'API publica de Riot Data Dragon en paral-lel, tant en Java com en Python, amb tracabilitat de veritat. Al final del dia tindras dues implementacions funcionals, les hauras comparat, i hauras fet commit i Pull Request tancant la setmana.
 
 ---
 
 ## Teoria
 
-### Per que Necessitem Entorns Virtuals?
+### El Problema: Logs Caotiques en Sistemes Concurrents
 
-Sense entorn virtual, totes les llibreries Python s'instal·len globalment. Aixo causa conflictes:
-
-```
-Projecte A necessita pytest 7.4
-Projecte B necessita pytest 8.1
-→ ❌ Nomes pots tenir UNA versio instal·lada globalment
-
-Amb venv:
-Projecte A → .venv-A/ → pytest 7.4  ✅
-Projecte B → .venv-B/ → pytest 8.1  ✅
-Cada projecte te les seves propies dependencies, aillades.
-```
-
-### Crear i Activar un Entorn Virtual
-
-```bash
-# Naveguem al directori del projecte Python
-cd esportspulse-engine/ai-python/
-
-# Creem l'entorn virtual — .venv es el nom convencional
-# python -m venv: executa el modul venv com a script
-# .venv: directori on s'instal·laran les dependencies
-python -m venv .venv
-
-# Activem l'entorn — des d'ara, "python" i "pip" apunten a .venv/
-# macOS / Linux:
-source .venv/bin/activate
-
-# Windows (PowerShell):
-# .venv\Scripts\Activate.ps1
-
-# Verificació: el prompt ha de mostrar (.venv) al principi
-# (.venv) $ which python
-# → /path/to/esportspulse-engine/ai-python/.venv/bin/python
-```
-
-**IMPORTANT:** Afegeix `.venv/` al `.gitignore`:
-
-```gitignore
-# .gitignore — afegeix aquestes linies
-.venv/
-__pycache__/
-*.pyc
-*.db
-```
-
-### pyproject.toml: Configuracio Moderna de Python
-
-`pyproject.toml` es l'equivalent del `pom.xml` de Maven — defineix el projecte, dependencies i configuracio d'eines:
-
-```toml
-# pyproject.toml — a l'arrel de ai-python/
-
-# --- Metadades del projecte ---
-[project]
-name = "esportspulse-ai"
-version = "0.1.0"
-description = "Modul Python d'EsportsPulse: analisi i persistencia de campions"
-requires-python = ">=3.11"  # Versio minima de Python necessaria
-
-# Dependencies de produccio (es necessiten per executar el codi)
-dependencies = []  # De moment no tenim dependencies externes
-
-# Dependencies opcionals agrupades per us
-[project.optional-dependencies]
-# Dependencies de desenvolupament (nomes per tests i eines)
-dev = [
-    "pytest>=8.0",       # Framework de tests
-    "pytest-cov>=5.0",   # Cobertura de codi
-    "ruff>=0.4.0",       # Linter i formatador (com Checkstyle per Java)
-]
-
-# --- Configuracio de pytest ---
-[tool.pytest.ini_options]
-# Directori on pytest busca els tests
-testpaths = ["tests"]
-# Opcions per defecte quan executem pytest
-addopts = "-v --tb=short"  # -v: verbose, --tb=short: tracebacks curts
-
-# --- Configuracio de ruff (linter) ---
-[tool.ruff]
-# Longitud maxima de linia
-line-length = 100
-# Versio de Python objectiu (per compatibilitat de sintaxi)
-target-version = "py311"
-```
-
-### Instal·lacio: pip install vs pip install -e
-
-```bash
-# Activar l'entorn virtual primer!
-source .venv/bin/activate
-
-# Opcio 1: Instal·lar dependencies normals
-# Descarrega i instal·la les dependencies llistades a pyproject.toml
-pip install .
-
-# Opcio 2: Instal·lar en mode editable (RECOMANAT per desenvolupament)
-# -e: "editable" — els canvis al codi es reflecteixen immediatament
-# sense necessitat de reinstal·lar cada cop
-# [dev]: tambe instal·la les dependencies opcionals del grup "dev"
-pip install -e ".[dev]"
-
-# Verificació: pytest ha d'estar disponible
-pytest --version
-# → pytest 8.x.x
-```
-
-**Diferencia clau:**
-- `pip install .` → copia el codi a `.venv/`. Si modifiques el codi, has de reinstal·lar.
-- `pip install -e .` → crea un link. Els canvis es veuen immediatament. Ideal per desenvolupament.
-
-### El Canvi de Repository: InMemory a SQLite
-
-El moment de la veritat — canviem la implementacio sense tocar el servei:
-
-```python
-# main.py — punt d'entrada del programa
-
-from champion_record import ChampionRecord
-from champion_management_service import ChampionManagementService
-
-# --- OPCIO A: Memoria (per desenvolupament rapid) ---
-from in_memory_champion_repository import InMemoryChampionRepository
-# repository = InMemoryChampionRepository()
-
-# --- OPCIO B: SQLite (per persistencia) ---
-from sqlite_champion_repository import SqliteChampionRepository
-repository = SqliteChampionRepository("esportspulse.db")
-
-# El servei es IDENTIC — nomes canviem quina implementacio injectem
-# Aquesta es la gracia del patro Repository + Dependency Inversion
-service = ChampionManagementService(repository)
-```
-
-El diagrama es el mateix que a Java:
+Aquesta setmana has fet crides paral-leles a APIs (dilluns amb threads, dimarts amb `CompletableFuture`, dijous amb `asyncio`). Ara imagina que una d'elles falla en produccio. Obres els logs i veus aixo:
 
 ```
-┌─────────────────────────────────┐
-│  ChampionManagementService      │
-│  (NO CANVIA)                    │
-└────────────┬────────────────────┘
-             │ depèn de
-             ▼
-┌─────────────────────────────────┐
-│  ChampionRepository (ABC)       │
-└────────────┬────────────────────┘
-             │ implementada per
-        ┌────┴────┐
-        ▼         ▼
-┌────────────┐ ┌──────────────┐
-│ InMemory   │ │ SQLite       │
-│ (dilluns)  │ │ (dijous)     │
-└────────────┘ └──────────────┘
-     ↕                ↕
-  Java:            Java:
-  InMemory    →    JPA+H2
-
-  Mateixa arquitectura, dos llenguatges.
+INFO  fetching champion data...
+INFO  fetching champion data...
+ERROR connection timeout
+INFO  fetching champion data...
+INFO  champion data received
+ERROR null pointer at ChampionService:42
+INFO  champion data received
+INFO  fetching champion data...
 ```
 
-### Test d'Integracio: Java amb @SpringBootTest
+**Preguntes impossibles de respondre:**
+- Quin dels 50 campions ha causat el timeout?
+- El `NullPointerException` es del mateix request que el timeout o d'un altre?
+- Quin usuari esta afectat?
+
+Sense tracabilitat, depurar sistemes concurrents es com buscar una agulla en un paller.
+
+### Que es un Correlation ID?
+
+Un **Correlation ID** (o Request ID, Trace ID) es un identificador unic que s'assigna a cada peticio quan entra al sistema. Totes les operacions d'aquella peticio — logs, crides a APIs externes, queries a BD — inclouen aquest ID.
+
+```
+ABANS (sense Correlation ID):
+INFO  fetching champion data...
+ERROR connection timeout
+
+DESPRÉS (amb Correlation ID):
+INFO  [req-a1b2c3] fetching champion data for Ahri
+ERROR [req-a1b2c3] connection timeout calling Riot API (champion=Ahri, elapsed=5003ms)
+INFO  [req-d4e5f6] fetching champion data for Zed
+INFO  [req-d4e5f6] champion data received (champion=Zed, elapsed=287ms)
+```
+
+Ara pots filtrar per `req-a1b2c3` i veure TOT el recorregut d'aquella peticio fallida.
+
+### Anatomia d'un Bon Log en Produccio
+
+Un log util en un sistema concurrent ha de tenir:
+
+```
+[NIVELL] [TIMESTAMP] [CORRELATION_ID] [CONTEXT] missatge (detalls mesurables)
+```
+
+```
+INFO  2024-03-15T10:23:45.123 [req-a1b2c3] [ChampionExtractor] Starting extraction (champion=Ahri)
+INFO  2024-03-15T10:23:45.124 [req-a1b2c3] [RiotClient] Calling Riot API (url=https://api.riot/...)
+WARN  2024-03-15T10:23:50.127 [req-a1b2c3] [RiotClient] Riot API slow response (elapsed=5003ms, threshold=2000ms)
+ERROR 2024-03-15T10:23:50.128 [req-a1b2c3] [ChampionExtractor] Extraction failed (champion=Ahri, cause=ConnectionTimeout)
+```
+
+**Regles per a bons logs:**
+1. **Sempre inclou el Correlation ID** — es l'unica manera de correlacionar events
+2. **Inclou context mesurable** — temps, IDs, URLs, no missatges vagues
+3. **Mai loggeges dades sensibles** — no tokens, no contrasenyes, no dades personals
+4. **Usa nivells correctament** — ERROR per coses que requereixen accio, WARN per anomalies, INFO per flux normal
+
+### Com s'Implementa: El Patro
+
+#### En Java (amb `ThreadLocal`)
+
+`ThreadLocal` es una variable que te un valor diferent per a cada thread — perfecta per a Correlation IDs en un model thread-per-request:
 
 ```java
-package com.esportspulse.engine;
+// RequestContext.java
+// Emmagatzema el Correlation ID del request actual
+// ThreadLocal garanteix que cada thread (= cada request) té el seu propi valor
+// Cap thread veu el Correlation ID d'un altre thread
 
-import com.esportspulse.engine.domain.ChampionRecord;
-import com.esportspulse.engine.repository.ChampionRepository;
-import com.esportspulse.engine.service.ChampionManagementService;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import java.util.UUID;
 
-import java.util.List;
-import java.util.Optional;
+public class RequestContext {
+    // ThreadLocal: cada thread veu una còpia independent d'aquesta variable
+    // Quan Thread-1 escriu "req-abc", Thread-2 encara veu null (o el seu propi valor)
+    private static final ThreadLocal<String> correlationId = new ThreadLocal<>();
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Test d'integracio: verifica que tots els components funcionen junts.
- *
- * @SpringBootTest arrenca TOTA l'aplicacio Spring Boot, incloent:
- * - Connexio H2
- * - Entitats JPA
- * - Repositoris
- * - Serveis
- *
- * Es mes lent que un test unitari, pero verifica la integracio real.
- */
-@SpringBootTest
-class ChampionIntegrationTest {
-
-    @Autowired // Spring injecta el servei amb el repositori JPA real
-    private ChampionManagementService service;
-
-    @Autowired // Podem injectar el repositori directament per verificar
-    private ChampionRepository repository;
-
-    @Test
-    void fullFlow_registerSearchAndVerify() {
-        // 1. Registrem campions
-        service.registerChampion(
-            new ChampionRecord("ahri-it-001", "Ahri", 1500, 52.3)
-        );
-        service.registerChampion(
-            new ChampionRecord("jinx-it-002", "Jinx", 2300, 51.8)
-        );
-        service.registerChampion(
-            new ChampionRecord("thresh-it-003", "Thresh", 3100, 49.5)
-        );
-
-        // 2. Cerquem per ID
-        Optional<ChampionRecord> ahri = service.findChampion("ahri-it-001");
-        assertTrue(ahri.isPresent(), "Ahri hauria d'existir");
-        assertEquals("Ahri", ahri.get().name());
-
-        // 3. Llistem tots
-        List<ChampionRecord> all = service.listAllChampions();
-        assertTrue(all.size() >= 3, "Hi hauria d'haver minim 3 campions");
-
-        // 4. Eliminem i verifiquem
-        service.removeChampion("thresh-it-003");
-        Optional<ChampionRecord> deleted = service.findChampion("thresh-it-003");
-        assertTrue(deleted.isEmpty(), "Thresh hauria d'estar eliminat");
+    // Genera un nou ID únic (UUID) i l'associa al thread actual
+    public static String initCorrelationId() {
+        String id = "req-" + UUID.randomUUID().toString().substring(0, 8);
+        correlationId.set(id);
+        return id;
     }
 
-    @Test
-    void duplicateRegistration_throws() {
-        // Registrem un campió
-        ChampionRecord lux = new ChampionRecord("lux-it-004", "Lux", 2800, 53.1);
-        service.registerChampion(lux);
+    // Retorna el Correlation ID del thread actual
+    public static String getCorrelationId() {
+        String id = correlationId.get();
+        return id != null ? id : "no-correlation-id";
+    }
 
-        // Intentem registrar-lo una altra vegada — ha de fallar
-        assertThrows(IllegalArgumentException.class, () -> {
-            service.registerChampion(lux);
-        });
+    // IMPORTANT: netejar quan el request acaba
+    // Si no ho fas, el thread pot ser reutilitzat pel pool
+    // i el següent request heretarà el Correlation ID antic
+    public static void clear() {
+        correlationId.remove();
     }
 }
 ```
 
-### Test d'Integracio: Python amb pytest
+#### En Python (amb `contextvars`)
+
+Python 3.7+ te `contextvars`, que funciona com `ThreadLocal` pero tambe funciona correctament amb `asyncio`:
 
 ```python
-import pytest
-from champion_record import ChampionRecord
-from champion_management_service import ChampionManagementService
-from sqlite_champion_repository import SqliteChampionRepository
+# request_context.py
+# Equivalent al RequestContext.java però per Python
+# contextvars funciona tant amb threading com amb asyncio
 
+import uuid
+import contextvars
 
-@pytest.fixture
-def service():
-    """Fixture: crea un servei complet amb SQLite en memoria.
+# ContextVar és l'equivalent de ThreadLocal en Python
+# A diferència de threading.local(), funciona correctament amb asyncio
+# Cada task async té la seva pròpia còpia del valor
+correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "correlation_id", default="no-correlation-id"
+)
 
-    Equivalent a @SpringBootTest — monta tots els components reals.
-    La diferencia: en Python ho fem manualment (no hi ha "magic" de Spring).
-    """
-    repository = SqliteChampionRepository(db_path=":memory:")
-    svc = ChampionManagementService(repository)
-    yield svc
-    repository.close()
+def init_correlation_id() -> str:
+    """Genera i assigna un nou Correlation ID."""
+    new_id = f"req-{uuid.uuid4().hex[:8]}"
+    correlation_id.set(new_id)
+    return new_id
 
-
-def test_full_flow_register_search_verify(service):
-    """Test d'integracio complet: registrar, cercar, verificar.
-
-    Simula el flux real que faria un usuari de l'aplicacio.
-    """
-    # 1. Registrem campions
-    service.register_champion(
-        ChampionRecord("ahri-001", "Ahri", 1500, 52.3)
-    )
-    service.register_champion(
-        ChampionRecord("jinx-002", "Jinx", 2300, 51.8)
-    )
-    service.register_champion(
-        ChampionRecord("thresh-003", "Thresh", 3100, 49.5)
-    )
-
-    # 2. Cerquem per ID
-    ahri = service.find_champion("ahri-001")
-    assert ahri is not None, "Ahri hauria d'existir"
-    assert ahri.name == "Ahri"
-
-    # 3. Llistem tots
-    all_champions = service.list_all_champions()
-    assert len(all_champions) == 3
-
-    # 4. Verifiquem noms
-    names = [c.name for c in all_champions]
-    assert "Ahri" in names
-    assert "Jinx" in names
-    assert "Thresh" in names
-
-
-def test_duplicate_registration_raises(service):
-    """Verifica que registrar un campió duplicat llanca ValueError."""
-    champion = ChampionRecord("ahri-001", "Ahri", 1500, 52.3)
-    service.register_champion(champion)
-
-    # El segon registre ha de fallar
-    with pytest.raises(ValueError, match="ja existeix"):
-        service.register_champion(champion)
+def get_correlation_id() -> str:
+    """Retorna el Correlation ID del context actual."""
+    return correlation_id.get()
 ```
 
-### Cicle Git: Branca, Commit i Pull Request
+### Propagacio del Correlation ID a Crides Externes
 
-```bash
-# 1. Crear branca des de main
-git checkout main
-git pull origin main
-git checkout -b feature/week6-jpa-repository
-
-# 2. Verificar que tot compila i passa tests
-# Java:
-mvn clean verify
-
-# Python:
-cd ai-python/
-source .venv/bin/activate
-pytest -v
-
-# 3. Afegir fitxers nous i modificats
-git add backend-java/src/main/java/com/esportspulse/engine/entity/ChampionEntity.java
-git add backend-java/src/main/java/com/esportspulse/engine/repository/ChampionJpaRepository.java
-git add backend-java/src/main/java/com/esportspulse/engine/repository/JpaChampionRepositoryAdapter.java
-git add backend-java/src/main/resources/application.properties
-git add backend-java/pom.xml
-git add ai-python/src/sqlite_champion_repository.py
-git add ai-python/tests/test_sqlite_repository.py
-git add ai-python/pyproject.toml
-git add ai-python/.gitignore
-
-# 4. Commit amb missatge descriptiu (Conventional Commits)
-git commit -m "feat(persistence): add JPA repository with H2 and SQLite mirror
-
-- Add ChampionEntity with JPA annotations
-- Create ChampionJpaRepository with derived queries
-- Implement JpaChampionRepositoryAdapter for domain separation
-- Add SqliteChampionRepository for Python side
-- Configure H2 database with console access
-- Add integration tests for both Java and Python"
-
-# 5. Pujar branca i crear PR
-git push -u origin feature/week6-jpa-repository
-
-# 6. Crear Pull Request (amb GitHub CLI o via web)
-gh pr create \
-  --title "feat(persistence): JPA + SQLite repositories" \
-  --body "## Resum
-- Repository pattern implementat amb interficie + dues implementacions
-- Java: Spring Data JPA amb H2 (entitat, repositori, adaptador)
-- Python: sqlite3 amb SqliteChampionRepository
-- Tests d'integracio a Java i Python
-
-## Que s'ha afegit
-- ChampionEntity amb @Entity, @Version
-- ChampionJpaRepository amb consultes derivades
-- JpaChampionRepositoryAdapter (patro Adapter)
-- SqliteChampionRepository amb queries parametritzades
-- Tests unitaris i d'integracio
-
-## Com provar
-1. Java: mvn clean verify
-2. Python: cd ai-python && pytest -v
-3. H2 Console: mvn spring-boot:run → http://localhost:8080/h2-console"
-```
-
-### Revisio d'Arquitectura: Les Capes
+Quan el teu servei crida una API externa, ha d'enviar el Correlation ID com a header HTTP. Aixi, si l'altre servei te logs, pots correlacionar les dues bandes:
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                    ARQUITECTURA ESPORTSPULSE                    │
-│                                                                │
-│  ┌──────────────────────┐     ┌──────────────────────┐        │
-│  │    JAVA (Spring)     │     │    PYTHON             │        │
-│  │                      │     │                       │        │
-│  │  ┌────────────────┐  │     │  ┌─────────────────┐  │        │
-│  │  │  Controller    │  │     │  │  main.py         │  │        │
-│  │  │  (REST API)    │  │     │  │  (entry point)   │  │        │
-│  │  └───────┬────────┘  │     │  └────────┬────────┘  │        │
-│  │          │            │     │           │           │        │
-│  │  ┌───────▼────────┐  │     │  ┌────────▼────────┐  │        │
-│  │  │  Service       │  │     │  │  Service        │  │        │
-│  │  │  (Logica)      │  │     │  │  (Logica)       │  │        │
-│  │  └───────┬────────┘  │     │  └────────┬────────┘  │        │
-│  │          │            │     │           │           │        │
-│  │  ┌───────▼────────┐  │     │  ┌────────▼────────┐  │        │
-│  │  │  Repository    │  │     │  │  Repository     │  │        │
-│  │  │  (Interficie)  │  │     │  │  (ABC)          │  │        │
-│  │  └───────┬────────┘  │     │  └────────┬────────┘  │        │
-│  │     ┌────┴────┐      │     │      ┌────┴────┐      │        │
-│  │     ▼         ▼      │     │      ▼         ▼      │        │
-│  │  InMemory   JPA      │     │  InMemory  SQLite     │        │
-│  │  (RAM)      (H2)     │     │  (dict)    (sqlite3)  │        │
-│  └──────────────────────┘     └───────────────────────┘        │
-│                                                                │
-│  Regla d'or: les capes superiors MAI depenen de les inferiors  │
-│  concretament — sempre a traves d'abstraccions (interficies).  │
-└────────────────────────────────────────────────────────────────┘
+El teu servei                       API externa
+──────────────                     ───────────
+[req-a1b2c3] crido Riot API
+  → Header: X-Correlation-ID: req-a1b2c3
+                                    [req-a1b2c3] request rebut
+                                    [req-a1b2c3] processant...
+                                    [req-a1b2c3] retornant resposta
+[req-a1b2c3] resposta rebuda
 ```
 
 ---
 
 ## Activitat
 
-### Exercici d'Integracio Complet
+### 0. Implementa la Traçabilitat Base (20 min)
 
-**Durada estimada:** 120 minuts
+Abans de l'extractor, implementa les dues peces que el faran diagnosticable:
 
-#### Part 1: Entorn Python (20 min)
+```java
+// RequestContext.java
+// Emmagatzema el Correlation ID del request actual
+// ThreadLocal garanteix que cada thread (= cada request) té el seu propi valor
+// Cap thread veu el Correlation ID d'un altre thread
 
-1. Navega a `ai-python/`
-2. Crea l'entorn virtual: `python -m venv .venv`
-3. Activa'l: `source .venv/bin/activate`
-4. Crea `pyproject.toml` amb la configuracio proporcionada
-5. Instal·la en mode editable: `pip install -e ".[dev]"`
-6. Verifica: `pytest --version` ha de funcionar
-7. Afegeix `.venv/` al `.gitignore`
+import java.util.UUID;
 
-#### Part 2: Flux Complet Java (25 min)
+public class RequestContext {
+    private static final ThreadLocal<String> correlationId = new ThreadLocal<>();
 
-1. Arrenca l'aplicacio: `mvn spring-boot:run`
-2. Obre la consola H2: `http://localhost:8080/h2-console`
-3. Registra 5 campions via l'API o directament al servei
-4. Verifica a la consola H2: `SELECT * FROM champions;`
-5. Prova consultes derivades:
-   - `findByNameContaining("Ah")` → ha de retornar Ahri
-   - `findByGamesPlayedGreaterThan(2000)` → campions veterans
-6. Executa els tests d'integracio: `mvn test`
+    public static String initCorrelationId() {
+        String id = "req-" + UUID.randomUUID().toString().substring(0, 8);
+        correlationId.set(id);
+        return id;
+    }
 
-#### Part 3: Flux Complet Python (25 min)
+    public static void setCorrelationId(String id) {
+        correlationId.set(id);
+    }
 
-1. Executa `pytest -v` per verificar tots els tests
-2. Executa el flux d'integracio manualment:
+    public static String getCorrelationId() {
+        String id = correlationId.get();
+        return id != null ? id : "no-correlation-id";
+    }
 
-```python
-# script_integracio.py — executa manualment per verificar
-from champion_record import ChampionRecord
-from champion_management_service import ChampionManagementService
-from sqlite_champion_repository import SqliteChampionRepository
-
-# Creem el servei amb SQLite
-repo = SqliteChampionRepository("integracio_test.db")
-service = ChampionManagementService(repo)
-
-# Registrem campions
-campions = [
-    ChampionRecord("ahri-001", "Ahri", 1500, 52.3),
-    ChampionRecord("jinx-002", "Jinx", 2300, 51.8),
-    ChampionRecord("thresh-003", "Thresh", 3100, 49.5),
-    ChampionRecord("yasuo-004", "Yasuo", 4200, 48.7),
-    ChampionRecord("lux-005", "Lux", 2800, 53.1),
-]
-
-for c in campions:
-    service.register_champion(c)
-    print(f"Registrat: {c.name}")
-
-# Cerquem
-print(f"\nTotal campions: {len(service.list_all_champions())}")
-
-ahri = service.find_champion("ahri-001")
-print(f"Trobat: {ahri.name} — WR: {ahri.win_rate}%")
-
-# Verifiquem persistencia: tanquem i reobrim
-repo.close()
-
-# Reobrim la mateixa BD — les dades han de seguir alla!
-repo2 = SqliteChampionRepository("integracio_test.db")
-service2 = ChampionManagementService(repo2)
-print(f"\nDespres de reobrir: {len(service2.list_all_champions())} campions")
-# Ha d'imprimir 5 — les dades han sobreviscut al reinici!
-
-repo2.close()
-print("\nIntegracio completada amb exit!")
+    // IMPORTANT: netejar quan el request acaba, si no el thread reutilitzat
+    // pel pool heretaria el Correlation ID antic
+    public static void clear() {
+        correlationId.remove();
+    }
+}
 ```
 
-3. Executa: `python script_integracio.py`
-4. Verifica que al reobrir la BD les dades persisteixen
+```python
+# request_context.py — equivalent Python amb contextvars
+# A diferència de threading.local(), funciona correctament amb asyncio:
+# cada task té la seva pròpia còpia del valor
 
-#### Part 4: Pull Request (20 min)
+import uuid
+import contextvars
 
-1. Crea la branca: `git checkout -b feature/week6-jpa-repository`
-2. Afegeix NOMES els fitxers rellevants (no `.DS_Store`, no `.db`)
-3. Escriu un commit descriptiu seguint Conventional Commits
-4. Puja la branca: `git push -u origin feature/week6-jpa-repository`
-5. Crea la PR amb descripcio clara (usa el template de la teoria)
+correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "correlation_id", default="no-correlation-id"
+)
 
-#### Part 5: Dibuixa l'Arquitectura (10 min)
+def init_correlation_id() -> str:
+    new_id = f"req-{uuid.uuid4().hex[:8]}"
+    correlation_id.set(new_id)
+    return new_id
 
-1. Dibuixa (a ma o amb una eina) el diagrama de capes d'EsportsPulse
-2. Inclou: Controller, Service, Repository (interficie), Implementacions (InMemory, JPA, SQLite)
-3. Marca amb fletxes la direccio de les dependencies
-4. Verifica que les fletxes van de dalt (Controller) cap a baix (Repository)
-5. Verifica que CAP fletxa apunta a una implementacio concreta des del servei
+def get_correlation_id() -> str:
+    return correlation_id.get()
+```
+
+### Arquitectura de l'Exercici Integrador
+
+Avui construeixes el projecte que tanca la setmana, combinant tot el que has vist:
+
+1. **Dilluns:** Consciencia de threads i race conditions (no faras `count++` compartit)
+2. **Dimarts:** `CompletableFuture` per crides paral-leles (Java)
+3. **Dimecres:** Virtual Threads (Java 21) — l'alternativa moderna per escalar I/O bloquejant
+4. **Dijous:** `asyncio.gather()` per crides paral-leles (Python)
+5. **Avui:** Correlation IDs + tot integrat en un extractor real
+
+```
+Arquitectura de l'extractor:
+┌────────────────────────────────────────────────────────┐
+│                  ChampionExtractor                      │
+│                                                        │
+│  1. Descarrega la llista de campions (1 crida GET)     │
+│  2. Per cada campió, extreu detalls (N crides GET)     │
+│  3. Tot en paral·lel amb Correlation IDs               │
+│  4. Resultat: dades + errors parcials + mètriques      │
+│                                                        │
+│  Entrada: URL de Data Dragon                           │
+│  Sortida: JSON/CSV amb dades de campions               │
+└────────────────────────────────────────────────────────┘
+```
+
+### L'API de Riot Data Dragon
+
+Data Dragon es l'API publica de Riot Games amb dades estatiques de League of Legends. No requereix autenticacio ni clau API.
+
+```
+URL base: https://ddragon.leagueoflegends.com
+
+Endpoints que usarem:
+1. Llista de campions:
+   GET /cdn/14.10.1/data/en_US/champion.json
+   → Retorna tots els campions amb dades bàsiques
+
+2. Detall d'un campió:
+   GET /cdn/14.10.1/data/en_US/champion/{ChampionName}.json
+   → Retorna dades detallades (skins, spells, lore)
+
+3. Imatge d'un campió:
+   GET /cdn/14.10.1/img/champion/{ChampionName}.png
+   → Retorna la imatge splash
+```
+
+**Important:** Aquesta API es publica i gratuita, pero te limits de velocitat. No facis centenars de crides per segon. Les nostres 50-100 crides estan dins el limit.
+
+### 1. Implementacio Java: `ChampionExtractor.java` (35 min)
+
+Crea el fitxer al teu directori de treball:
+
+```java
+// ChampionExtractor.java
+// Extractor paral·lel de dades de campions de League of Legends
+// Usa CompletableFuture per crides concurrents a Riot Data Dragon API
+// Inclou Correlation IDs, gestió d'errors parcials, i mètriques de rendiment
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+public class ChampionExtractor {
+
+    // === CONFIGURACIÓ ===
+
+    // URL base de l'API de Data Dragon — pública, sense autenticació
+    private static final String BASE_URL = "https://ddragon.leagueoflegends.com/cdn/14.10.1/data/en_US";
+    // Temps màxim d'espera per crida (evita que el programa es pengi)
+    private static final Duration TIMEOUT = Duration.ofSeconds(10);
+
+    // HttpClient de Java 11+ — reutilitzable i thread-safe
+    // Crear un sol client per tota l'aplicació és la pràctica recomanada
+    private static final HttpClient httpClient = HttpClient.newBuilder()
+        .connectTimeout(TIMEOUT)
+        .build();
+
+    // Comptadors atòmics per mètriques (thread-safe, vist a dilluns)
+    private static final AtomicInteger successCount = new AtomicInteger(0);
+    private static final AtomicInteger errorCount = new AtomicInteger(0);
+
+    // === LOGGER AMB CORRELATION ID (vist fa un moment) ===
+
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+
+    static void log(String level, String component, String message) {
+        String ts = LocalDateTime.now().format(FMT);
+        String corr = RequestContext.getCorrelationId();
+        System.out.printf("%-5s %s [%s] [%s] %s%n", level, ts, corr, component, message);
+    }
+
+    // === RECORDS IMMUTABLES (de S2 — thread-safe per disseny) ===
+
+    record ChampionSummary(String id, String name, String title, List<String> tags) {}
+
+    record ChampionDetail(
+        String id, String name, String title,
+        int attack, int defense, int magic, int difficulty,
+        List<String> tags, String lore
+    ) {}
+
+    record ExtractionResult(
+        List<ChampionDetail> champions,
+        List<String> errors,
+        long elapsedMs,
+        int totalAttempted
+    ) {}
+
+    // === CRIDES HTTP ===
+
+    // Fa una petició GET i retorna el cos de la resposta com a String
+    // Inclou el Correlation ID al header per traçabilitat extrema-a-extrem
+    static String httpGet(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(TIMEOUT)
+            // Propagació del Correlation ID a les crides HTTP
+            .header("X-Correlation-ID", RequestContext.getCorrelationId())
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("HTTP " + response.statusCode() + " per " + url);
+        }
+        return response.body();
+    }
+
+    // === PARSEIG JSON SIMPLIFICAT ===
+    // Nota: a producció usaríem Jackson o Gson. Aquí parsegem manualment
+    // per no afegir dependències externes al programa standalone
+
+    // Extreu la llista de noms de campions del JSON principal
+    static List<String> parseChampionNames(String json) {
+        List<String> names = new ArrayList<>();
+        // El JSON té la forma: "data": { "Aatrox": {...}, "Ahri": {...}, ... }
+        // Busquem els noms entre cometes dins de l'objecte "data"
+        int dataStart = json.indexOf("\"data\":{");
+        if (dataStart == -1) dataStart = json.indexOf("\"data\": {");
+        if (dataStart == -1) return names;
+
+        String dataSection = json.substring(dataStart);
+        // Busquem claus que tenen un objecte com a valor (els noms dels campions)
+        int pos = 0;
+        while (true) {
+            int keyStart = dataSection.indexOf("\"", pos);
+            if (keyStart == -1) break;
+            int keyEnd = dataSection.indexOf("\"", keyStart + 1);
+            if (keyEnd == -1) break;
+            String key = dataSection.substring(keyStart + 1, keyEnd);
+
+            // Saltar les claus internes (id, key, name, etc.)
+            int afterKey = dataSection.indexOf(":", keyEnd);
+            if (afterKey == -1) break;
+            int nextChar = afterKey + 1;
+            while (nextChar < dataSection.length() && dataSection.charAt(nextChar) == ' ') nextChar++;
+            if (nextChar < dataSection.length() && dataSection.charAt(nextChar) == '{') {
+                // És un objecte — probablement un campió
+                if (!key.equals("data") && !key.equals("info") && !key.equals("image")
+                    && !key.equals("stats") && key.length() > 1 && Character.isUpperCase(key.charAt(0))) {
+                    names.add(key);
+                }
+            }
+            pos = keyEnd + 1;
+        }
+        return names;
+    }
+
+    // Extreu un valor string del JSON per clau
+    static String extractJsonString(String json, String key) {
+        String search = "\"" + key + "\":\"";
+        int start = json.indexOf(search);
+        if (start == -1) return "unknown";
+        start += search.length();
+        int end = json.indexOf("\"", start);
+        return end == -1 ? "unknown" : json.substring(start, end);
+    }
+
+    // Extreu un valor numèric del JSON per clau
+    static int extractJsonInt(String json, String key) {
+        String search = "\"" + key + "\":";
+        int start = json.indexOf(search);
+        if (start == -1) return 0;
+        start += search.length();
+        StringBuilder num = new StringBuilder();
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (Character.isDigit(c)) num.append(c);
+            else if (num.length() > 0) break;
+        }
+        return num.length() > 0 ? Integer.parseInt(num.toString()) : 0;
+    }
+
+    // === LÒGICA D'EXTRACCIÓ ===
+
+    // Descarrega la llista completa de campions
+    static List<String> fetchChampionList() throws Exception {
+        log("INFO", "Extractor", "Fetching champion list from Data Dragon...");
+        long start = System.nanoTime();
+
+        String json = httpGet(BASE_URL + "/champion.json");
+        List<String> names = parseChampionNames(json);
+
+        long elapsed = (System.nanoTime() - start) / 1_000_000;
+        log("INFO", "Extractor", "Champion list OK (count=" + names.size() + ", elapsed=" + elapsed + "ms)");
+        return names;
+    }
+
+    // Descarrega les dades detallades d'un campió
+    static ChampionDetail fetchChampionDetail(String championName) {
+        long start = System.nanoTime();
+        log("INFO", "DetailFetch", "Fetching detail (champion=" + championName + ")");
+
+        try {
+            String json = httpGet(BASE_URL + "/champion/" + championName + ".json");
+
+            // Parsejar les dades del campió
+            String name = extractJsonString(json, "name");
+            String title = extractJsonString(json, "title");
+            String lore = extractJsonString(json, "lore");
+            int attack = extractJsonInt(json, "attack");
+            int defense = extractJsonInt(json, "defense");
+            int magic = extractJsonInt(json, "magic");
+            int difficulty = extractJsonInt(json, "difficulty");
+
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
+            log("INFO", "DetailFetch", "OK (champion=" + championName + ", elapsed=" + elapsed + "ms)");
+            successCount.incrementAndGet();
+
+            return new ChampionDetail(championName, name, title, attack, defense, magic, difficulty, List.of(), lore);
+
+        } catch (Exception e) {
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
+            log("ERROR", "DetailFetch", "FAILED (champion=" + championName
+                + ", cause=" + e.getMessage() + ", elapsed=" + elapsed + "ms)");
+            errorCount.incrementAndGet();
+            return null;  // null indica error parcial
+        }
+    }
+
+    // Extracció paral·lela de tots els campions
+    static ExtractionResult extractAll(List<String> championNames, int maxParallel) {
+        log("INFO", "Extractor", "Starting parallel extraction (total=" + championNames.size()
+            + ", maxParallel=" + maxParallel + ")");
+
+        long start = System.nanoTime();
+        String corrId = RequestContext.getCorrelationId();
+
+        // Llançar totes les extraccions en paral·lel
+        // Cada supplyAsync s'executa en un thread del ForkJoinPool
+        List<CompletableFuture<ChampionDetail>> futures = championNames.stream()
+            .map(name -> CompletableFuture.supplyAsync(() -> {
+                // Propagar el Correlation ID al thread del pool
+                RequestContext.setCorrelationId(corrId);
+                return fetchChampionDetail(name);
+            }))
+            .collect(Collectors.toList());
+
+        // Esperar que tots acabin i recollir resultats
+        List<ChampionDetail> allResults = futures.stream()
+            .map(CompletableFuture::join)
+            .collect(Collectors.toList());
+
+        // Separar resultats vàlids i errors
+        List<ChampionDetail> champions = allResults.stream()
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+
+        List<String> errors = new ArrayList<>();
+        for (int i = 0; i < allResults.size(); i++) {
+            if (allResults.get(i) == null) {
+                errors.add(championNames.get(i));
+            }
+        }
+
+        long elapsed = (System.nanoTime() - start) / 1_000_000;
+        return new ExtractionResult(champions, errors, elapsed, championNames.size());
+    }
+
+    // === INFORME ===
+
+    static void printReport(ExtractionResult result) {
+        System.out.println();
+        System.out.println("══════════════════════════════════════════════════");
+        System.out.println("  CHAMPION EXTRACTION REPORT");
+        System.out.println("══════════════════════════════════════════════════");
+        System.out.println();
+        System.out.printf("  Total attempted:  %d%n", result.totalAttempted());
+        System.out.printf("  Successful:       %d%n", result.champions().size());
+        System.out.printf("  Failed:           %d%n", result.errors().size());
+        System.out.printf("  Elapsed time:     %dms%n", result.elapsedMs());
+        System.out.println();
+
+        if (!result.errors().isEmpty()) {
+            System.out.println("  Failed champions:");
+            result.errors().forEach(e -> System.out.println("    - " + e));
+            System.out.println();
+        }
+
+        // Top 5 per atac
+        System.out.println("  Top 5 per atac:");
+        result.champions().stream()
+            .sorted(Comparator.comparingInt(ChampionDetail::attack).reversed())
+            .limit(5)
+            .forEach(c -> System.out.printf("    %-20s ATK:%d DEF:%d MAG:%d DIF:%d%n",
+                c.name(), c.attack(), c.defense(), c.magic(), c.difficulty()));
+
+        System.out.println();
+        // Top 5 per dificultat
+        System.out.println("  Top 5 per dificultat:");
+        result.champions().stream()
+            .sorted(Comparator.comparingInt(ChampionDetail::difficulty).reversed())
+            .limit(5)
+            .forEach(c -> System.out.printf("    %-20s DIF:%d [%s]%n",
+                c.name(), c.difficulty(), c.title()));
+
+        System.out.println();
+        System.out.println("══════════════════════════════════════════════════");
+    }
+
+    // === MAIN ===
+
+    public static void main(String[] args) {
+        // Inicialitzar Correlation ID per a tot l'extractor
+        RequestContext.initCorrelationId();
+
+        log("INFO", "Main", "=== Champion Extractor (Java + CompletableFuture) ===");
+
+        try {
+            // Pas 1: Obtenir la llista de campions
+            List<String> allChampions = fetchChampionList();
+
+            // Limitar a 30 campions per no sobrecarregar l'API
+            int limit = Math.min(30, allChampions.size());
+            List<String> selected = allChampions.subList(0, limit);
+            log("INFO", "Main", "Selected " + limit + " champions for extraction");
+
+            // Pas 2: Extreure detalls en paral·lel
+            ExtractionResult result = extractAll(selected, limit);
+
+            // Pas 3: Mostrar informe
+            printReport(result);
+
+            log("INFO", "Main", "Extraction complete (total=" + result.elapsedMs() + "ms)");
+
+        } catch (Exception e) {
+            log("ERROR", "Main", "Fatal error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+Compila i executa:
+
+```bash
+# Compila (Java 11+, no necessita dependències externes)
+javac ChampionExtractor.java RequestContext.java
+
+# Executa — observa els logs amb Correlation IDs
+java ChampionExtractor
+```
+
+### 2. Implementacio Python: `champion_extractor.py` (30 min)
+
+```python
+# champion_extractor.py
+# Extractor paral·lel de dades de campions de League of Legends
+# Usa asyncio + aiohttp per crides concurrents a Riot Data Dragon API
+# Inclou Correlation IDs, gestió d'errors parcials, i mètriques de rendiment
+#
+# Requisits: pip install aiohttp
+
+import asyncio
+import aiohttp
+import time
+import uuid
+import json
+import contextvars
+from dataclasses import dataclass
+
+from request_context import correlation_id, init_correlation_id
+
+# === CONFIGURACIÓ ===
+
+BASE_URL = "https://ddragon.leagueoflegends.com/cdn/14.10.1/data/en_US"
+TIMEOUT = aiohttp.ClientTimeout(total=10)
+
+def log(level: str, component: str, message: str) -> None:
+    """Log estructurat amb Correlation ID i component."""
+    corr = correlation_id.get()
+    ts = time.strftime("%H:%M:%S")
+    print(f"{level:5s} {ts} [{corr}] [{component}] {message}")
+
+# === DATACLASSES IMMUTABLES (frozen=True → thread-safe, com record a Java) ===
+
+@dataclass(frozen=True)
+class ChampionDetail:
+    """Dades detallades d'un campió."""
+    id: str
+    name: str
+    title: str
+    attack: int
+    defense: int
+    magic: int
+    difficulty: int
+    tags: list
+    lore: str
+
+@dataclass(frozen=True)
+class ExtractionResult:
+    """Resultat complet de l'extracció."""
+    champions: list          # Llista de ChampionDetail
+    errors: list             # Llista de (champion_id, error_message)
+    elapsed_ms: float        # Temps total en ms
+    total_attempted: int     # Total de campions intentats
+
+# === CRIDES HTTP AMB AIOHTTP ===
+
+async def fetch_champion_list(session: aiohttp.ClientSession) -> list[str]:
+    """Descarrega la llista de noms de campions de Data Dragon."""
+    log("INFO", "Extractor", "Fetching champion list from Data Dragon...")
+    start = time.perf_counter()
+
+    url = f"{BASE_URL}/champion.json"
+    # El header X-Correlation-ID permet traçar la petició si l'API el suporta
+    headers = {"X-Correlation-ID": correlation_id.get()}
+
+    async with session.get(url, headers=headers) as response:
+        if response.status != 200:
+            raise RuntimeError(f"HTTP {response.status} fetching champion list")
+        data = await response.json()
+
+    # data["data"] conté un diccionari amb els noms dels campions com a claus
+    names = list(data["data"].keys())
+    elapsed = (time.perf_counter() - start) * 1000
+    log("INFO", "Extractor", f"Champion list OK (count={len(names)}, elapsed={elapsed:.0f}ms)")
+    return names
+
+async def fetch_champion_detail(session: aiohttp.ClientSession, champion_name: str) -> ChampionDetail:
+    """Descarrega les dades detallades d'un campió."""
+    start = time.perf_counter()
+    log("INFO", "DetailFetch", f"Fetching detail (champion={champion_name})")
+
+    url = f"{BASE_URL}/champion/{champion_name}.json"
+    headers = {"X-Correlation-ID": correlation_id.get()}
+
+    async with session.get(url, headers=headers) as response:
+        if response.status != 200:
+            raise RuntimeError(f"HTTP {response.status} for {champion_name}")
+        data = await response.json()
+
+    # Les dades del campió estan dins data["data"][champion_name]
+    champ = data["data"][champion_name]
+    info = champ.get("info", {})
+
+    detail = ChampionDetail(
+        id=champ.get("id", champion_name),
+        name=champ.get("name", champion_name),
+        title=champ.get("title", ""),
+        attack=info.get("attack", 0),
+        defense=info.get("defense", 0),
+        magic=info.get("magic", 0),
+        difficulty=info.get("difficulty", 0),
+        tags=champ.get("tags", []),
+        lore=champ.get("lore", "")[:100]  # Només els primers 100 chars del lore
+    )
+
+    elapsed = (time.perf_counter() - start) * 1000
+    log("INFO", "DetailFetch", f"OK (champion={champion_name}, elapsed={elapsed:.0f}ms)")
+    return detail
+
+async def extract_one_safe(session: aiohttp.ClientSession, champion_name: str):
+    """Extreu un campió amb gestió d'errors — no trenca l'extracció si falla."""
+    try:
+        return await fetch_champion_detail(session, champion_name)
+    except Exception as e:
+        log("ERROR", "DetailFetch", f"FAILED (champion={champion_name}, cause={e})")
+        return (champion_name, str(e))  # Retorna tupla per indicar error
+
+# === EXTRACCIÓ PARAL·LELA ===
+
+async def extract_all(champion_names: list[str], max_concurrent: int = 30) -> ExtractionResult:
+    """
+    Extreu dades de tots els campions en paral·lel.
+    max_concurrent limita les connexions simultànies per no sobrecarregar l'API.
+    """
+    log("INFO", "Extractor", f"Starting parallel extraction (total={len(champion_names)})")
+    start = time.perf_counter()
+
+    # Semaphore limita el nombre de crides concurrents
+    # Sense això, 100+ crides simultànies podrien saturar l'API o el sistema
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def limited_extract(session, name):
+        async with semaphore:  # Espera si ja hi ha max_concurrent crides actives
+            return await extract_one_safe(session, name)
+
+    # aiohttp.ClientSession gestiona el pool de connexions HTTP
+    # Crear-la amb "async with" garanteix que es tanca correctament
+    async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
+        tasks = [limited_extract(session, name) for name in champion_names]
+        # gather llança totes les tasques i espera que totes acabin
+        results = await asyncio.gather(*tasks)
+
+    # Separar resultats vàlids i errors
+    champions = []
+    errors = []
+    for result in results:
+        if isinstance(result, ChampionDetail):
+            champions.append(result)
+        elif isinstance(result, tuple):
+            errors.append(result)
+
+    elapsed = (time.perf_counter() - start) * 1000
+    return ExtractionResult(
+        champions=champions,
+        errors=errors,
+        elapsed_ms=elapsed,
+        total_attempted=len(champion_names)
+    )
+
+# === INFORME ===
+
+def print_report(result: ExtractionResult) -> None:
+    """Imprimeix un informe formatat dels resultats."""
+    print()
+    print("=" * 55)
+    print("  CHAMPION EXTRACTION REPORT (Python + asyncio)")
+    print("=" * 55)
+    print()
+    print(f"  Total attempted:  {result.total_attempted}")
+    print(f"  Successful:       {len(result.champions)}")
+    print(f"  Failed:           {len(result.errors)}")
+    print(f"  Elapsed time:     {result.elapsed_ms:.0f}ms")
+    print()
+
+    if result.errors:
+        print("  Failed champions:")
+        for name, msg in result.errors:
+            print(f"    - {name}: {msg}")
+        print()
+
+    # Top 5 per atac
+    sorted_by_attack = sorted(result.champions, key=lambda c: c.attack, reverse=True)
+    print("  Top 5 per atac:")
+    for c in sorted_by_attack[:5]:
+        print(f"    {c.name:20s} ATK:{c.attack} DEF:{c.defense} MAG:{c.magic} DIF:{c.difficulty}")
+
+    print()
+
+    # Top 5 per dificultat
+    sorted_by_diff = sorted(result.champions, key=lambda c: c.difficulty, reverse=True)
+    print("  Top 5 per dificultat:")
+    for c in sorted_by_diff[:5]:
+        tags = "/".join(c.tags) if c.tags else "?"
+        print(f"    {c.name:20s} DIF:{c.difficulty} [{tags}]")
+
+    print()
+    print("=" * 55)
+
+# === MAIN ===
+
+async def main():
+    # Inicialitzar Correlation ID
+    init_correlation_id()
+
+    log("INFO", "Main", "=== Champion Extractor (Python + asyncio + aiohttp) ===")
+
+    try:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
+            # Pas 1: Obtenir la llista de campions
+            all_champions = await fetch_champion_list(session)
+
+        # Limitar a 30 campions
+        limit = min(30, len(all_champions))
+        selected = all_champions[:limit]
+        log("INFO", "Main", f"Selected {limit} champions for extraction")
+
+        # Pas 2: Extreure detalls en paral·lel
+        result = await extract_all(selected, max_concurrent=15)
+
+        # Pas 3: Mostrar informe
+        print_report(result)
+
+        log("INFO", "Main", f"Extraction complete (total={result.elapsed_ms:.0f}ms)")
+
+    except Exception as e:
+        log("ERROR", "Main", f"Fatal error: {e}")
+        raise
+
+asyncio.run(main())
+```
+
+Instal-la la dependencia i executa:
+
+```bash
+# Instal·la aiohttp (si no el tens)
+pip install aiohttp
+
+# Executa — observa els logs amb Correlation IDs
+python3 champion_extractor.py
+```
+
+### 3. Comparativa Java vs Python (10 min)
+
+Despres d'executar els dos extractors, omple aquesta taula:
+
+```
+| Mètrica                    | Java (CompletableFuture) | Python (asyncio) |
+|----------------------------|--------------------------|------------------|
+| Temps total (30 campions)  |              ms          |            ms    |
+| Campions extrets           |                          |                  |
+| Errors parcials            |                          |                  |
+| Línies de codi             |                          |                  |
+| Llegibilitat (1-5)         |                          |                  |
+| Facilitat de depuració     |                          |                  |
+```
+
+Respon:
+- Quin codi es mes facil de llegir?
+- Quin seria mes facil de depurar si falla en produccio?
+- Per a quin cas usaries cadascun?
+- Sense Correlation IDs, podries identificar quin campió ha causat cada error?
+
+### 4. Commit i Pull Request (10 min)
+
+Finalitza el cicle Git de la setmana:
+
+```bash
+# Assegura't que ets a la branca de la setmana
+git checkout -b feature/week6-concurrency
+
+# Afegeix els fitxers de la setmana
+git add UnsafeCounter.java CounterBenchmark.java SharedStateDemo.java
+git add SequentialFetcher.java ParallelFetcher.java BatchExtractor.java
+git add race_condition.py async_fetcher.py batch_extractor.py
+git add RequestContext.java request_context.py
+git add ChampionExtractor.java champion_extractor.py
+
+# Commit amb format Conventional Commits
+git commit -m "feat(concurrency): parallel champion extraction with CompletableFuture (Java) and asyncio (Python)
+
+- Thread safety demos: UnsafeCounter, synchronized, AtomicInteger
+- CompletableFuture and Virtual Threads for parallel I/O with error handling
+- Python asyncio equivalent with aiohttp
+- Correlation IDs for request traceability
+- Integration: Riot Data Dragon parallel extractor in both languages"
+
+# Puja la branca
+git push -u origin feature/week6-concurrency
+```
+
+Crea la Pull Request a GitHub:
+- **Titol:** `feat: Week 6 — Concurrent champion extraction (Java + Python)`
+- **Descripcio:** Explica que has implementat un extractor paral-lel que crida l'API de Data Dragon, amb gestio d'errors parcials i Correlation IDs. Inclou la taula comparativa Java vs Python.
+
+Fusiona la PR quan estigui llesta.
+
+> **Lectura recomanada (opcional, no bloquejant):**
+> - Martin Fowler: [Correlation ID](https://www.enterpriseintegrationpatterns.com/patterns/messaging/CorrelationIdentifier.html)
+> - Baeldung: [MDC with SLF4J and Logback](https://www.baeldung.com/mdc-in-log4j-2-logback) (la versio "de veritat" per a projectes Spring)
+> - Baeldung: [Testing Concurrent Code](https://www.baeldung.com/java-testing-multithreaded)
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] Entorn virtual creat i activat (`.venv/`)
-- [ ] `pyproject.toml` configurat amb dependencies dev (pytest, ruff)
-- [ ] `pip install -e ".[dev]"` executat sense errors
-- [ ] `.venv/` afegit al `.gitignore`
-- [ ] Flux Java complet: registrar, cercar, verificar a H2 console
-- [ ] Flux Python complet: registrar, cercar, verificar persistencia al reobrir
-- [ ] Tests Java: `mvn test` verd (unitaris + integracio)
-- [ ] Tests Python: `pytest -v` verd (unitaris + integracio)
-- [ ] Branca `feature/week6-jpa-repository` creada i pujada
-- [ ] Pull Request creada amb descripcio clara (resum, que s'ha afegit, com provar)
-- [ ] Diagrama d'arquitectura dibuixat amb les capes i dependencies
-- [ ] El servei NO ha canviat en tot el proces (verifica amb `git diff` del servei)
+- [ ] Has implementat `RequestContext` amb `ThreadLocal` (Java) o `contextvars` (Python)
+- [ ] `ChampionExtractor.java` s'executa i extreu dades reals de Data Dragon en paral-lel, amb Correlation ID a cada log
+- [ ] `champion_extractor.py` s'executa i extreu les mateixes dades amb asyncio + aiohttp, amb Correlation ID a cada log
+- [ ] Pots filtrar els logs per Correlation ID i veure tot el recorregut d'una extracció
+- [ ] La versio paral-lela es significativament mes rapida que la sequencial (>5x per a 20+ campions)
+- [ ] Has omplert la taula comparativa Java vs Python amb les teves metriques reals
+- [ ] Commit amb format Conventional Commits i PR creada/fusionada a `main`
+- [ ] Branca `feature/week6-concurrency` eliminada despres de fusionar

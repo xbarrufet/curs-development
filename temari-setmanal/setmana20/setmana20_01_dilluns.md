@@ -2,7 +2,7 @@
 
 ## Objectiu del Dia
 
-Revisar tots els workflows de GitHub Actions acumulats durant el curs (S5, S7, S13, S16), eliminar redundàncies, consolidar en workflows ben estructurats i afegir caching de dependències. Al final del dia, el CI és més ràpid, consistent i mantenible.
+Revisar tots els workflows de GitHub Actions acumulats durant el curs (S7, S8, S13, S16), eliminar redundàncies, consolidar en workflows ben estructurats i afegir caching de dependències. Al final del dia, el CI és més ràpid, consistent i mantenible.
 
 ---
 
@@ -14,9 +14,9 @@ Durant 19 setmanes hem anat afegint workflows a mesura que els necessitàvem. El
 
 ```
 .github/workflows/
-├── build.yml           ← S5: primer CI bàsic
-├── test-java.yml       ← S7: tests Java separats
-├── test-python.yml     ← S7: tests Python separats
+├── build.yml           ← S7: primer CI bàsic
+├── test-java.yml       ← S8: tests Java separats
+├── test-python.yml     ← S8: tests Python separats
 ├── lint.yml            ← S13: linting
 ├── docker-build.yml    ← S16: build Docker
 └── deploy.yml          ← S16: deploy

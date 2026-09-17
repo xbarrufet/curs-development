@@ -1,385 +1,450 @@
-# Setmana 8 — Divendres: Observabilitat de Contenidors i Consolidació
+# Setmana 08 — Divendres: Filosofia del Testing, Integració i PR
 
 ## Objectiu del Dia
 
-Dominar les eines d'observabilitat de Docker per monitoritzar, depurar i diagnosticar problemes als contenidors. Al final del dia, has de poder arrencar l'stack complet, verificar que tot funciona, depurar un problema dins d'un contenidor i crear un PR amb tota la configuració Docker de la setmana.
+Reflexionar sobre **per què** testem, entendre què val la pena testejar i què no, consolidar la suite de tests completa d'EsportsPulse, i tancar el Bloc 1 amb un PR que demostri tot el que has après. Al final del dia tindràs un projecte amb CI verd, cobertura adequada i tests que documenten el comportament del sistema.
 
 ---
 
 ## Teoria
 
-### Per Què l'Observabilitat Importa
+### Filosofia del Testing: Per Què Testem?
 
-Quan tens 4 contenidors executant-se, les coses es compliquen. Un error pot estar en qualsevol d'ells, i la sortida de tots es barreja. Necessites eines per respondre preguntes com:
-- Quin servei ha fallat?
-- Quanta memòria consumeix cada contenidor?
-- Què passa dins d'un contenidor que no respon?
+Els tests no existeixen per "complir un requisit" o "arribar al 100% de cobertura". Tenen tres propòsits reals:
 
-### Logs: La Primera Línia de Diagnòstic
+1. **Protecció contra regressions:** Quan canvies codi, els tests et diuen si has trencat alguna cosa.
+2. **Documentació viva:** Els noms dels tests expliquen què fa el sistema. A diferència dels comentaris, els tests no es queden obsolets perquè fallen si el comportament canvia.
+3. **Habilitar el refactoring:** Sense tests, refactoritzar dóna por. Amb tests, pots reestructurar amb confiança.
 
-```bash
-# Logs de tots els serveis (últimes línies)
-docker-compose logs
+> "Els tests no són per demostrar que el codi funciona. Són per avisar-te quan deixa de funcionar."
 
-# Logs en temps real de tots els serveis
-# -f = follow (com tail -f de Linux, que vam veure a S3)
-docker-compose logs -f
+---
 
-# Logs d'un servei concret, en temps real
-docker-compose logs -f backend
+### Què Testejar
 
-# Últimes 100 línies d'un servei
-docker-compose logs --tail=100 ai-service
+#### 1. Lògica de Negoci
 
-# Logs amb marca de temps (útil per correlacionar entre serveis)
-docker-compose logs -f --timestamps
+La part més valuosa de testejar: les regles del teu domini.
+
+```java
+// TESTEJAR: el filtratge per winRate és lògica de negoci
+// Si canviem el llindar o la fórmula, volem saber-ho
+@Test
+@DisplayName("ha de filtrar campions amb winRate per sobre del llindar")
+void shouldFilterChampionsByWinRate() {
+    // Arrange: creem campions amb winRates diversos
+    when(repository.findAll()).thenReturn(List.of(
+        new ChampionRecord("jinx", "Marksman", 55.0),
+        new ChampionRecord("lux", "Mage", 48.0),
+        new ChampionRecord("thresh", "Support", 52.0)
+    ));
+
+    // Act: filtrem per mínim 50%
+    List<ChampionRecord> result = service.findByMinWinRate(50.0);
+
+    // Assert: només jinx (55%) i thresh (52%) passen el filtre
+    assertEquals(2, result.size());
+    assertTrue(result.stream().noneMatch(c -> c.winRate() < 50.0),
+        "Cap campió hauria de tenir winRate per sota del llindar");
+}
 ```
 
-**Quan tens 4 contenidors emetent logs alhora, la sortida és caòtica:**
+#### 2. Gestió d'Errors
 
-```
-backend      | 2024-03-15 10:23:45 INFO  Starting EsportsPulseApplication
-postgres     | 2024-03-15 10:23:44 LOG  database system is ready
-qdrant       | 2024-03-15 10:23:43 INFO  Qdrant gRPC listening on 6334
-ai-service   | 2024-03-15 10:23:46 INFO  Uvicorn running on 0.0.0.0:5000
-backend      | 2024-03-15 10:23:47 INFO  Connected to database
-ai-service   | 2024-03-15 10:23:47 INFO  Connected to Qdrant
-```
+Què passa quan les coses van malament? Aquesta és una font habitual de bugs en producció.
 
-**Per què els logs en format JSON (S4, correlation IDs) són importants aquí:** Si cada servei emet logs en JSON amb un `correlation_id`, pots filtrar per una petició concreta que travessa múltiples serveis. Sense JSON estructurat, només tens text pla barrejat.
+```java
+// TESTEJAR: com gestiona el servei un repositori que falla
+// En producció, les connexions a BD cauen, els discs es queden sense espai...
+@Test
+@DisplayName("ha de llançar ServiceException quan el repositori falla")
+void shouldWrapRepositoryExceptions() {
+    when(repository.findAll()).thenThrow(
+        new RuntimeException("Connexió a BD perduda")
+    );
 
-```json
-{"timestamp": "2024-03-15T10:23:47Z", "level": "INFO", "service": "backend", "correlation_id": "abc-123", "message": "Request received"}
-{"timestamp": "2024-03-15T10:23:47Z", "level": "INFO", "service": "ai-service", "correlation_id": "abc-123", "message": "Processing embedding"}
-```
-
-Amb un `grep` pots extreure tota la traça:
-
-```bash
-# Filtrar per correlation_id (funciona perquè són JSON, no text lliure)
-docker-compose logs | grep "abc-123"
+    // Verifiquem que el servei transforma l'excepció tècnica
+    // en una excepció de negoci amb un missatge entenedor
+    ServiceException ex = assertThrows(ServiceException.class,
+        () -> service.findAll());
+    assertTrue(ex.getMessage().contains("campions"),
+        "L'error hauria de mencionar el context de negoci");
+}
 ```
 
-### Estadístiques de Recursos: CPU i Memòria
+#### 3. Casos Límit (Edge Cases)
 
-```bash
-# Veure CPU, memòria, xarxa i I/O de tots els contenidors en temps real
-docker stats
+Els bugs viuen als extrems: llistes buides, valors null, limits de rang.
 
-# Exemple de sortida:
-# CONTAINER    CPU %    MEM USAGE / LIMIT     MEM %    NET I/O
-# backend      0.50%    256MiB / 8GiB         3.20%    1.2kB / 0B
-# ai-service   0.10%    128MiB / 8GiB         1.60%    500B / 0B
-# postgres     0.05%    64MiB / 8GiB          0.80%    300B / 0B
-# qdrant       0.03%    96MiB / 8GiB          1.20%    200B / 0B
+```java
+// TESTEJAR: límits i casos especials
+// Els bugs més comuns apareixen en condicions límit
+@Nested
+@DisplayName("Casos límit")
+class EdgeCases {
 
-# Estadístiques d'un contenidor concret (útil en scripts)
-docker stats --no-stream backend
-# --no-stream: mostra una captura i surt (no actualitza en temps real)
+    @Test
+    @DisplayName("ha de retornar llista buida quan no hi ha campions")
+    void shouldReturnEmptyListWhenNoChampions() {
+        when(repository.findAll()).thenReturn(List.of());
+
+        List<ChampionRecord> result = service.findAll();
+
+        assertNotNull(result, "Mai hauria de retornar null");
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("ha de gestionar nom amb espais en blanc")
+    void shouldHandleWhitespaceName() {
+        // Un nom amb espais no hauria de ser vàlid
+        assertThrows(IllegalArgumentException.class,
+            () -> service.register(
+                new ChampionRecord("   ", "Mage", 50.0)
+            ));
+    }
+
+    @Test
+    @DisplayName("ha de gestionar winRate exactament 0")
+    void shouldHandleZeroWinRate() {
+        // winRate 0 és vàlid (campió sense dades de partides)
+        assertDoesNotThrow(
+            () -> service.register(
+                new ChampionRecord("newChamp", "Tank", 0.0)
+            ));
+    }
+
+    @Test
+    @DisplayName("ha de gestionar winRate exactament 100")
+    void shouldHandleMaxWinRate() {
+        // winRate 100 és vàlid (cas teòric: 100% victòries)
+        assertDoesNotThrow(
+            () -> service.register(
+                new ChampionRecord("perfecto", "Fighter", 100.0)
+            ));
+    }
+}
 ```
 
-> **Pregunta per reflexionar:** Si el backend consumeix 2 GB de RAM i creix constantment, probablement tens un **memory leak**. `docker stats` t'alerta d'això abans que el contenidor caigui.
+---
 
-### Processos dins d'un Contenidor
+### Què NO Testejar
 
-```bash
-# Veure els processos que s'executen dins d'un contenidor
-docker top backend
+#### 1. Codi del Framework
 
-# Exemple de sortida:
-# PID     USER    COMMAND
-# 1       root    java -jar app.jar
-
-# Un contenidor ben fet hauria de tenir UN sol procés principal.
-# Si veus molts processos, potser el Dockerfile està mal dissenyat.
+```java
+// NO TESTEJAR: que Spring @Autowired funciona
+// Això ja ho testa l'equip de Spring. Si @Autowired falla, el problema
+// és de configuració, no de lògica de negoci
+@Test
+void springAutowiredWorks() {
+    // Inútil: estem testejant que Spring funciona, no el nostre codi
+    assertNotNull(applicationContext.getBean(ChampionRepository.class));
+}
 ```
 
-### docker exec: Entrar dins d'un Contenidor
+#### 2. Getters i Setters (sense lògica)
 
-A la setmana 3 vam treballar amb el terminal i comandes de Linux. Ara podem aplicar exactament les mateixes habilitats **dins d'un contenidor en execució**:
-
-```bash
-# Obrir un shell interactiu dins d'un contenidor
-# -i = interactiu (mantenir STDIN obert)
-# -t = pseudo-TTY (terminal)
-docker exec -it backend sh
-
-# Un cop dins, ets "dins la màquina" del contenidor.
-# Pots executar qualsevol comanda que tingui instal·lada:
-ls -la /app/            # Veure els fitxers de l'aplicació
-env                     # Veure les variables d'entorn
-cat /etc/os-release     # Saber quina distribució Linux és
-ps aux                  # Processos en execució
-
-# Per sortir del contenidor
-exit
+```java
+// NO TESTEJAR: getters/setters generats o trivials
+// Un record de Java no té getters que puguin fallar
+@Test
+void testGetName() {
+    ChampionRecord c = new ChampionRecord("jinx", "Marksman", 51.5);
+    assertEquals("jinx", c.name());
+    // Testejar això no aporta valor: el record és generat pel compilador
+}
 ```
 
-**Per a PostgreSQL (shell interactiu de psql):**
+#### 3. Mètodes Privats Directament
 
-```bash
-# Connectar directament a psql dins del contenidor
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db
+```java
+// NO TESTEJAR: mètodes privats directament
+// Testa'ls a través de la interfície pública del servei
+// Si un mètode privat falla, un test públic hauria de detectar-ho
 
-# Un cop dins de psql:
-\dt                     -- Llistar taules
-\d+ nom_taula           -- Veure estructura d'una taula
-SELECT * FROM test;     -- Executar queries
-\q                      -- Sortir de psql
+// MAL: accedir a mètodes privats via reflection
+@Test
+void testPrivateNormalizeName() throws Exception {
+    Method method = ChampionManagementService.class
+        .getDeclaredMethod("normalizeName", String.class);
+    method.setAccessible(true);
+    // No facis això! Si necessites testejar-lo, potser hauria de ser públic
+    // o estar en una classe Helper separada
+}
+
+// BÉ: testejar a través de la interfície pública
+@Test
+void shouldNormalizeNameWhenRegistering() {
+    // Si normalizeName() funciona, register() retornarà el nom normalitzat
+    service.register(new ChampionRecord("JINX", "Marksman", 51.5));
+    Optional<ChampionRecord> found = service.findById("jinx");
+    assertTrue(found.isPresent(), "El nom hauria d'estar normalitzat a minúscules");
+}
 ```
 
-**Per al servei Python:**
+---
 
-```bash
-# Entrar al contenidor Python
-docker-compose exec ai-service sh
+### Tests com a Documentació
 
-# Un cop dins:
-python3 --version       # Verificar versió de Python
-pip list                # Veure paquets instal·lats
-python3 -c "import fastapi; print(fastapi.__version__)"  # Verificar dependència
+Si algú llegeix **només els noms dels tests**, hauria d'entendre què fa el servei:
 
-exit
+```
+ChampionManagementServiceTest
+  Registre de campions
+    ✓ ha de guardar un campió vàlid al repositori
+    ✓ ha de rebutjar un nom null
+    ✓ ha de rebutjar un nom buit
+    ✓ ha de rebutjar un winRate negatiu
+    ✓ ha de normalitzar el nom a minúscules
+  Cerca de campions
+    ✓ ha de retornar tots els campions
+    ✓ ha de filtrar per rol
+    ✓ ha de filtrar per winRate mínim
+    ✓ ha de retornar llista buida per rol desconegut
+  Gestió d'errors
+    ✓ ha de gestionar errors del repositori
+    ✓ ha de llançar excepció per dades invàlides
+  Casos límit
+    ✓ ha de retornar llista buida quan no hi ha campions
+    ✓ ha de gestionar winRate exactament 0
+    ✓ ha de gestionar winRate exactament 100
 ```
 
-> **Quan usar `docker exec`?**
-> - Depurar un servei que no respon
-> - Verificar que les variables d'entorn s'han carregat correctament
-> - Executar comandes de diagnòstic (ping, curl, nslookup)
-> - Inspeccionar fitxers dins del contenidor
-> - Executar migracions de base de dades manualment
+Això és documentació millor que qualsevol wiki, perquè **si el comportament canvia, els tests fallen**.
 
-### Inspecció Avançada de Contenidors
+---
 
-```bash
-# Informació completa d'un contenidor (JSON)
-docker inspect backend
+### La Suite Completa de Tests d'EsportsPulse
 
-# Filtrar informació específica amb --format (sintaxi Go templates)
-# Veure la IP del contenidor dins la xarxa Docker
-docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' backend
+A aquest punt del curs, el teu projecte hauria de tenir:
 
-# Veure les variables d'entorn d'un contenidor
-docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' backend
-
-# Veure els volums muntats
-docker inspect --format='{{json .Mounts}}' postgres | python3 -m json.tool
 ```
+esportspulse-engine/
+├── backend-java/
+│   └── src/test/java/com/esportspulse/engine/
+│       ├── ChampionRecordTest.java             ← Tests del model (S2)
+│       ├── ChampionManagementServiceTest.java  ← Tests unitaris amb mocks (S8)
+│       ├── ChampionJpaRepositoryTest.java      ← Tests integració amb H2 (S4)
+│       └── InMemoryChampionRepositoryTest.java ← Tests del repositori en memòria (S2)
+│
+└── ai-python/
+    └── tests/
+        ├── conftest.py                         ← Fixtures compartides (S8)
+        ├── test_champion_service.py            ← Tests unitaris amb mocks (S8)
+        ├── test_champion_record.py             ← Tests del model (S2)
+        ├── test_in_memory_repository.py        ← Tests del repositori (S2)
+        └── test_sqlite_repository.py           ← Tests integració SQLite (S4, S8)
+```
+
+#### Tipus de Tests per Capa
+
+| Capa         | Tipus de Test    | Anotació/Eina          | Velocitat | Què Testeja?                     |
+|--------------|-----------------|------------------------|-----------|----------------------------------|
+| Servei       | Unitari + Mock  | `@Mock` + `@InjectMocks` | ~1ms     | Lògica de negoci aïllada        |
+| Repository   | Integració      | `@DataJpaTest`         | ~100ms    | Queries JPA amb H2 real          |
+| Tot el Stack | Integració Full | `@SpringBootTest`      | ~1-2s     | Tot connectat, de punta a punta  |
+| Python       | Unitari + Mock  | `MagicMock` + `pytest` | ~1ms      | Lògica Python aïllada           |
+| Python SQLite| Integració      | `tmp_path` + `pytest`  | ~10ms     | Persistència SQLite real         |
+
+---
+
+### Spring Test Slices: Quan Usar Cada Un
+
+Spring Boot ofereix anotacions que carreguen **només una part** del context:
+
+```java
+// @DataJpaTest: carrega NOMÉS la capa JPA (repositoris + BD)
+// Ús: testejar queries, mapping d'entitats
+// NO carrega: controladors, serveis, seguretat
+@DataJpaTest
+class ChampionJpaRepositoryTest {
+
+    @Autowired
+    private ChampionJpaRepository repository;
+
+    @Test
+    void shouldSaveAndRetrieveChampion() {
+        // Treballa amb H2 en memòria per defecte
+        // Ràpid perquè no carrega tot Spring
+        ChampionEntity entity = new ChampionEntity("jinx", "Marksman", 51.5);
+        repository.save(entity);
+
+        Optional<ChampionEntity> found = repository.findById("jinx");
+        assertTrue(found.isPresent());
+    }
+}
+
+// @WebMvcTest: carrega NOMÉS la capa web (controladors)
+// Ús: testejar endpoints HTTP, validació de requests
+// NO carrega: repositoris, BD, serveis (cal mockjar-los)
+@WebMvcTest(ChampionController.class)
+class ChampionControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean  // Mock de Spring (no Mockito directe)
+    private ChampionManagementService service;
+
+    @Test
+    void shouldReturnChampionsList() throws Exception {
+        when(service.findAll()).thenReturn(List.of(
+            new ChampionRecord("jinx", "Marksman", 51.5)
+        ));
+
+        mockMvc.perform(get("/api/champions"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].name").value("jinx"));
+    }
+}
+
+// @SpringBootTest: carrega TOT el context
+// Ús: tests E2E, verificar que tot connecta bé
+// Lent: només per a tests crítics de punta a punta
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class EsportsPulseIntegrationTest {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    void shouldCreateAndRetrieveChampion() {
+        // Test complet: HTTP → Controller → Service → Repository → BD
+        restTemplate.postForEntity("/api/champions",
+            new ChampionRecord("jinx", "Marksman", 51.5),
+            Void.class);
+
+        ChampionRecord[] champions = restTemplate.getForObject(
+            "/api/champions", ChampionRecord[].class);
+
+        assertEquals(1, champions.length);
+        assertEquals("jinx", champions[0].name());
+    }
+}
+```
+
+| Anotació          | Què carrega           | Velocitat | Quan usar-la                    |
+|-------------------|-----------------------|-----------|----------------------------------|
+| `@DataJpaTest`    | JPA + BD              | Ràpid     | Testejar repositoris i queries  |
+| `@WebMvcTest`     | Web + Controllers     | Ràpid     | Testejar endpoints HTTP         |
+| `@SpringBootTest` | Tot                   | Lent      | Tests E2E i d'integració final  |
+
+---
+
+### Anti-Patrons Recap
+
+| Anti-Patró             | Problema                                     | Solució                                    |
+|------------------------|----------------------------------------------|--------------------------------------------|
+| Test sense assert      | Cobertura falsa, no verifica res             | Sempre tenir almenys un assert explícit    |
+| Testejar el mock       | Proves que el mock retorna el que li hem dit | Testejar el servei, no el mock             |
+| Test fràgil            | Trenca quan refactoritzem sense canviar comportament | Verificar comportament, no implementació  |
+| Over-mocking           | >3 mocks indica SRP violat                  | Dividir el servei o fer test d'integració  |
+| Test gegant            | 50 línies amb 10 asserts                     | Un test per comportament, dividir          |
+| Testejar getters       | No aporta valor, el record és trivial        | Testejar lògica real, no boilerplate       |
+| Testejar mètodes privats | Acobla test a implementació               | Testejar a través de la interfície pública |
 
 ---
 
 ## Activitat
 
-### Part 1: Arrencar l'Stack i Monitoritzar
+### Exercici 1: Completar la Suite de Tests
 
-**1.1. Arrenca tot l'stack en segon pla:**
+Assegura't que la teva suite de tests és completa:
 
-```bash
-cd esportspulse-engine
+1. **Java — Tests unitaris:**
+   - `ChampionManagementServiceTest` amb `@Mock` i `@InjectMocks`
+   - Organitzats amb `@Nested` i `@DisplayName`
+   - Tests parametritzats per a validació
 
-# Arrencar amb build (per si hi ha canvis des de dijous)
-docker-compose up -d --build
+2. **Java — Tests d'integració:**
+   - `ChampionJpaRepositoryTest` amb `@DataJpaTest`
+   - CRUD complet: save, findById, findAll, delete
 
-# Esperar uns segons i verificar que tot és healthy
-docker-compose ps
-```
+3. **Python — Tests:**
+   - `test_champion_service.py` amb `MagicMock`
+   - `test_sqlite_repository.py` amb `tmp_path`
+   - Fixtures a `conftest.py`
 
-**1.2. Observa els logs d'arrencada:**
+4. **Verifica el CI:**
+   ```bash
+   # Java: ha de passar amb cobertura >= 70%
+   mvn verify
 
-```bash
-# Veure els logs de tots els serveis amb timestamps
-docker-compose logs --timestamps
+   # Python: ha de passar amb cobertura >= 70% i sense errors de lint
+   ruff check .
+   pytest --cov=esportspulse --cov-fail-under=70
+   ```
 
-# Observa l'ordre: postgres i qdrant arranquen primer,
-# després backend i ai-service quan les dependències són healthy.
-```
-
-**1.3. Monitoritza els recursos:**
-
-```bash
-# Deixa docker stats corrent en un terminal
-docker stats
-
-# En un altre terminal, fes peticions al backend per veure
-# com canvia el consum de CPU i memòria
-curl http://localhost:8080/actuator/health
-```
-
-### Part 2: Depurar dins dels Contenidors
-
-**2.1. Verifica les variables d'entorn del backend:**
+### Exercici 2: Cicle Git Complet
 
 ```bash
-# Entrar al contenidor del backend
-docker-compose exec backend sh
+# 1. Crear branca per la setmana
+git checkout -b feature/week8-testing-quality
 
-# Verificar que les variables s'han carregat correctament
-env | grep SPRING
-# Hauries de veure:
-# SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
-# SPRING_DATASOURCE_USERNAME=esportspulse
-# SPRING_DATASOURCE_PASSWORD=dev_secret_2024
-# SPRING_PROFILES_ACTIVE=dev
+# 2. Afegir tots els fitxers nous i modificats
+git add backend-java/src/test/
+git add ai-python/tests/
+git add pom.xml                    # Canvis JaCoCo
+git add ai-python/pyproject.toml   # Canvis pytest-cov + ruff
+git add .github/workflows/ci.yml   # CI actualitzat
 
-# Verificar connectivitat amb PostgreSQL des de dins del contenidor
-# (ping per comprovar que el DNS resol correctament)
-ping -c 2 postgres
+# 3. Commit amb missatge descriptiu
+git commit -m "test: add comprehensive test suite with mocks, coverage and CI
 
-exit
+- JUnit 5: @Nested, @ParameterizedTest, @DisplayName
+- Mockito: @Mock, verify, ArgumentCaptor
+- pytest: fixtures, parametrize, MagicMock
+- JaCoCo: 70% minimum line coverage
+- pytest-cov: 70% minimum coverage
+- ruff: Python linting
+- CI: updated GitHub Actions with both jobs"
+
+# 4. Pujar la branca
+git push -u origin feature/week8-testing-quality
+
+# 5. Crear Pull Request
+gh pr create \
+  --title "feat: week 8 - testing, mocks and code quality" \
+  --body "## Resum
+- Suite de tests completa per Java i Python
+- Mockito per aïllar tests unitaris
+- JaCoCo i pytest-cov per cobertura > 70%
+- ruff per linting Python
+- CI actualitzat amb ambdós jobs
+
+## Tests
+- [ ] mvn verify passa
+- [ ] pytest --cov-fail-under=70 passa
+- [ ] ruff check . net
+- [ ] CI verd"
 ```
 
-**2.2. Verifica la base de dades:**
+### Exercici 3: Reflexió de Bloc 1 — "5 Línies per a una Entrevista"
 
-```bash
-# Entrar a psql dins del contenidor de PostgreSQL
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db
+Has completat el Bloc 1 del curs. Escriu 5 línies que podries dir en una entrevista de feina sobre el que has après:
 
-# Dins de psql:
-# Llistar totes les taules (si el backend ha creat les taules amb JPA)
-\dt
-
-# Veure la versió de PostgreSQL
-SELECT version();
-
-# Sortir
-\q
+```
+1. "He construït un projecte amb Clean Architecture separant domini, repositori i servei."
+2. "He implementat el patró Repository amb dues implementacions: InMemory per tests i JPA per producció."
+3. "He escrit tests unitaris amb JUnit 5 i Mockito, aïllant cada capa."
+4. "He configurat un pipeline CI amb GitHub Actions que verifica cobertura i estil."
+5. "He treballat amb Java i Python en paral·lel, aplicant els mateixos patrons en ambdós."
 ```
 
-**2.3. Verifica el servei Python:**
-
-```bash
-# Entrar al contenidor Python
-docker-compose exec ai-service sh
-
-# Verificar que Qdrant és accessible pel nom de servei
-# (necessitaràs curl o wget; si no estan instal·lats, veure nota)
-curl http://qdrant:6333/healthz
-
-# Verificar les variables d'entorn
-env | grep QDRANT
-# QDRANT_HOST=qdrant
-# QDRANT_PORT=6333
-
-exit
-```
-
-> **Nota:** Les imatges `slim` i `alpine` no inclouen `curl` ni `ping` per defecte. Si els necessites per depurar, pots instal·lar-los temporalment: `apk add curl` (Alpine) o `apt-get update && apt-get install -y curl` (Debian/slim). Recorda que els canvis dins d'un contenidor es perden quan es reinicia.
-
-### Part 3: Exercici Integrador
-
-Ara posarem tot junt. Segueix els passos i verifica cada punt:
-
-**3.1. Comprova que l'stack és complet i robust:**
-
-```bash
-# 1. Arrencar l'stack
-docker-compose up -d --build
-
-# 2. Verificar que tots els serveis són healthy
-docker-compose ps
-# Tots han de mostrar "Up (healthy)"
-
-# 3. Verificar health checks individualment
-curl http://localhost:8080/actuator/health    # Backend Java
-curl http://localhost:5000/health              # Servei Python
-curl http://localhost:6333/healthz             # Qdrant
-
-# Verificar PostgreSQL
-docker-compose exec postgres pg_isready -U esportspulse -d esportspulse_db
-
-# 4. Verificar logs (no hi ha errors)
-docker-compose logs | grep -i error
-# Idealment no hauria de mostrar res (o només errors esperats d'arrencada)
-
-# 5. Verificar recursos
-docker stats --no-stream
-
-# 6. Verificar persistència
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
-INSERT INTO test_persistencia (missatge) VALUES ('Test divendres');
-SELECT * FROM test_persistencia;
-"
-
-# 7. Reiniciar i verificar persistència
-docker-compose down
-docker-compose up -d
-docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "
-SELECT * FROM test_persistencia;
-"
-# Les dades han de seguir allà
-```
-
-### Part 4: Commit i Pull Request
-
-**4.1. Assegura't que tot està en ordre:**
-
-```bash
-# Verificar l'estructura de fitxers Docker
-find . -name "Dockerfile" -o -name "docker-compose.yml" -o -name ".dockerignore" -o -name ".env.example" | sort
-
-# Hauries de veure:
-# ./ai-python/.dockerignore
-# ./ai-python/Dockerfile
-# ./backend-java/.dockerignore
-# ./backend-java/Dockerfile
-# ./docker-compose.yml
-# ./.env.example
-
-# Verificar que .env NO està a Git
-git status
-# .env NO hauria d'aparèixer com a fitxer "untracked"
-# (si apareix, revisa el .gitignore)
-```
-
-**4.2. Crea el commit i el PR:**
-
-```bash
-# Afegir tots els fitxers Docker
-git add backend-java/Dockerfile backend-java/.dockerignore
-git add ai-python/Dockerfile ai-python/.dockerignore
-git add docker-compose.yml .env.example .gitignore
-
-# Commit amb missatge descriptiu
-git commit -m "feat(docker): full Docker setup with Compose, health checks and volumes
-
-- Multi-stage Dockerfiles for Java backend and Python service
-- docker-compose.yml with PostgreSQL, Qdrant, backend and ai-service
-- Health checks for all services with proper dependency ordering
-- Named volumes for data persistence
-- Environment variables externalized to .env
-- .env.example with documentation for team members"
-
-# Crear la branca i el PR
-git checkout -b feature/week8-docker
-git push -u origin feature/week8-docker
-```
-
-### Retrospectiva: I Si Això Fos Producció?
-
-Pren-te 10 minuts per reflexionar sobre aquestes preguntes:
-
-1. **Escalabilitat:** Ara tens una instància de cada servei. Què passes si el backend necessita gestionar 10x més peticions? (Pista: `docker-compose up --scale backend=3` existeix, però... com reparteixes les peticions?)
-
-2. **Actualitzacions:** Com actualitzes el backend sense aturar el servei? (Pista: **zero-downtime deployment** -- ho veurem a la S20 amb CI/CD.)
-
-3. **Seguretat:** El fitxer `.env` és per a desenvolupament. En producció, qui gestiona els secrets? (Pista: GitHub Secrets, AWS Secrets Manager, HashiCorp Vault.)
-
-4. **Monitorització:** `docker stats` és manual. En producció necessites alertes automàtiques. (Pista: Prometheus + Grafana, que podríem afegir al compose.)
-
-5. **Backups:** Si el volum de PostgreSQL es corromp, has perdut tot. (Pista: backups automatitzats, replicació, serveis gestionats com AWS RDS.)
-
-> **Connexió amb la S20 (CI/CD):** Tot el que hem fet aquesta setmana -- Dockerfiles, Compose, health checks -- és el fonament del desplegament automatitzat. A la S20 integrarem Docker amb un pipeline de CI/CD que construeix les imatges, passa els tests i desplega automàticament.
+Personalitza-les amb detalls del **teu** projecte. Practica dir-les en veu alta.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] L'stack complet arrenca amb `docker-compose up -d --build` sense errors
-- [ ] `docker-compose ps` mostra tots els serveis com a "healthy"
-- [ ] `docker-compose logs | grep -i error` no mostra errors inesperats
-- [ ] `docker stats --no-stream` mostra recursos raonables per a cada contenidor
-- [ ] Has pogut entrar dins d'un contenidor amb `docker exec` i verificar variables d'entorn
-- [ ] Les dades de PostgreSQL sobreviuen a `docker-compose down` i `docker-compose up`
-- [ ] Tots els fitxers Docker estan commitejats i pujats al repositori
-- [ ] El PR inclou: Dockerfiles, .dockerignore, docker-compose.yml, .env.example, .gitignore actualitzat
-- [ ] Has reflexionat sobre les preguntes de la retrospectiva (no cal lliurar-ho, és per a tu)
+- [ ] Suite de tests Java completa (unitaris + integració)
+- [ ] Suite de tests Python completa (unitaris + integració SQLite)
+- [ ] `mvn verify` passa amb cobertura >= 70%
+- [ ] `pytest --cov-fail-under=70` passa
+- [ ] `ruff check .` net (sense errors)
+- [ ] CI de GitHub Actions verd
+- [ ] Branca `feature/week8-testing-quality` creada i pujada
+- [ ] Pull Request creat amb descripció completa
+- [ ] Reflexió "5 línies per a una entrevista" escrita
+- [ ] Commit final: `feat: complete week 8 - testing, mocks and code quality`

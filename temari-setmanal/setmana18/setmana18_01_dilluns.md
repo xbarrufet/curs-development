@@ -20,7 +20,7 @@ H2 és una base de dades en memòria que vam usar a les primeres setmanes perqu�
 | Ecosistema | Sense extensions | PostGIS, pg_trgm, vectors... |
 | Ús real | Tests i prototips | Producció a escala |
 
-PostgreSQL ja el tenim al `docker-compose.yml` des de la Setmana 8. Avui el connectarem de debò.
+PostgreSQL ja el tenim al `docker-compose.yml` des de la Setmana 9. Avui el connectarem de debò.
 
 ### Flyway: Migracions Versionades
 

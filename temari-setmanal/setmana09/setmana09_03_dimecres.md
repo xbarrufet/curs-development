@@ -1,290 +1,387 @@
-# Setmana 09 — Dimecres: Virtual Threads (Java 21)
+# Setmana 09 — Dimecres: Docker Compose: Orquestrar Múltiples Serveis
 
 ## Objectiu del Dia
 
-Entendre el problema de l'escalabilitat amb threads de plataforma, com els Virtual Threads de Java 21 el resolen, i activar-los a Spring Boot. Al final del dia tindràs Virtual Threads habilitats al projecte i un benchmark senzill que demostra la diferència.
+Definir tota l'arquitectura del projecte en un sol fitxer `docker-compose.yml` i poder arrencar els quatre serveis (Java backend, Python service, PostgreSQL, Qdrant) amb una única comanda. Al final del dia, `docker-compose up` ha d'aixecar tot l'stack i els serveis han de comunicar-se entre ells per nom.
 
 ---
 
 ## Teoria
 
-### El Problema: Threads de Plataforma
+### El Problema: Massa Comandes Manuals
 
-Quan un servidor web rep una petició, assigna un thread per processar-la. El problema és que els threads de plataforma (els "normals" de Java) són cars:
+Ahir vam executar dos contenidors amb `docker run`. Cadascun necessitava flags:
 
-```
-Thread de Plataforma:
-├── ~1 MB de memòria d'stack per thread
-├── Gestionat pel sistema operatiu (context switch costós)
-├── Limitat a ~200-500 threads en un pool típic
-└── Si el thread està bloquejat (esperant BD, HTTP), la memòria es malgasta
-```
+```bash
+# Backend Java
+docker run -d -p 8080:8080 --name backend esportspulse-backend:latest
 
-**Exemple pràctic**: Si el teu servidor té 200 threads i cada petició triga 100ms (50ms de BD + 50ms de lògica), pots servir ~2000 peticions/segon. Però si la BD va lenta (500ms), baixes a ~400 peticions/segon perquè els threads estan bloquejats esperant.
+# Servei Python
+docker run -d -p 5000:5000 --name ai-service esportspulse-ai:latest
 
-### El Diagrama del Problema
+# PostgreSQL (amb variables d'entorn i volum)
+docker run -d -p 5432:5432 \
+  --name postgres \
+  -e POSTGRES_USER=esportspulse \
+  -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DB=esportspulse_db \
+  -v pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
 
-```
-=== Model Tradicional: Thread Pool Limitat ===
-
-Peticions entrants:          Thread Pool (200 threads):
-    [P1] ──────────────→     [T1] █████░░░░░ (50% esperant BD)
-    [P2] ──────────────→     [T2] █████░░░░░ (50% esperant BD)
-    [P3] ──────────────→     [T3] █████░░░░░ (50% esperant BD)
-    ...                       ...
-    [P200] ────────────→     [T200] █████░░░░░
-    [P201] ─── ESPERA! ──→   ⛔ Pool ple! El client espera...
-    [P202] ─── ESPERA! ──→   ⛔ Pool ple!
-
-
-=== Model Virtual Threads: Sense Límit Pràctic ===
-
-Peticions entrants:          Virtual Threads (milions possibles):
-    [P1] ──────────────→     [VT1] █░ (2KB, allibera carrier quan espera BD)
-    [P2] ──────────────→     [VT2] █░
-    [P3] ──────────────→     [VT3] █░
-    ...                       ...
-    [P1000] ───────────→     [VT1000] █░
-    [P1001] ───────────→     [VT1001] █░  ← Cap problema!
-    [P5000] ───────────→     [VT5000] █░  ← Encara bé!
+# Qdrant (base de dades vectorial per al servei d'IA)
+docker run -d -p 6333:6333 \
+  --name qdrant \
+  -v qdrant_data:/qdrant/storage \
+  qdrant/qdrant:latest
 ```
 
-### Com Funcionen els Virtual Threads
+Quatre comandes, cadascuna amb diversos flags. I encara no hem configurat la xarxa perquè es comuniquin entre ells. Imagina haver de recordar tot això cada cop que vulguis arrencar el projecte. **Insostenible.**
 
-Els Virtual Threads són threads lleugers gestionats per la JVM (no pel sistema operatiu):
+### Docker Compose: Un Sol Fitxer, Tot Definit
 
-```
-Virtual Thread:
-├── ~2 KB de memòria (vs ~1 MB dels de plataforma → 500x menys)
-├── Gestionat per la JVM, no pel SO
-├── Milions possibles en una sola JVM
-├── Quan es bloqueja (I/O), la JVM el "desmunta" del carrier thread
-└── El carrier thread queda lliure per executar un altre virtual thread
-```
+Docker Compose és una eina que permet definir i executar aplicacions multi-contenidor. Tot es descriu en un fitxer YAML (`docker-compose.yml`), i amb una sola comanda aixeques o atures tot.
 
-**Concepte clau — Carrier Thread**: La JVM manté un petit pool de threads reals (carrier threads). Quan un virtual thread es bloqueja (per exemple, esperant una resposta de la BD), la JVM el desmunta del carrier i hi munta un altre virtual thread. Això maximitza l'ús dels threads reals.
-
-```
-Carrier Thread [CT1]:
-    temps 0ms:   executa VT1 (processant)
-    temps 10ms:  VT1 fa query a BD → JVM desmunta VT1, munta VT2
-    temps 15ms:  executa VT2 (processant)
-    temps 25ms:  VT2 fa HTTP call → JVM desmunta VT2, munta VT3
-    temps 30ms:  resposta BD de VT1 arriba → JVM munta VT1 en CT2
-    ...
-    // Un sol carrier thread serveix desenes de virtual threads!
+```yaml
+# docker-compose.yml és la "planta" de l'edifici.
+# Cada servei és una "habitació" amb la seva funció.
+# Docker Compose construeix l'edifici sencer amb una comanda.
 ```
 
-### Creació de Virtual Threads amb Java 21
+### Anatomia d'un docker-compose.yml
 
-```java
-// === Exemple bàsic: crear virtual threads manualment ===
-public class VirtualThreadDemo {
+```yaml
+# Cada bloc de primer nivell sota "services" defineix un contenidor.
+services:
 
-    public static void main(String[] args) throws Exception {
+  # Nom del servei. Els altres contenidors el troben amb aquest nom.
+  backend:
+    # "build" diu a Compose que construeixi la imatge des d'un Dockerfile
+    build:
+      context: ./backend-java      # Carpeta on hi ha el Dockerfile
+      dockerfile: Dockerfile        # Nom del Dockerfile (per defecte ja és "Dockerfile")
 
-        // Opció 1: Crear un virtual thread directament
-        // Thread.ofVirtual() és la nova API de Java 21
-        Thread vt = Thread.ofVirtual()
-            .name("el-meu-virtual-thread")  // Nom per depuració
-            .start(() -> {
-                // Aquest codi s'executa en un virtual thread
-                System.out.println("Hola des de: " + Thread.currentThread());
-                // El thread és virtual — ocupa ~2KB, no 1MB
-            });
-        vt.join();  // Esperem que acabi
+    # Mapeig de ports: HOST:CONTENIDOR
+    # El port de l'esquerra és el del teu ordinador
+    # El port de la dreta és el de dins del contenidor
+    ports:
+      - "8080:8080"
 
-        // Opció 2: Executor amb virtual threads
-        // Crea un thread nou per cada tasca — però són virtuals, així que és barat!
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // Llancem 10.000 tasques simultànies
-            // Amb threads de plataforma, això necessitaria ~10 GB de memòria
-            // Amb virtual threads, ~20 MB
-            for (int i = 0; i < 10_000; i++) {
-                final int taskId = i;
-                executor.submit(() -> {
-                    // Simulem una operació de I/O (query BD, HTTP call)
-                    Thread.sleep(Duration.ofMillis(100));
-                    System.out.println("Tasca " + taskId + " completada");
-                    return null;
-                });
-            }
-        }
-        // L'executor es tanca automàticament (try-with-resources)
-        // Totes 10.000 tasques han acabat en ~100ms (no 10000 * 100ms!)
-    }
-}
+    # Variables d'entorn que rep el contenidor
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
+      - SPRING_DATASOURCE_USERNAME=esportspulse
+      - SPRING_DATASOURCE_PASSWORD=secret
+
+    # depends_on: aquest servei s'arrencarà DESPRÉS dels serveis llistats.
+    # Atenció: "després" vol dir que el contenidor ha arrencat,
+    # NO que l'aplicació dins estigui llesta. Ho millorarem dijous.
+    depends_on:
+      - postgres
+
+  ai-service:
+    build:
+      context: ./ai-python
+    ports:
+      - "5000:5000"
+    environment:
+      - QDRANT_HOST=qdrant          # El servei Python es connecta a Qdrant pel nom
+      - QDRANT_PORT=6333
+    depends_on:
+      - qdrant
+
+  # Serveis de tercers: no cal "build", usem "image" directament
+  postgres:
+    image: postgres:16-alpine       # Imatge oficial de PostgreSQL (versió Alpine, lleugera)
+    ports:
+      - "5432:5432"                 # Exposar port per si volem connectar-nos des del host
+    environment:
+      - POSTGRES_USER=esportspulse
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=esportspulse_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # Volum per persistir dades (ho veurem dijous)
+
+  qdrant:
+    image: qdrant/qdrant:latest     # Base de dades vectorial per a embeddings
+    ports:
+      - "6333:6333"                 # API REST de Qdrant
+      - "6334:6334"                 # API gRPC de Qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+# Declaració de volums amb nom.
+# Docker els gestiona automàticament. Les dades sobreviuen a docker-compose down.
+volumes:
+  pgdata:
+  qdrant_data:
 ```
 
-### Integració amb Spring Boot 3
+### Networking: Com es Comuniquen els Contenidors
 
-Activar virtual threads a Spring Boot és extraordinàriament senzill:
+Quan fas `docker-compose up`, Docker Compose crea automàticament una **xarxa virtual** (bridge network) per al teu projecte. Dins d'aquesta xarxa:
 
-```properties
-# application.properties
-# Aquesta sola línia fa que Spring Boot faci servir virtual threads
-# per a TOTES les peticions HTTP del servidor Tomcat
-spring.threads.virtual.enabled=true
-```
-
-Amb aquesta línia:
-- Tomcat crea un virtual thread per cada petició HTTP entrant
-- No cal thread pool fix: cada petició té el seu propi virtual thread lleuger
-- Les operacions bloquejants (JPA queries, HTTP calls) no malgasten recursos
-- El rendiment sota càrrega millorarà significativament
-
-### Quan els Virtual Threads NO Ajuden
-
-```java
-// ❌ Operacions intensives de CPU: no milloren amb virtual threads
-// Exemple: càlcul matemàtic pur, compressió, encriptació
-public double calcularEstadistiques(List<Match> matches) {
-    // Això usa la CPU al 100%, no fa I/O
-    // Virtual threads no ajuden perquè no hi ha bloqueig
-    return matches.stream()
-        .mapToDouble(Match::getDuration)
-        .average()
-        .orElse(0.0);
-}
-
-// ✅ Operacions de I/O: milloren molt amb virtual threads
-// Exemple: queries BD, crides HTTP, lectura de fitxers
-public List<ChampionStats> getStatsFromMultipleSources() {
-    // Cada crida bloqueja esperant resposta → virtual threads brillen
-    var riotData = riotApiClient.getChampionStats();    // ~200ms esperant
-    var localData = championRepository.findAll();        // ~50ms esperant BD
-    return mergeStats(riotData, localData);
-}
-```
-
-### Benchmark: Platform Threads vs Virtual Threads
-
-```java
-// === Benchmark per comparar ambdós models ===
-// Simula peticions concurrents amb operacions de I/O
-public class ThreadBenchmark {
-
-    // Simula una operació que bloqueja el thread (com una query a BD)
-    static void simulateIOWork() {
-        try {
-            Thread.sleep(Duration.ofMillis(100)); // Simula 100ms de I/O
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    public static void main(String[] args) throws Exception {
-        int totalTasks = 10_000;  // 10.000 "peticions" simultànies
-
-        // --- Benchmark amb Platform Threads (pool de 200) ---
-        System.out.println("=== Platform Threads (pool 200) ===");
-        long start = System.currentTimeMillis();
-
-        // Pool fix de 200 threads — el màxim habitual en producció
-        try (var executor = Executors.newFixedThreadPool(200)) {
-            var futures = new ArrayList<Future<?>>();
-            for (int i = 0; i < totalTasks; i++) {
-                futures.add(executor.submit(() -> simulateIOWork()));
-            }
-            // Esperem que acabin totes les tasques
-            for (var f : futures) f.get();
-        }
-
-        long platformTime = System.currentTimeMillis() - start;
-        System.out.println("Temps: " + platformTime + "ms");
-        // Resultat esperat: ~5000ms (10000 tasques / 200 threads * 100ms)
-
-        // --- Benchmark amb Virtual Threads ---
-        System.out.println("=== Virtual Threads ===");
-        start = System.currentTimeMillis();
-
-        // Un virtual thread per tasca — no cal pool fix!
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var futures = new ArrayList<Future<?>>();
-            for (int i = 0; i < totalTasks; i++) {
-                futures.add(executor.submit(() -> simulateIOWork()));
-            }
-            for (var f : futures) f.get();
-        }
-
-        long virtualTime = System.currentTimeMillis() - start;
-        System.out.println("Temps: " + virtualTime + "ms");
-        // Resultat esperat: ~100-200ms (totes 10000 corren quasi en paral·lel!)
-
-        // --- Comparació ---
-        System.out.println("\n=== Resultats ===");
-        System.out.println("Platform Threads: " + platformTime + "ms");
-        System.out.println("Virtual Threads:  " + virtualTime + "ms");
-        System.out.println("Speedup: " + (platformTime / virtualTime) + "x");
-        // Speedup esperat: ~25-50x per a operacions de I/O
-    }
-}
-```
-
-### Resultat Esperat del Benchmark
+- Cada servei és accessible pel **nom del servei** com a hostname
+- `localhost` dins d'un contenidor es refereix **al propi contenidor**, no al teu ordinador
+- Els contenidors es resolen entre ells per DNS intern de Docker
 
 ```
-=== Platform Threads (pool 200) ===
-Temps: 5124ms
-
-=== Virtual Threads ===
-Temps: 187ms
-
-=== Resultats ===
-Platform Threads: 5124ms
-Virtual Threads:  187ms
-Speedup: 27x
+┌─────────────────────────────────────────────────────┐
+│              Xarxa Docker (bridge)                  │
+│                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────┐ │
+│  │ backend  │  │ai-service│  │ postgres │  │qdr.│ │
+│  │ :8080    │  │ :5000    │  │ :5432    │  │:6333│ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──┬─┘ │
+│       │              │              │            │   │
+│       └──────────────┴──────┬───────┴────────────┘   │
+│                             │                        │
+└─────────────────────────────┼────────────────────────┘
+                              │
+                    Ports exposats al host:
+                    localhost:8080 → backend
+                    localhost:5000 → ai-service
+                    localhost:5432 → postgres
 ```
 
-La diferència és brutal perquè els virtual threads no malbaraten temps esperant: quan un es bloqueja, un altre ocupa el seu lloc al carrier thread immediatament.
+**Exemple pràctic:** El backend Java es connecta a PostgreSQL amb:
+```
+jdbc:postgresql://postgres:5432/esportspulse_db
+                  ^^^^^^^^
+                  Nom del servei, NO localhost!
+```
+
+Des del teu ordinador (fora de Docker) sí que uses `localhost:5432` perquè el port està mapejat.
+
+> **Error habitual:** Configurar la connexió a la base de dades com `localhost:5432` dins del contenidor. Dins de Docker, `localhost` és el propi contenidor, que no té PostgreSQL. Has d'usar el nom del servei: `postgres`.
+
+### Comandes Essencials de Docker Compose
+
+```bash
+# Arrencar tots els serveis (en segon pla)
+# --build = reconstruir imatges si el Dockerfile o el codi han canviat
+docker-compose up -d --build
+
+# Arrencar tots els serveis (en primer pla, veient logs en directe)
+docker-compose up --build
+
+# Aturar i eliminar tots els contenidors (les dades dels volums es mantenen)
+docker-compose down
+
+# Aturar i eliminar tot, INCLOENT els volums (pèrdua de dades!)
+docker-compose down -v
+
+# Veure els logs de tots els serveis
+docker-compose logs
+
+# Veure els logs d'un servei concret, en temps real
+docker-compose logs -f backend
+
+# Veure l'estat dels serveis
+docker-compose ps
+
+# Reconstruir una imatge concreta sense cache
+docker-compose build --no-cache backend
+
+# Arrencar només un servei (i les seves dependències)
+docker-compose up -d postgres
+```
 
 ---
 
 ## Activitat
 
-### Part 1: Activa Virtual Threads a Spring Boot
+### Part 1: Crear el fitxer docker-compose.yml
 
-1. Afegeix la propietat al teu `application.properties`:
-   ```properties
-   spring.threads.virtual.enabled=true
-   ```
-2. Arrenca l'aplicació i verifica que funciona igual que abans
+**1.1.** A l'arrel del projecte `esportspulse-engine/`, crea el fitxer `docker-compose.yml`:
 
-### Part 2: Crea el Benchmark
+```yaml
+# ===================================================================
+# Docker Compose per al projecte EsportsPulse
+# Defineix tots els serveis necessaris per al desenvolupament local
+# ===================================================================
 
-1. Crea la classe `ThreadBenchmark.java` al paquet `com.esportspulse.engine.benchmark`
-2. Executa-la amb `mvn exec:java` o directament des de l'IDE
-3. Anota els resultats
+services:
+  # --- Backend Java (Spring Boot) ---
+  backend:
+    build:
+      context: ./backend-java
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Connexió a PostgreSQL: "postgres" és el nom del servei, no localhost
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/esportspulse_db
+      - SPRING_DATASOURCE_USERNAME=esportspulse
+      - SPRING_DATASOURCE_PASSWORD=secret
+      # Perfil de Spring per a desenvolupament
+      - SPRING_PROFILES_ACTIVE=dev
+    depends_on:
+      - postgres
+    # Reiniciar automàticament si el contenidor cau
+    restart: unless-stopped
 
-### Part 3: Verifica amb un Endpoint de Prova
+  # --- Servei Python (IA / Embeddings) ---
+  ai-service:
+    build:
+      context: ./ai-python
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      # Connexió a Qdrant: "qdrant" és el nom del servei
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - LOG_LEVEL=INFO
+    depends_on:
+      - qdrant
+    restart: unless-stopped
 
-```java
-// Afegeix temporalment aquest endpoint al controller per veure
-// que el thread que processa la petició és virtual
-@GetMapping("/thread-info")
-public ResponseEntity<Map<String, Object>> threadInfo() {
-    Thread current = Thread.currentThread();
-    return ResponseEntity.ok(Map.of(
-        "threadName", current.getName(),
-        "isVirtual", current.isVirtual(),  // Ha de ser true!
-        "threadClass", current.getClass().getSimpleName()
-    ));
-}
+  # --- PostgreSQL (base de dades relacional) ---
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=esportspulse
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=esportspulse_db
+    volumes:
+      # Volum amb nom per persistir les dades de PostgreSQL
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # --- Qdrant (base de dades vectorial) ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"    # API REST
+      - "6334:6334"    # API gRPC
+    volumes:
+      # Volum amb nom per persistir els vectors
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+# Declaració de volums
+# Docker gestiona on s'emmagatzemen físicament les dades
+volumes:
+  pgdata:
+  qdrant_data:
 ```
+
+### Part 2: Arrencar i Verificar
+
+**2.1. Arrenca tot l'stack:**
 
 ```bash
-# Verifica que el thread és virtual
-curl http://localhost:8080/api/champions/thread-info
-# Resposta esperada: {"threadName":"tomcat-handler-0","isVirtual":true,...}
+# Des de l'arrel del projecte (on hi ha docker-compose.yml)
+cd esportspulse-engine
+
+# Arrencar tots els serveis, reconstruint les imatges
+docker-compose up -d --build
+
+# Seguir l'arrencada en temps real
+docker-compose logs -f
+# Ctrl+C per sortir dels logs (els contenidors segueixen corrent)
 ```
+
+**2.2. Comprova que tot funciona:**
+
+```bash
+# Veure l'estat de tots els serveis
+docker-compose ps
+
+# Hauries de veure els 4 serveis amb estat "Up":
+# NAME              STATUS    PORTS
+# backend           Up        0.0.0.0:8080->8080/tcp
+# ai-service        Up        0.0.0.0:5000->5000/tcp
+# postgres          Up        0.0.0.0:5432->5432/tcp
+# qdrant            Up        0.0.0.0:6333->6333/tcp, 0.0.0.0:6334->6334/tcp
+
+# Verificar el backend Java
+curl http://localhost:8080/actuator/health
+
+# Verificar el servei Python
+curl http://localhost:5000/health
+
+# Verificar PostgreSQL (des del host, perquè hem exposat el port)
+# Necessites psql instal·lat, o pots fer-ho amb docker exec (ho veurem divendres)
+docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "SELECT 1;"
+
+# Verificar Qdrant (API REST)
+curl http://localhost:6333/healthz
+```
+
+### Part 3: Experimentar amb el Cicle de Vida
+
+**3.1. Aturar i reprendre:**
+
+```bash
+# Aturar tot (les dades dels volums es mantenen)
+docker-compose down
+
+# Verificar que no hi ha contenidors
+docker-compose ps
+
+# Tornar a arrencar (no cal --build si no has canviat codi)
+docker-compose up -d
+
+# Les dades de PostgreSQL segueixen allà gràcies als volums
+docker-compose exec postgres psql -U esportspulse -d esportspulse_db -c "SELECT 1;"
+```
+
+**3.2. Veure logs d'un servei concret:**
+
+```bash
+# Només els logs del backend, en temps real
+docker-compose logs -f backend
+
+# Els últims 50 logs del servei Python
+docker-compose logs --tail=50 ai-service
+```
+
+**3.3. Reconstruir un servei després de canviar codi:**
+
+```bash
+# Si canvies codi al backend Java, reconstrueix només aquell servei
+docker-compose up -d --build backend
+
+# Docker Compose detecta que la resta de serveis no han canviat
+# i no els reinicia (intel·ligent!)
+```
+
+### Part 4: Entendre la Xarxa
+
+**4.1. Comprova la resolució de noms:**
+
+```bash
+# Entra dins del contenidor del backend
+docker-compose exec backend sh
+
+# Des de dins del contenidor, resol el nom "postgres"
+# (pot ser que necessitis instal·lar eines de xarxa)
+nslookup postgres
+# Hauria de mostrar una IP interna de Docker (ex: 172.18.0.3)
+
+# Prova la connexió a PostgreSQL des de dins del backend
+# (si tens les eines instal·lades)
+ping -c 2 postgres
+
+# Surt del contenidor
+exit
+```
+
+> **Nota important sobre `depends_on`:** Per defecte, `depends_on` només espera que el **contenidor** s'hagi iniciat, no que l'**aplicació** dins estigui llesta. PostgreSQL pot trigar uns segons a arrencar, i el backend podria intentar connectar-s'hi abans que estigui llest. Dijous veurem com solucionar-ho amb **health checks**.
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `spring.threads.virtual.enabled=true` afegit a `application.properties`
-- [ ] L'aplicació arrenca correctament amb virtual threads
-- [ ] Benchmark `ThreadBenchmark.java` creat i executat
-- [ ] Els resultats del benchmark mostren una diferència significativa (>10x)
-- [ ] L'endpoint `/thread-info` confirma `"isVirtual": true`
-- [ ] Commit: `feat(threads): enable virtual threads and add benchmark`
+- [ ] El fitxer `docker-compose.yml` existeix a l'arrel del projecte amb els 4 serveis definits
+- [ ] `docker-compose up -d --build` arrenca tots els serveis sense errors
+- [ ] `docker-compose ps` mostra els 4 serveis amb estat "Up"
+- [ ] El backend Java respon a `http://localhost:8080/actuator/health`
+- [ ] El servei Python respon a `http://localhost:5000/health`
+- [ ] PostgreSQL accepta connexions a `localhost:5432`
+- [ ] Qdrant respon a `http://localhost:6333/healthz`
+- [ ] `docker-compose down` i `docker-compose up -d` funcionen correctament (les dades de PostgreSQL es mantenen)
+- [ ] Tots els fitxers estan commitejats: `feat(docker): add docker-compose with all services`

@@ -1,314 +1,433 @@
-# Setmana 8 — Dimarts: Dockerfile: Empaquetar la Teva Aplicació
+# Setmana 08 — Dimarts: Mockito — Aïllar la Unitat Sota Test
 
 ## Objectiu del Dia
 
-Escriure Dockerfiles per al backend Java i el servei Python del projecte, construir les imatges i executar-les com a contenidors independents. Al final del dia has de poder fer `docker build` i `docker run` per a cadascun dels dos serveis i veure que responen correctament.
+Entendre per què necessitem mocks, com funciona Mockito, i escriure tests unitaris que aïllen el `ChampionManagementService` de les seves dependències reals. Al final del dia sabràs usar `@Mock`, `@InjectMocks`, `when/thenReturn`, `verify` i `ArgumentCaptor`.
 
 ---
 
 ## Teoria
 
-### Què és un Dockerfile?
+### Per Què Necessitem Mocks?
 
-Un Dockerfile és una **recepta** que descriu, pas a pas, com construir una imatge Docker. Una imatge és una plantilla immutable que conté tot el que necessita la teva aplicació per funcionar: sistema operatiu base, dependències, codi compilat i instruccions d'arrencada.
+Quan testem el `ChampionManagementService`, aquest depèn d'un `ChampionRepository`. Si usem el repositori real (JPA + H2), el test:
+- Necessita una base de dades activa
+- Triga més (accés a disc/memòria)
+- Pot fallar per problemes de la BD, no del servei
 
-Pensa-hi com una recepta de cuina:
-- **FROM** — el plat base (la imatge sobre la qual construïm)
-- **COPY** — afegir ingredients (copiar fitxers al contenidor)
-- **RUN** — cuinar (executar comandes durant la construcció)
-- **CMD** — servir el plat (la comanda que s'executa quan arrenca el contenidor)
-- **EXPOSE** — documentar quin port utilitza l'aplicació
-
-```dockerfile
-# Cada instrucció crea una "capa" (layer) de la imatge.
-# Docker guarda en cache cada capa. Si no canvia, no la reconstrueix.
-# Per això l'ordre importa: posar primer el que canvia menys.
-
-FROM eclipse-temurin:21-jre        # Imatge base amb Java 21 (només JRE, no JDK)
-COPY target/app.jar /app/app.jar   # Copiar el JAR compilat dins la imatge
-EXPOSE 8080                        # Documentar que l'app escolta al port 8080
-CMD ["java", "-jar", "/app/app.jar"]  # Comanda per arrencar el contenidor
+```
+  Sense mocks (test d'integració):             Amb mocks (test unitari):
+  ┌──────────┐    ┌──────────────┐    ┌────┐   ┌──────────┐    ┌──────────────┐
+  │  Service  │───>│  Repository  │───>│ H2 │   │  Service  │───>│  Mock Repo   │
+  └──────────┘    └──────────────┘    └────┘   └──────────┘    └──────────────┘
+       ↑                                            ↑
+  Lent (~100ms)                               Ràpid (~1ms)
+  Pot fallar per BD                           Només falla si el servei té bug
 ```
 
-> **Imatge vs Contenidor:** Una imatge és la recepta congelada; un contenidor és un plat servit. Pots crear molts contenidors a partir de la mateixa imatge.
+**Regla:** Fes servir mocks per aïllar la unitat sota test. Només testeja **una cosa** a cada test.
 
-### Les Instruccions Principals
+---
 
-| Instrucció | Què fa | Exemple |
-|------------|--------|---------|
-| `FROM` | Defineix la imatge base | `FROM python:3.12-slim` |
-| `WORKDIR` | Estableix el directori de treball dins el contenidor | `WORKDIR /app` |
-| `COPY` | Copia fitxers del host al contenidor | `COPY src/ /app/src/` |
-| `RUN` | Executa una comanda durant el build | `RUN pip install -r requirements.txt` |
-| `CMD` | Comanda per defecte quan arrenca el contenidor | `CMD ["python", "main.py"]` |
-| `EXPOSE` | Documenta el port que utilitza l'aplicació | `EXPOSE 5000` |
-| `ENV` | Defineix variables d'entorn | `ENV JAVA_OPTS="-Xmx512m"` |
+### Configuració de Mockito
 
-### Multi-stage Builds: Imatges Petites i Segures
+Primer, assegura't que tens la dependència a `pom.xml` (ja la tens des de setmanes anteriors):
 
-Quan compiles un projecte Java, necessites el JDK (Java Development Kit) i Maven. Però en producció, només necessites el JRE (Java Runtime Environment) i el JAR compilat. Incloure eines de compilació a la imatge final és:
-- **Malbaratament d'espai** — el JDK ocupa centenars de MB innecessaris
-- **Risc de seguretat** — menys eines = menys superfície d'atac
+```xml
+<!-- Mockito: framework per crear objectes simulats (mocks) -->
+<!-- Permet testejar el servei sense necessitar un repositori real -->
+<dependency>
+    <groupId>org.mockito</groupId>
+    <artifactId>mockito-core</artifactId>
+    <version>5.12.0</version>
+    <scope>test</scope>
+</dependency>
 
-La solució és el **multi-stage build**: una primera etapa compila, una segona etapa només copia el resultat.
-
-```dockerfile
-# === ETAPA 1: Compilació ===
-# Usem una imatge amb JDK + Maven per compilar el projecte.
-# Aquesta etapa es descarta al final; no forma part de la imatge final.
-FROM eclipse-temurin:21-jdk AS builder
-
-# Establim el directori de treball dins el contenidor
-WORKDIR /build
-
-# Primer copiem NOMÉS el pom.xml per aprofitar la cache de Docker.
-# Si les dependències no canvien, Docker reutilitza la capa anterior.
-COPY pom.xml .
-
-# Descarreguem les dependències (sense compilar el codi).
-# -B = mode batch (sense output interactiu)
-# go-offline = descarrega tot el que necessita Maven
-RUN mvn dependency:go-offline -B
-
-# Ara copiem el codi font. Si només canvia el codi,
-# Docker reutilitza la capa de dependències (molt més ràpid).
-COPY src/ src/
-
-# Compilem el projecte i creem el JAR.
-# -DskipTests perquè els tests es passen en CI, no durant el build de la imatge.
-RUN mvn package -DskipTests -B
-
-# === ETAPA 2: Imatge Final ===
-# Usem una imatge lleugera amb NOMÉS el JRE (no JDK, no Maven).
-FROM eclipse-temurin:21-jre-alpine
-
-WORKDIR /app
-
-# Copiem NOMÉS el JAR compilat des de l'etapa builder.
-# Tot el JDK, Maven i codi font queden fora de la imatge final.
-COPY --from=builder /build/target/*.jar app.jar
-
-# Documentem el port que utilitza Spring Boot per defecte
-EXPOSE 8080
-
-# Comanda per arrencar l'aplicació
-CMD ["java", "-jar", "app.jar"]
+<!-- Integració Mockito + JUnit 5 -->
+<!-- Permet usar @Mock i @InjectMocks amb anotacions -->
+<dependency>
+    <groupId>org.mockito</groupId>
+    <artifactId>mockito-junit-jupiter</artifactId>
+    <version>5.12.0</version>
+    <scope>test</scope>
+</dependency>
 ```
 
-Comparem mides:
+### Setup amb Anotacions
 
-| Imatge | Mida aproximada |
-|--------|-----------------|
-| `eclipse-temurin:21-jdk` (tot inclòs) | ~450 MB |
-| `eclipse-temurin:21-jre-alpine` (només JRE) | ~190 MB |
-| La nostra imatge final (JRE + JAR) | ~200 MB |
+```java
+// @ExtendWith activa la integració Mockito-JUnit 5
+// Sense això, @Mock i @InjectMocks no funcionen
+@ExtendWith(MockitoExtension.class)
+class ChampionManagementServiceTest {
 
-> **Per què Alpine?** Alpine Linux és una distribució minimalista (~5 MB). Combinada amb JRE, obtenim una imatge molt més lleugera.
+    // @Mock crea un objecte simulat del repositori
+    // Totes les crides al mock retornen null/buit per defecte
+    @Mock
+    private ChampionRepository repository;
 
-### .dockerignore: No Copiar Escombraries
-
-Igual que `.gitignore` evita pujar fitxers innecessaris a Git, `.dockerignore` evita copiar-los dins la imatge Docker:
-
-```dockerignore
-# No copiar res que no sigui necessari per al build
-target/
-.git/
-.gitignore
-*.md
-.idea/
-*.iml
-__pycache__/
-.venv/
-.env
+    // @InjectMocks crea el servei REAL i li injecta els mocks
+    // Equivalent a: new ChampionManagementService(repository)
+    @InjectMocks
+    private ChampionManagementService service;
+}
 ```
 
-> **Per què importa?** Sense `.dockerignore`, un `COPY . .` copiaria el directori `.git` (potencialment centenars de MB), fitxers temporals i secrets com `.env`.
+**Important:** El `service` és REAL. El `repository` és FALS (mock). Estem testejant el servei de veritat, però amb una dependència controlada.
+
+---
+
+### when/thenReturn: Definir Comportament del Mock
+
+Amb `when/thenReturn` diem al mock: "Quan et cridin amb X, retorna Y".
+
+```java
+@Test
+@DisplayName("ha de retornar un campió quan existeix al repositori")
+void shouldReturnChampionWhenExists() {
+    // Arrange: definim el comportament del mock
+    // Quan algú cridi findById("jinx"), el mock retorna un Optional amb Jinx
+    ChampionRecord jinx = new ChampionRecord("jinx", "Marksman", 51.5);
+    when(repository.findById("jinx")).thenReturn(Optional.of(jinx));
+
+    // Act: cridem el servei (que internament crida el mock)
+    Optional<ChampionRecord> result = service.findById("jinx");
+
+    // Assert: verifiquem que el servei retorna el que esperem
+    assertTrue(result.isPresent());
+    assertEquals("Marksman", result.get().role());
+    assertEquals(51.5, result.get().winRate());
+}
+
+@Test
+@DisplayName("ha de retornar buit quan el campió no existeix")
+void shouldReturnEmptyWhenNotFound() {
+    // Arrange: el mock retorna Optional.empty() per qualsevol ID
+    // Això simula un repositori on el campió no existeix
+    when(repository.findById("championInexistent")).thenReturn(Optional.empty());
+
+    // Act
+    Optional<ChampionRecord> result = service.findById("championInexistent");
+
+    // Assert
+    assertTrue(result.isEmpty(), "Hauria de retornar Optional buit");
+}
+
+@Test
+@DisplayName("ha de retornar tots els campions")
+void shouldReturnAllChampions() {
+    // Arrange: el mock retorna una llista predefinida
+    // Controlem exactament què "hi ha" al repositori fals
+    List<ChampionRecord> champions = List.of(
+        new ChampionRecord("jinx", "Marksman", 51.5),
+        new ChampionRecord("lux", "Mage", 52.0),
+        new ChampionRecord("thresh", "Support", 49.8)
+    );
+    when(repository.findAll()).thenReturn(champions);
+
+    // Act
+    List<ChampionRecord> result = service.findAll();
+
+    // Assert
+    assertEquals(3, result.size());
+}
+```
+
+#### when/thenThrow: Simular Errors
+
+```java
+@Test
+@DisplayName("ha de gestionar errors del repositori")
+void shouldHandleRepositoryErrors() {
+    // Arrange: simulem que el repositori llança una excepció
+    // Això passa quan la BD està caiguda o hi ha errors de connexió
+    when(repository.findAll()).thenThrow(
+        new RuntimeException("Connexió a la BD fallida")
+    );
+
+    // Act + Assert: verifiquem que el servei gestiona l'error
+    // (depenent de la implementació: pot relançar, retornar buit, etc.)
+    assertThrows(RuntimeException.class, () -> service.findAll());
+}
+```
+
+---
+
+### verify: Confirmar Interaccions
+
+`verify` comprova que el mock ha rebut una crida específica. No comprova el resultat, sinó **que la interacció ha passat**.
+
+```java
+@Test
+@DisplayName("ha de guardar el campió al repositori quan el registrem")
+void shouldSaveChampionToRepository() {
+    // Arrange
+    ChampionRecord jinx = new ChampionRecord("jinx", "Marksman", 51.5);
+
+    // Act: registrem el campió
+    service.register(jinx);
+
+    // Assert: verifiquem que el servei HA CRIDAT repository.save()
+    // Si el servei no crida save(), el test falla
+    verify(repository).save(any(ChampionRecord.class));
+}
+
+@Test
+@DisplayName("no ha d'esborrar res quan registrem un campió")
+void shouldNotDeleteWhenRegistering() {
+    // Arrange
+    ChampionRecord jinx = new ChampionRecord("jinx", "Marksman", 51.5);
+
+    // Act
+    service.register(jinx);
+
+    // Assert: verifiquem que delete() NO s'ha cridat MAI
+    // Protegeix contra efectes secundaris no desitjats
+    verify(repository, never()).delete(any());
+}
+
+@Test
+@DisplayName("ha de cridar findAll exactament un cop")
+void shouldCallFindAllOnce() {
+    // Arrange
+    when(repository.findAll()).thenReturn(List.of());
+
+    // Act
+    service.findAll();
+
+    // Assert: verifiquem que findAll s'ha cridat exactament 1 cop
+    // Protegeix contra crides duplicades accidentals
+    verify(repository, times(1)).findAll();
+}
+```
+
+**Modes de verify:**
+- `verify(mock).method()` — cridat exactament 1 cop (per defecte)
+- `verify(mock, times(3)).method()` — cridat exactament 3 cops
+- `verify(mock, never()).method()` — mai cridat
+- `verify(mock, atLeastOnce()).method()` — cridat 1 o més cops
+
+---
+
+### ArgumentCaptor: Inspeccionar Què s'ha Passat al Mock
+
+Quan el servei transforma les dades abans de guardar-les, volem verificar **exactament** què s'ha passat al repositori.
+
+```java
+@Test
+@DisplayName("ha de normalitzar el nom del campió a minúscules abans de guardar")
+void shouldNormalizeChampionNameBeforeSaving() {
+    // Arrange: registrem amb majúscules
+    ChampionRecord jinxUpperCase = new ChampionRecord("JINX", "Marksman", 51.5);
+
+    // Creem un ArgumentCaptor per capturar el que es passa a save()
+    ArgumentCaptor<ChampionRecord> captor = ArgumentCaptor.forClass(ChampionRecord.class);
+
+    // Act
+    service.register(jinxUpperCase);
+
+    // Assert: capturem l'argument passat a save()
+    verify(repository).save(captor.capture());
+
+    // Ara podem inspeccionar l'objecte capturat
+    ChampionRecord savedChampion = captor.getValue();
+
+    // Verifiquem que el servei ha normalitzat el nom a minúscules
+    assertEquals("jinx", savedChampion.name(),
+        "El nom s'hauria de guardar en minúscules");
+
+    // Verifiquem que la resta de camps no han canviat
+    assertEquals("Marksman", savedChampion.role());
+    assertEquals(51.5, savedChampion.winRate());
+}
+```
+
+---
+
+### Anti-Patrons amb Mocks
+
+#### 1. Testejar el Mock (Test Inútil)
+
+```java
+// MAL: Estem testejant que el mock retorna el que li hem dit
+// Això no testeja RES del nostre codi
+@Test
+void testInutil() {
+    when(repository.findById("jinx")).thenReturn(Optional.of(jinx));
+
+    // Cridem el mock directament, no el servei!
+    Optional<ChampionRecord> result = repository.findById("jinx");
+
+    // Òbviament retorna el que hem configurat — no testeja res
+    assertTrue(result.isPresent()); // SEMPRE passa, no demostra res
+}
+```
+
+#### 2. Over-Mocking (Massa Mocks)
+
+```java
+// MAL: Si necessites 4+ mocks, potser el servei fa massa coses
+// Considera dividir-lo (Single Responsibility Principle)
+@Mock private ChampionRepository championRepo;
+@Mock private MatchRepository matchRepo;
+@Mock private PlayerRepository playerRepo;
+@Mock private NotificationService notifier;
+@Mock private AuditLogger auditLogger;
+// Senyal d'alerta: probablement SRP violat
+```
+
+#### 3. Verificar Implementació, No Comportament
+
+```java
+// MAL: Verifiquem l'ordre intern de les crides
+// Si refactoritzem el servei, el test es trenca
+@Test
+void testFragil() {
+    service.register(jinx);
+    InOrder inOrder = inOrder(repository);
+    inOrder.verify(repository).existsById("jinx");
+    inOrder.verify(repository).save(jinx);
+    // Massa acoblat a la implementació interna
+}
+
+// BÉ: Verifiquem el comportament observable
+@Test
+void testRobust() {
+    service.register(jinx);
+    verify(repository).save(jinx);
+    // No ens importa COM ho fa, sinó QUÈ fa
+}
+```
+
+> **Regla:** "Mockeja dependències externes, mai el subjecte sota test."
+
+---
+
+### Exemple Complet: Test Suite amb Mockito
+
+```java
+@ExtendWith(MockitoExtension.class)
+class ChampionManagementServiceTest {
+
+    @Mock
+    private ChampionRepository repository;
+
+    @InjectMocks
+    private ChampionManagementService service;
+
+    // Dades de test reutilitzables
+    private ChampionRecord jinx;
+    private ChampionRecord lux;
+
+    @BeforeEach
+    void setUp() {
+        // Creem campions de test que farem servir en múltiples tests
+        jinx = new ChampionRecord("jinx", "Marksman", 51.5);
+        lux = new ChampionRecord("lux", "Mage", 52.0);
+    }
+
+    @Nested
+    @DisplayName("Registre de campions")
+    class Registration {
+
+        @Test
+        @DisplayName("ha de guardar un campió vàlid")
+        void shouldSaveValidChampion() {
+            service.register(jinx);
+            verify(repository).save(jinx);
+        }
+
+        @Test
+        @DisplayName("ha de rebutjar un campió amb winRate negatiu")
+        void shouldRejectNegativeWinRate() {
+            ChampionRecord invalid = new ChampionRecord("bad", "Mage", -5.0);
+            assertThrows(IllegalArgumentException.class,
+                () -> service.register(invalid));
+            // Verifiquem que NO s'ha intentat guardar
+            verify(repository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Cerca de campions")
+    class Search {
+
+        @Test
+        @DisplayName("ha de retornar campions filtrats per rol")
+        void shouldFilterByRole() {
+            // Arrange: el mock retorna una llista mixta
+            when(repository.findAll()).thenReturn(List.of(jinx, lux));
+
+            // Act: el servei filtra per rol
+            List<ChampionRecord> marksmen = service.findByRole("Marksman");
+
+            // Assert: només retorna els Marksman
+            assertEquals(1, marksmen.size());
+            assertEquals("jinx", marksmen.get(0).name());
+        }
+
+        @Test
+        @DisplayName("ha de retornar llista buida si no hi ha campions")
+        void shouldReturnEmptyWhenNoChampions() {
+            when(repository.findAll()).thenReturn(List.of());
+
+            List<ChampionRecord> result = service.findByRole("Mage");
+
+            assertTrue(result.isEmpty());
+        }
+    }
+}
+```
 
 ---
 
 ## Activitat
 
-### Part 1: Dockerfile per al Backend Java
+### Exercici: Tests Unitaris amb Mockito
 
-**1.1. Crea el fitxer `backend-java/Dockerfile`:**
+Escriu una suite de tests per al `ChampionManagementService` usant Mockito:
 
-```dockerfile
-# ===================================================================
-# Dockerfile per al backend Java (Spring Boot + Maven)
-# Multi-stage build: compila amb JDK, executa amb JRE
-# ===================================================================
+1. **Configura el test amb anotacions:**
+   - `@ExtendWith(MockitoExtension.class)`
+   - `@Mock` per al repositori
+   - `@InjectMocks` per al servei
 
-# --- Etapa 1: Compilar el projecte ---
-FROM eclipse-temurin:21-jdk AS builder
-WORKDIR /build
+2. **Escriu tests amb `when/thenReturn`:**
+   - `findById` quan el campió existeix
+   - `findById` quan el campió no existeix
+   - `findAll` amb repositori buit
+   - `findAll` amb múltiples campions
+   - `findByRole` filtrant correctament
 
-# Copiar primer el pom.xml per cachear dependències
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+3. **Escriu tests amb `verify`:**
+   - `register` crida `save()` amb el campió correcte
+   - `register` amb dades invàlides NO crida `save()`
+   - `delete` crida `deleteById()` correctament
 
-# Copiar el codi font i compilar
-COPY src/ src/
-RUN mvn package -DskipTests -B
+4. **Usa `ArgumentCaptor`:**
+   - Captura el `ChampionRecord` passat a `save()` i verifica tots els camps
 
-# --- Etapa 2: Imatge d'execució ---
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
+5. **Organitza amb `@Nested` i `@DisplayName`** (aplica el que vas aprendre ahir)
 
-# Copiar només el JAR des de l'etapa de compilació
-COPY --from=builder /build/target/*.jar app.jar
+### Criteris d'Èxit
 
-# El backend escolta al port 8080
-EXPOSE 8080
-
-# Arrencar l'aplicació
-# -Djava.security.egd: millora la velocitat d'arrencada en contenidors
-CMD ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
-```
-
-**1.2. Crea el fitxer `backend-java/.dockerignore`:**
-
-```dockerignore
-target/
-.git/
-.gitignore
-*.md
-.idea/
-*.iml
-```
-
-**1.3. Construeix i executa:**
-
-```bash
-# Situats a la carpeta backend-java/
-cd backend-java
-
-# Construir la imatge. -t = tag (nom de la imatge)
-# El "." final indica que el context de build és el directori actual
-docker build -t esportspulse-backend:latest .
-
-# Comprovar que la imatge s'ha creat
-docker images | grep esportspulse
-
-# Executar el contenidor
-# -d = detached (en segon pla)
-# -p 8080:8080 = mapejar el port 8080 del host al 8080 del contenidor
-# --name = donar un nom al contenidor (per identificar-lo fàcilment)
-docker run -d -p 8080:8080 --name backend esportspulse-backend:latest
-
-# Verificar que funciona
-curl http://localhost:8080/actuator/health
-# Hauria de retornar: {"status":"UP"}
-
-# Veure els logs del contenidor
-docker logs backend
-```
-
-### Part 2: Dockerfile per al Servei Python
-
-**2.1. Crea el fitxer `ai-python/Dockerfile`:**
-
-```dockerfile
-# ===================================================================
-# Dockerfile per al servei Python (FastAPI o Flask)
-# Imatge slim: sense eines de compilació innecessàries
-# ===================================================================
-
-# Usem python:3.12-slim en lloc de python:3.12
-# slim = sense compiladors C, man pages, etc. (~150 MB vs ~1 GB)
-FROM python:3.12-slim
-
-WORKDIR /app
-
-# Copiar PRIMER les dependències per aprofitar la cache de Docker.
-# Si requirements.txt no canvia, Docker no reinstal·la els paquets.
-COPY requirements.txt .
-
-# Instal·lar dependències Python
-# --no-cache-dir: no guardar cache de pip (redueix mida de la imatge)
-# --no-compile: no generar fitxers .pyc durant la instal·lació
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Ara copiar el codi font
-# Si només canvia el codi, les dependències ja estan en cache
-COPY src/ src/
-
-# El servei Python escolta al port 5000
-EXPOSE 5000
-
-# Arrencar l'aplicació amb uvicorn (servidor ASGI per a FastAPI)
-# --host 0.0.0.0: acceptar connexions de fora del contenidor
-# (per defecte escoltaria només a 127.0.0.1, invisible des del host)
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000"]
-```
-
-**2.2. Crea el fitxer `ai-python/.dockerignore`:**
-
-```dockerignore
-__pycache__/
-.venv/
-.git/
-.gitignore
-*.md
-.env
-*.pyc
-.pytest_cache/
-```
-
-**2.3. Construeix i executa:**
-
-```bash
-# Situats a la carpeta ai-python/
-cd ai-python
-
-# Construir la imatge
-docker build -t esportspulse-ai:latest .
-
-# Comprovar la mida de la imatge
-docker images | grep esportspulse
-
-# Executar el contenidor
-# -p 5000:5000 = mapejar port 5000
-docker run -d -p 5000:5000 --name ai-service esportspulse-ai:latest
-
-# Verificar que funciona
-curl http://localhost:5000/health
-# Hauria de retornar: {"status":"ok"}
-
-# Veure els logs
-docker logs ai-service
-```
-
-### Part 3: Verificació i Neteja
-
-```bash
-# Llistar tots els contenidors en execució
-docker ps
-
-# Hauries de veure:
-# CONTAINER ID   IMAGE                       PORTS                    NAMES
-# abc123         esportspulse-backend:latest  0.0.0.0:8080->8080/tcp  backend
-# def456         esportspulse-ai:latest       0.0.0.0:5000->5000/tcp  ai-service
-
-# Aturar els contenidors
-docker stop backend ai-service
-
-# Eliminar els contenidors aturats
-docker rm backend ai-service
-
-# (Opcional) Eliminar les imatges si vols alliberar espai
-# docker rmi esportspulse-backend:latest esportspulse-ai:latest
-```
-
-> **Nota:** Cada cop que canviïs el codi i vulguis actualitzar el contenidor, has de reconstruir la imatge (`docker build`) i recrear el contenidor (`docker run`). Demà veurem Docker Compose, que simplifica aquest procés.
+- Tots els tests usen `@Mock` i `@InjectMocks` (cap repositori real)
+- Almenys 3 tests amb `when/thenReturn`
+- Almenys 2 tests amb `verify`
+- Almenys 1 test amb `ArgumentCaptor`
+- Cap anti-patró (no testejar el mock, no over-mocking)
+- `mvn test` passa al 100%
 
 ---
 
 ## Checklist de Lliurament
 
-- [ ] `backend-java/Dockerfile` utilitza multi-stage build amb `eclipse-temurin:21`
-- [ ] `ai-python/Dockerfile` utilitza `python:3.12-slim` i instal·la dependències abans de copiar el codi
-- [ ] Ambdós Dockerfiles tenen `.dockerignore` corresponent
-- [ ] `docker build` funciona sense errors per a ambdós serveis
-- [ ] `docker run` arrenca els contenidors i responen als seus ports respectius
-- [ ] `docker images | grep esportspulse` mostra les dues imatges amb mides raonables (backend <250 MB, Python <300 MB)
-- [ ] Tots els fitxers estan commitejats amb un missatge descriptiu (p.ex. `feat(docker): add Dockerfiles for Java backend and Python service`)
+- [ ] `ChampionManagementServiceTest` reescrit amb Mockito
+- [ ] `@Mock` per al repositori, `@InjectMocks` per al servei
+- [ ] Tests amb `when/thenReturn` per definir comportament
+- [ ] Tests amb `verify` per confirmar interaccions
+- [ ] Almenys 1 test amb `ArgumentCaptor`
+- [ ] Organitzat amb `@Nested` i `@DisplayName`
+- [ ] Cap anti-patró de mocking
+- [ ] Tots els tests passen (`mvn test` verd)
+- [ ] Commit: `test(java): add Mockito-based unit tests for service layer`

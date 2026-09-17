@@ -124,10 +124,10 @@ jobs:
 
 ### Reutilitzant Coneixements de CI/CD
 
-A la Setmana 5 vas aprendre CI/CD amb GitHub Actions. Ara ho apliques de manera practica:
+A la Setmana 7 vas aprendre CI/CD amb GitHub Actions. Ara ho apliques de manera practica:
 
 ```
-# Connexio amb S5 (CI/CD):
+# Connexio amb S7 (CI/CD):
 # - Vas aprendre a crear workflows YAML
 # - Vas configurar triggers (on: push)
 # - Vas entendre jobs i steps

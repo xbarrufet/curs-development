@@ -94,7 +94,7 @@ Executa `mvn compile` per verificar que les dependencies es descarreguen correct
 ```java
 // fitxer: src/main/java/com/esportspulse/engine/model/User.java
 // Entitat JPA que representa un usuari del sistema.
-// Connecta amb la feina de JPA de la Setmana 6 — mateixa estructura d'entitat.
+// Connecta amb la feina de JPA de la Setmana 4 — mateixa estructura d'entitat.
 
 package com.esportspulse.engine.model;
 
@@ -152,7 +152,7 @@ public class User {
 ```java
 // fitxer: src/main/java/com/esportspulse/engine/repository/UserRepository.java
 // Repository JPA per accedir a la taula d'usuaris.
-// Spring Data genera la implementacio automaticament (igual que a S6).
+// Spring Data genera la implementacio automaticament (igual que a S4).
 
 package com.esportspulse.engine.repository;
 
@@ -355,7 +355,7 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
-    // Injeccio per constructor (bona practica de S5 Clean Code)
+    // Injeccio per constructor (bona practica de S7 Clean Code)
     public AuthController(UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
                           JwtService jwtService) {
