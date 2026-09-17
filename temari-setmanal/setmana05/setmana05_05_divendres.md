@@ -8,6 +8,24 @@ Verificar, de punta a punta i sense escriure codi nou, que les cinc setmanes con
 
 ## Teoria
 
+### El Que Has Construït Té Nom: un "Walking Skeleton"
+
+En enginyeria de software hi ha un terme per al que acabes de completar: un **walking skeleton** (Alistair Cockburn) — una implementació mínima però *completa d'un cap a l'altre* que connecta tots els components arquitectònics principals (domini, persistència, lògica de negoci, API), sense encara aprofundir en cap d'ells. No fa gaire cosa, però **fa poc de tot**, i ho fa de veritat: petició HTTP real → validació real → SQL real contra una BD real → resposta real.
+
+Aquesta distinció importa perquè marca un canvi de fase explícit al curs:
+
+```
+S1-S5  → Construir l'esquelet (aquesta setmana el tanques)
+S6-S9  → Professionalitzar-lo
+```
+
+I "professionalitzar" no és un sol tipus de feina — són dos fils diferents que a partir de dilluns es trenaran junts sobre aquest mateix esquelet, no sobre exemples aïllats:
+
+- **Disciplina de procés** (S7 Git avançat/CI/anti-patrons, S8 testing/Mockito): professionalitzar *com* treballes — com revises codi, com evites que un bug arribi a `main`, com et refies que un canvi no ha trencat res.
+- **Maduresa operacional** (S6 concurrència/Virtual Threads, S9 Docker): professionalitzar *què fa* l'esquelet sota càrrega real i com es distribueix — no és disciplina de workflow, és capacitat nova de l'aplicació.
+
+Val la pena que ho tinguis clar perquè normalment "professionalitzar" es confon amb "només higiene de procés" (tests, CI, code review). Aquí no és així del tot: la meitat d'aquestes quatre setmanes (S6 i S9) afegeixen capacitat real al sistema, no només el fan més net.
+
 ### Per Què Aquest Dia No Té Codi Nou
 
 Fins avui, cada dia ha afegit una peça: un `record`, una interfície `Repository`, una entitat JPA, un `@RestController`. És fàcil arribar aquí sense haver vist mai el conjunt sencer funcionant en una sola execució. Avui no aprens cap tecnologia nova — **connectes els punts**:
@@ -103,6 +121,18 @@ git push origin v0.1-vertical-slice
 
 > **Lectura recomanada (opcional, no bloquejant):**
 > - Martin Fowler: [PresentationDomainDataLayering](https://martinfowler.com/bliki/PresentationDomainDataLayering.html)
+> - Alistair Cockburn: [Walking Skeleton](https://wiki.c2.com/?WalkingSkeleton)
+
+### Què Ve Ara
+
+Amb l'esquelet tancat i tagat, les properes 4 setmanes hi afegeixen professionalització en dos eixos, sobre aquest mateix codi:
+
+| Setmana | Eix | Què li passa a l'esquelet |
+|---------|-----|---------------------------|
+| S6 | Maduresa operacional | Aprèn a ingerir dades en paral·lel i a escalar amb Virtual Threads |
+| S7 | Disciplina de procés | El teu propi codi passa per code review, es corregeixen anti-patrons, arriba CI |
+| S8 | Disciplina de procés | Es cobreix amb tests i mocks de veritat |
+| S9 | Maduresa operacional | Es dockeritza i es fa reproduïble en qualsevol màquina |
 
 ---
 

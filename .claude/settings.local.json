@@ -17,7 +17,8 @@
       "Bash(sed -i '' '1s/Dijous: Middleware/Dimecres: Middleware/' setmana05/setmana05_03_dimecres.md)",
       "Bash(sed -i '' '1s/Divendres: CLI Python/Dijous: CLI Python/' setmana05/setmana05_04_dijous.md)",
       "Bash(sed -i '' '1s/Setmana 05 — Dimecres: Virtual Threads/Setmana 06 — Dimecres: Virtual Threads/' setmana06/setmana06_03_dimecres.md)",
-      "Bash(sed -i '' '1s/Dimecres: Concurrencia en Python/Dijous: Concurrencia en Python/' setmana06/setmana06_04_dijous.md)"
+      "Bash(sed -i '' '1s/Dimecres: Concurrencia en Python/Dijous: Concurrencia en Python/' setmana06/setmana06_04_dijous.md)",
+      "Bash(git add *)"
     ]
   }
 }

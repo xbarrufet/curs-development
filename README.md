@@ -133,7 +133,7 @@ El curs té 5 fils que es treballen de forma progressiva cada setmana (no en blo
 
 ### Bloc 1: Fundaments i Vertical Slice (S1–S9)
 
-Setmanes 1-5: construcció de l'stack complet (Domini→Repository→Service→REST) sense interrupcions. Setmanes 6-9: professionalització d'aquest stack (concurrència, Git avançat/CI, testing, Docker) ja aplicada sobre una aplicació real i completa.
+Setmanes 1-5: construcció d'un **walking skeleton** — l'stack complet (Domini→Repository→Service→REST) funcionant d'un cap a l'altre, sense interrupcions. Setmanes 6-9: professionalització d'aquest esquelet en dos eixos, ja sobre una aplicació real: maduresa operacional (S6 concurrència, S9 Docker) i disciplina de procés (S7 Git/CI, S8 testing).
 
 | Setmana | Tema | Dilluns | Dimarts | Dimecres | Dijous | Divendres |
 |---------|------|---------|---------|----------|--------|-----------|

@@ -4,6 +4,8 @@
 
 Entendre què passa quan el teu codi s'executa en múltiples fils alhora. Veure amb els teus propis ulls com dos threads accedint a la mateixa variable produeixen resultats incorrectes (race condition), i aprendre les dues solucions fonamentals — `synchronized` i `AtomicInteger`. Al final del dia sabras per que la concurrencia causa bugs subtils i com evitar-los amb mecanismes de Java.
 
+> **On som:** divendres vas tancar el "walking skeleton" — l'stack complet funcionant d'un cap a l'altre. A partir d'avui i durant 4 setmanes el professionalitzes en dos eixos: maduresa operacional (avui, i S9 amb Docker) i disciplina de procés (S7-S8). Avui toca el primer.
+
 ---
 
 ## Teoria
