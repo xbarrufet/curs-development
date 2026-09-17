@@ -8,43 +8,177 @@ Pla de formació per formar un enginyer de software junior (no només un develop
 **Bloc 1: Fundaments, POO, Vertical Slice REST i Professionalització (80% a mà / 20% assistit)**
 > Setmanes 1-5: construcció ininterrompuda d'un **walking skeleton** (Alistair Cockburn) — l'stack complet (Domini→Repository→Service→REST) funcionant d'un cap a l'altre, encara sense profunditat. Setmanes 6-9: professionalització d'aquest mateix esquelet en dos eixos, aplicada sobre una aplicació real en lloc d'exemples aïllats — no és un sol tipus de feina: **maduresa operacional** (S6 concurrència/Virtual Threads, S9 Docker, afegeixen capacitat nova) i **disciplina de procés** (S7 Git avançat/CI/anti-patrons, S8 testing/Mockito, fan el desenvolupament més fiable).
 
-* **Setmana 1 (Rendiment i Big-O):** Programació a mà de cerques $O(n)$ en `List`/`list` vs $O(1)$ en `HashMap`/`dict`. *Exercici Python:* El mateix benchmark amb `list` vs `dict` — comparar resultats entre JVM i CPython. *Mindset productiu:* "Si no ho medeixes, no ho saps." Els benchmarks ja mesuren temps — afegir logging bàsic (`java.util.logging`) al benchmark. Primer contacte amb instrumentació. *Clean Code des del dia 1:* Divendres, abans de la primera PR, es formalitzen tres principis (noms significatius, funcions petites, early return) i passen a formar part del checklist de PR de totes les setmanes següents — no és un tema aïllat, és com s'escriu codi des d'ara. *Lliurament:* Executable de benchmarking en Java 21 + script equivalent en Python.
-* **Setmana 2 (POO i SOLID):** Creació a mà de models immutables (`records` / `@dataclass(frozen=True)`) i regles d'arquitectura a `.cursorrules`. *Exercici Python:* `ChampionRecord` com a `dataclass` frozen, `ChampionRepository` amb `abc.ABC`. *Exercici Specs:* Escriure un `.cursorrules` complet per al projecte: convencions de noms, estructura de carpetes, regles d'immutabilitat. Verificar que l'assistent respecta les regles en generar codi. *Lliurament:* Domini `ChampionRecord` i interfícies `Repository` en Java + equivalents Python.
-* **Setmana 3 (Linux, Terminal i Conceptes de Sistema) [NOU]:** Objectiu: moure's amb comoditat per un terminal i entendre el sistema on corre el codi. Sistema operatiu: processos, threads, memòria, CPU — context físic per a Big-O (S1) i concurrència (S6). Terminal: navegació, permisos, variables d'entorn, `$PATH`, pipes, redirecció. Bash scripting: automatitzar tasques del projecte. SSH i xarxes bàsiques: IP, ports, DNS, `curl`. *Exercici integrador:* Script bash que descarrega dades d'una API pública, les processa amb `jq`, i les guarda en un fitxer. *Mindset productiu:* "Entendre el sistema on corre el teu codi és el primer pas per operar-lo." *Lliurament:* Script bash funcional; l'estudiant navega, edita fitxers i executa comandes sense dependre d'una GUI.
-* **Setmana 4 (Patrons Factory, Repository i Persistència JPA):** Disseny a mà de la jerarquia d'interfícies per desacoblar l'accés a dades. Introducció a Spring Data JPA amb H2. Exercici SQL pur: escriure les queries equivalents a mà a la consola H2 (SELECT, WHERE, JOIN bàsic). *Exercici Python:* Setup definitiu de l'entorn Python (`venv`, `pyproject.toml`, `pytest`). `ChampionRepository` amb SQLite via `sqlite3` estàndard — l'equivalent lleuger d'H2. *Lliurament:* Capa d'abstracció d'ingesta amb persistència real en BD local.
-* **Setmana 5 (APIs REST amb Spring Boot 3 i Persistència):** Disseny a mà de DTOs i contractes; generació assistida dels controladors HTTP que consulten la BD. Queries REST parameteritzades. *Exercici Python:* CLI que consumeix l'API REST amb `requests`. *Exercici Specs:* Escriure una "API spec" en format markdown: per cada endpoint, definir ruta, mètode HTTP, request body (exemple JSON), response body (exemple JSON), codis d'error. Donar la spec a l'assistent perquè generi els controladors. Verificar que el codi generat compleix la spec executant requests contra els endpoints. *Mindset productiu:* Request logging middleware: loguejar mètode, ruta, status code, durada i `X-Request-Id` per cada petició. *Divendres — Demo End-to-End:* sense codi nou, es traça una petició completa Domini→Repository→Service→Controller i es tagueja `v0.1-vertical-slice`: el punt on l'stack de les 5 primeres setmanes queda demostrat funcionant de punta a punta. *Lliurament:* Endpoints REST en Java que llegeixen/escriuen a BD; request logging; CLI Python funcional; demo end-to-end reproduïble.
-* **Setmana 6 (Concurrència Pràctica per a Developers Web):** Race conditions, `synchronized`, `AtomicInteger`, `@Transactional`, `CompletableFuture` (Java). Virtual Threads (Java 21): ara que l'estudiant ja té endpoints REST (S5) que criden APIs externes (Riot API, Data Dragon), el problema d'escalabilitat del thread pool és evident — s'introdueix `Executors.newVirtualThreadPerTaskExecutor()` i `spring.threads.virtual.enabled=true` com a solució natural, activada sobre la seva pròpia API. *Exercici Python:* Race condition amb `threading`, GIL, solució amb `asyncio` + `aiohttp` per I/O paral·lel — el patró equivalent a CompletableFuture. *Mindset productiu:* Traçabilitat — quan l'extractor concurrent falla, com saps quina crida ha fallat? Afegir un `requestId` a cada crida. Primer exercici de correlation ID, fusionat amb l'exercici integrador del divendres. *Lliurament:* Extractor paral·lel d'APIs Riot/Data Dragon en Java (`CompletableFuture` + Virtual Threads) + versió asyncio en Python, amb correlation IDs.
-* **Setmana 7 (Anti-patrons de Codi IA, Code Review, Git Workflow & CI):** Els principis de clean code (noms, funcions petites, early return) ja es practiquen des de S1 — aquesta setmana puja de nivell cap a seguretat: refactorització d'anti-patrons pràctics en codi generat per IA (SQL injection, secrets hardcoded, nulls, tests buits, excepcions silenciades), code review com a skill, `rebase` de Git, resolució de conflictes, i GitHub Actions bàsic (`mvn test` + `checkstyle`). *Exercici Python:* Auditar snippets Python generats per IA (f-strings amb SQL injection, `except: pass`, imports no usats). *Mindset productiu:* Anti-patrons de codi no-productiu al code review: `catch(Exception e) {}`, codi sense logs, secrets hardcodejats, null returns sense context. L'estudiant aprèn a detectar-los en codi generat per IA — ara sobre el seu propi codi Spring/JPA real, no exemples aïllats. *Exercici Specs:* Escriure una spec de refactorització i donar-la a l'agent; iterar fins que el resultat sigui equivalent a la versió manual. *Exercici Eines IA:* Configurar un hook `pre-commit` de Git que executa Checkstyle i ruff automàticament — entendre que un hook és un "guardrail" que s'executa sense intervenció humana, igual que els guardrails d'agents. *Lliurament:* Tag de versió `v0.1` en repositori estructurat, amb badge de CI al README.
-* **Setmana 8 (Testing, Mocks i Qualitat de Codi):** Programació a mà de proves amb JUnit 5 i Mockito. Configuració del workflow GitHub Actions per fer fallar si cobertura < 70%. *Exercici Python:* Suite equivalent amb `pytest` + `unittest.mock`. Afegir `pytest` + `ruff` (linter) al workflow CI existent. *Lliurament:* Suite de tests Java + Python amb cobertura mesurable; pipeline CI que valida els dos llenguatges.
-* **Setmana 9 (Docker i Docker Compose) [MOGUT des de S11]:** Introducció a Docker: `Dockerfile`, `docker build`, `docker run`. Dockeritzar el backend Java i el servei Python. `docker-compose.yml` amb PostgreSQL + Qdrant. Networking entre contenidors. Volums, health checks, environment variables. *Connexió amb S3 (Linux):* L'estudiant ja sap navegar el terminal, entén processos i ports — Docker és una extensió natural. *Mindset productiu:* `docker logs`, `docker-compose logs -f`. L'estudiant veu per què el format JSON i els correlation IDs (S6) importen quan 4 contenidors baregen els seus logs. Health checks com a mecanisme d'operabilitat. *Lliurament:* `docker-compose up` arrenca els serveis d'infraestructura (BD, Qdrant) amb una sola comanda; logs llegibles i health checks configurats.
+**Setmana 1 — Rendiment i Big-O**
+- Programació a mà de cerques $O(n)$ en `List`/`list` vs $O(1)$ en `HashMap`/`dict`.
+- **Exercici Python:** el mateix benchmark amb `list` vs `dict` — comparar resultats entre JVM i CPython.
+- **Mindset productiu:** "Si no ho medeixes, no ho saps." Els benchmarks ja mesuren temps — afegir logging bàsic (`java.util.logging`) al benchmark. Primer contacte amb instrumentació.
+- **Clean Code des del dia 1:** divendres, abans de la primera PR, es formalitzen tres principis (noms significatius, funcions petites, early return) i passen a formar part del checklist de PR de totes les setmanes següents — no és un tema aïllat, és com s'escriu codi des d'ara.
+- **Lliurament:** executable de benchmarking en Java 21 + script equivalent en Python.
+
+**Setmana 2 — POO i SOLID**
+- Creació a mà de models immutables (`records` / `@dataclass(frozen=True)`) i regles d'arquitectura a `.cursorrules`.
+- **Exercici Python:** `ChampionRecord` com a `dataclass` frozen, `ChampionRepository` amb `abc.ABC`.
+- **Exercici Specs:** escriure un `.cursorrules` complet per al projecte (convencions de noms, estructura de carpetes, regles d'immutabilitat) i verificar que l'assistent el respecta en generar codi.
+- **Lliurament:** domini `ChampionRecord` i interfícies `Repository` en Java + equivalents Python.
+
+**Setmana 3 — Linux, Terminal i Conceptes de Sistema** *[NOU]*
+- Objectiu: moure's amb comoditat per un terminal i entendre el sistema on corre el codi.
+- Sistema operatiu: processos, threads, memòria, CPU — context físic per a Big-O (S1) i concurrència (S6).
+- Terminal: navegació, permisos, variables d'entorn, `$PATH`, pipes, redirecció.
+- Bash scripting: automatitzar tasques del projecte.
+- SSH i xarxes bàsiques: IP, ports, DNS, `curl`.
+- **Exercici integrador:** script bash que descarrega dades d'una API pública, les processa amb `jq`, i les guarda en un fitxer.
+- **Mindset productiu:** "Entendre el sistema on corre el teu codi és el primer pas per operar-lo."
+- **Lliurament:** script bash funcional; l'estudiant navega, edita fitxers i executa comandes sense dependre d'una GUI.
+
+**Setmana 4 — Patrons Factory, Repository i Persistència JPA**
+- Disseny a mà de la jerarquia d'interfícies per desacoblar l'accés a dades. Introducció a Spring Data JPA amb H2.
+- Exercici SQL pur: escriure les queries equivalents a mà a la consola H2 (SELECT, WHERE, JOIN bàsic).
+- **Exercici Python:** setup definitiu de l'entorn Python (`venv`, `pyproject.toml`, `pytest`); `ChampionRepository` amb SQLite via `sqlite3` estàndard — l'equivalent lleuger d'H2.
+- **Lliurament:** capa d'abstracció d'ingesta amb persistència real en BD local.
+
+**Setmana 5 — APIs REST amb Spring Boot 3 i Persistència**
+- Disseny a mà de DTOs i contractes; generació assistida dels controladors HTTP que consulten la BD. Queries REST parameteritzades.
+- **Exercici Python:** CLI que consumeix l'API REST amb `requests`.
+- **Exercici Specs:** escriure una "API spec" en format markdown (per cada endpoint: ruta, mètode HTTP, request/response d'exemple, codis d'error), donar-la a l'assistent perquè generi els controladors, i verificar que el codi compleix la spec executant requests contra els endpoints.
+- **Mindset productiu:** request logging middleware — loguejar mètode, ruta, status code, durada i `X-Request-Id` per cada petició.
+- **Divendres — Demo End-to-End:** sense codi nou, es traça una petició completa Domini→Repository→Service→Controller i es tagueja `v0.1-vertical-slice`: el punt on l'stack de les 5 primeres setmanes queda demostrat funcionant de punta a punta.
+- **Lliurament:** endpoints REST en Java que llegeixen/escriuen a BD; request logging; CLI Python funcional; demo end-to-end reproduïble.
+
+**Setmana 6 — Concurrència Pràctica per a Developers Web**
+- Race conditions, `synchronized`, `AtomicInteger`, `@Transactional`, `CompletableFuture` (Java).
+- Virtual Threads (Java 21): ara que l'estudiant ja té endpoints REST (S5) que criden APIs externes (Riot API, Data Dragon), el problema d'escalabilitat del thread pool és evident — s'introdueix `Executors.newVirtualThreadPerTaskExecutor()` i `spring.threads.virtual.enabled=true` com a solució natural, activada sobre la seva pròpia API.
+- **Exercici Python:** race condition amb `threading`, GIL, solució amb `asyncio` + `aiohttp` per I/O paral·lel — el patró equivalent a `CompletableFuture`.
+- **Mindset productiu:** traçabilitat — quan l'extractor concurrent falla, com saps quina crida ha fallat? Afegir un `requestId` a cada crida. Primer exercici de correlation ID, fusionat amb l'exercici integrador del divendres.
+- **Lliurament:** extractor paral·lel d'APIs Riot/Data Dragon en Java (`CompletableFuture` + Virtual Threads) + versió asyncio en Python, amb correlation IDs.
+
+**Setmana 7 — Anti-patrons de Codi IA, Code Review, Git Workflow & CI**
+- Els principis de clean code (noms, funcions petites, early return) ja es practiquen des de S1 — aquesta setmana puja de nivell cap a seguretat: refactorització d'anti-patrons pràctics en codi generat per IA (SQL injection, secrets hardcoded, nulls, tests buits, excepcions silenciades), code review com a skill, `rebase` de Git, resolució de conflictes, i GitHub Actions bàsic (`mvn test` + `checkstyle`).
+- **Exercici Python:** auditar snippets Python generats per IA (f-strings amb SQL injection, `except: pass`, imports no usats).
+- **Mindset productiu:** anti-patrons de codi no-productiu al code review — `catch(Exception e) {}`, codi sense logs, secrets hardcodejats, null returns sense context. L'estudiant aprèn a detectar-los en codi generat per IA, ara sobre el seu propi codi Spring/JPA real, no exemples aïllats.
+- **Exercici Specs:** escriure una spec de refactorització i donar-la a l'agent; iterar fins que el resultat sigui equivalent a la versió manual.
+- **Exercici Eines IA:** configurar un hook `pre-commit` de Git que executa Checkstyle i ruff automàticament — entendre que un hook és un "guardrail" que s'executa sense intervenció humana, igual que els guardrails d'agents.
+- **Lliurament:** tag de versió `v0.1` en repositori estructurat, amb badge de CI al README.
+
+**Setmana 8 — Testing, Mocks i Qualitat de Codi**
+- Programació a mà de proves amb JUnit 5 i Mockito. Configuració del workflow GitHub Actions per fer fallar si cobertura < 70%.
+- **Exercici Python:** suite equivalent amb `pytest` + `unittest.mock`; afegir `pytest` + `ruff` (linter) al workflow CI existent.
+- **Lliurament:** suite de tests Java + Python amb cobertura mesurable; pipeline CI que valida els dos llenguatges.
+
+**Setmana 9 — Docker i Docker Compose** *[MOGUT des de S11]*
+- Introducció a Docker: `Dockerfile`, `docker build`, `docker run`. Dockeritzar el backend Java i el servei Python.
+- `docker-compose.yml` amb PostgreSQL + Qdrant. Networking entre contenidors. Volums, health checks, environment variables.
+- **Connexió amb S3 (Linux):** l'estudiant ja sap navegar el terminal, entén processos i ports — Docker és una extensió natural.
+- **Mindset productiu:** `docker logs`, `docker-compose logs -f`. L'estudiant veu per què el format JSON i els correlation IDs (S6) importen quan 4 contenidors baregen els seus logs. Health checks com a mecanisme d'operabilitat.
+- **Lliurament:** `docker-compose up` arrenca els serveis d'infraestructura (BD, Qdrant) amb una sola comanda; logs llegibles i health checks configurats.
 
 **Bloc 2: Integració IA, Seguretat i Frontend (50% a mà / 50% assistit)**
 
-* **Setmana 10 (Python, Pydantic i Output Estructurat amb LLMs):** Pydantic models per validar sortides d'LLM. Connexió amb l'API de Claude/OpenAI. System prompts i few-shot per forçar output JSON. *Exercici Eines IA (MCP basics):* Instal·lar i configurar un MCP server existent (`mcp-server-sqlite` o `mcp-server-postgres`) per connectar l'agent (Claude Code / Cursor) directament a la BD d'EsportsPulse. Demostrar que l'agent pot fer queries SQL sense que el developer copiï resultats manualment. *Lliurament:* Servei Python (FastAPI) que converteix consultes en JSONs estructurats via LLM; MCP server connectat a la BD local.
-* **Setmana 11 (Error Handling, Logging i Integració entre Serveis):** Disseny a mà de la gestió d'excepcions; retry bàsic amb backoff exponencial (sense frameworks pesats). Logging estructurat (JSON) tant a Java (SLF4J + Logback) com a Python (`structlog`). Correlation IDs propagats entre Java↔Python. Integració Java ↔ Python via HTTP: gestió d'errors parcials, timeouts, i debugging de problemes d'integració reals. *Mindset productiu:* Formalitza i unifica l'observabilitat des de S1. Resiliència: què passa quan el servei Python no respon? *Exercici Eines IA (MCP pràctic):* Crear un MCP server senzill en Python que exposa una eina `search_logs(query, severity, last_minutes)` — l'agent pot consultar els logs. *Lliurament:* Serveis Java i Python comunicant-se amb gestió d'errors robusta i logs interpretables; MCP server de logs funcional.
-* **Setmana 12 (Autenticació, Autorització i Seguretat Web) [MOGUT des de S14]:** Spring Security basics: login amb usuari/password, JWT tokens per protegir l'API REST. Protegir endpoints amb `@PreAuthorize` i roles (USER vs ADMIN). CORS, CSRF, headers de seguretat. Hashing de passwords amb bcrypt. Session store amb Redis. *Exercici Python:* Protegir els endpoints FastAPI amb JWT (`python-jose`). *Raó del moviment:* L'autenticació és part natural del desenvolupament d'APIs — l'estudiant acaba de crear endpoints (S5) i ara els protegeix. *Lliurament:* API REST protegida amb JWT; endpoints accessibles només per usuaris autenticats.
-* **Setmana 13 (Interfície Streamlit, Integració i Testing End-to-End):** Introducció a Streamlit: dashboard bàsic amb login (aprofitant l'auth de S12) que consumeix el backend Java via REST. Formularis de cerca, taules de resultats, visualització simple. Workflow GitHub Actions ampliat per testejar Python (pytest + ruff). *Exercici Specs:* Escriure una spec del dashboard en text: wireframe ASCII del layout, descripció de cada component, fluxos d'interacció. L'agent genera l'Streamlit a partir de la spec; l'estudiant compara amb el wireframe i itera. *Lliurament:* Dashboard Streamlit funcional amb login que opera sobre l'API REST; CI que valida Java i Python.
+**Setmana 10 — Python, Pydantic i Output Estructurat amb LLMs**
+- Pydantic models per validar sortides d'LLM. Connexió amb l'API de Claude/OpenAI. System prompts i few-shot per forçar output JSON.
+- **Exercici Eines IA (MCP basics):** instal·lar i configurar un MCP server existent (`mcp-server-sqlite` o `mcp-server-postgres`) per connectar l'agent (Claude Code / Cursor) directament a la BD d'EsportsPulse. Demostrar que l'agent pot fer queries SQL sense que el developer copiï resultats manualment.
+- **Lliurament:** servei Python (FastAPI) que converteix consultes en JSONs estructurats via LLM; MCP server connectat a la BD local.
+
+**Setmana 11 — Error Handling, Logging i Integració entre Serveis**
+- Disseny a mà de la gestió d'excepcions; retry bàsic amb backoff exponencial (sense frameworks pesats).
+- Logging estructurat (JSON) tant a Java (SLF4J + Logback) com a Python (`structlog`). Correlation IDs propagats entre Java↔Python.
+- Integració Java ↔ Python via HTTP: gestió d'errors parcials, timeouts, i debugging de problemes d'integració reals.
+- **Mindset productiu:** formalitza i unifica l'observabilitat des de S1. Resiliència: què passa quan el servei Python no respon?
+- **Exercici Eines IA (MCP pràctic):** crear un MCP server senzill en Python que exposa una eina `search_logs(query, severity, last_minutes)` — l'agent pot consultar els logs.
+- **Lliurament:** serveis Java i Python comunicant-se amb gestió d'errors robusta i logs interpretables; MCP server de logs funcional.
+
+**Setmana 12 — Autenticació, Autorització i Seguretat Web** *[MOGUT des de S14]*
+- Spring Security basics: login amb usuari/password, JWT tokens per protegir l'API REST. Protegir endpoints amb `@PreAuthorize` i roles (USER vs ADMIN).
+- CORS, CSRF, headers de seguretat. Hashing de passwords amb bcrypt. Session store amb Redis.
+- **Exercici Python:** protegir els endpoints FastAPI amb JWT (`python-jose`).
+- **Raó del moviment:** l'autenticació és part natural del desenvolupament d'APIs — l'estudiant acaba de crear endpoints (S5) i ara els protegeix.
+- **Lliurament:** API REST protegida amb JWT; endpoints accessibles només per usuaris autenticats.
+
+**Setmana 13 — Interfície Streamlit, Integració i Testing End-to-End**
+- Introducció a Streamlit: dashboard bàsic amb login (aprofitant l'auth de S12) que consumeix el backend Java via REST. Formularis de cerca, taules de resultats, visualització simple.
+- Workflow GitHub Actions ampliat per testejar Python (pytest + ruff).
+- **Exercici Specs:** escriure una spec del dashboard en text (wireframe ASCII del layout, descripció de cada component, fluxos d'interacció); l'agent genera l'Streamlit a partir de la spec i l'estudiant compara amb el wireframe i itera.
+- **Lliurament:** dashboard Streamlit funcional amb login que opera sobre l'API REST; CI que valida Java i Python.
 
 **Bloc 3: Knowledge, Agents i Spec-Driven Development (30% a mà / 70% assistit)**
 > Bloc unificat: agrupa knowledge engineering, retrieval, agents i spec-driven en un sol flux coherent. L'estudiant passa d'estructurar informació → recuperar-la → fer-la servir amb agents → especificar agents formalment. Sense salts entre blocs.
 
-* **Setmana 14 (Knowledge Engineering: Estructurar Informació per a IA):** Teoria: per què la IA dóna respostes incorrectes quan la informació no està ben estructurada. Exercici pràctic: agafar les patch notes reals d'un joc (PDF/HTML) i organitzar-les en una wiki estructurada (markdown amb metadades). Chunking bàsic: per què tallar un document en trossos importa, mida recomanada. Indexar la wiki a Qdrant (ja dockeritzat des de S9). *Exercici Python:* Parser de PDF → markdown estructurat amb metadades. Script d'indexació a Qdrant. *Diferència amb RAG clàssic:* No construïm un pipeline de zero — entenem els conceptes per saber configurar i depurar eines que ja existeixen (Notion AI, Cursor @docs, Glean, etc.). Configurar `@docs` a Cursor amb la documentació de Spring Boot per veure el knowledge engineering en acció amb eines reals. *Exercici Eines IA (Trobar Skills i MCP Servers):* Buscar i avaluar eines existents per al projecte. *Lliurament:* Wiki estructurada de patch notes indexada a Qdrant; script d'ingesta reproduïble; skills i MCP servers del projecte documentats.
-* **Setmana 15 (Knowledge Retrieval, Anti-al·lucinació i Cache d'IA):** Retrieval semàntic sobre la wiki indexada. Prompts de restricció: l'LLM només pot respondre amb informació de la wiki, amb citació obligatòria. Tècniques anti-al·lucinació: "si no trobes la informació, digues que no ho saps". Exercici d'avaluació: 10 preguntes amb respostes de referència (ground truth); mesurar fidelitat amb pytest. **Caching de respostes d'LLM amb Redis:** guardar resultats a Redis per evitar crides repetides. Calcular estalvi de cost ($0.01/crida × N crides/dia). **Cost management d'APIs IA:** rate limiting, pressupost diari, alertes. Redis en Docker afegit al `docker-compose.yml`. *Lliurament:* Sistema de retrieval amb citació obligatòria, anti-al·lucinació, evals bàsics, i cache Redis per a respostes d'LLM.
-* **Setmana 16 (Agents: Configurar, Avaluar i Observar):** Teoria: el patró agent (prompt → LLM decideix eina → executa → resultat → decideix si ha acabat). NO construir un framework de zero — entendre el patró veient-lo funcionar amb Claude Code, que l'estudiant ja usa. Configurar els agents d'EsportsPulse com a **system prompts + tool schemas** usant l'API de Claude/OpenAI amb tool use directament (sense framework extern): Agent Quantitatiu (eines `query_champions(filters)`, `get_stats(championId)`) i Agent de Knowledge (eines `search_patches(query)`, `get_patch_detail(id)` — connectat al retrieval de S15). Eval dataset: 15+ preguntes; mètriques automàtiques al CI. Observabilitat amb LangFuse. *Exercici Specs (OpenSpec):* Documentar els agents formalment. *Lliurament:* Agents funcionant via API directa amb tool use, spec documentada, evals al CI, traces a LangFuse.
-* **Setmana 17 (Spec-Driven Development: Feature Completa amb Agent):** Exercici pràctic integrador: l'estudiant rep un requisit de negoci nou ("afegir endpoint de comparació de dos campions") i ha de: 1) Escriure la spec completa, 2) Donar-la a un agent de codi, 3) Revisar el codi generat, 4) Executar els tests, 5) Iterar. *Exercici Eines IA:* Crear skill `/review-esportspulse` i hook `pre-push` amb evals automàtics. *Avaluació:* Es mesura la qualitat de la spec, no la del codi generat. *Lliurament:* Feature completa implementada per agent amb spec documentada; skill funcional.
+**Setmana 14 — Knowledge Engineering: Estructurar Informació per a IA**
+- Teoria: per què la IA dóna respostes incorrectes quan la informació no està ben estructurada.
+- Exercici pràctic: agafar les patch notes reals d'un joc (PDF/HTML) i organitzar-les en una wiki estructurada (markdown amb metadades).
+- Chunking bàsic: per què tallar un document en trossos importa, mida recomanada. Indexar la wiki a Qdrant (ja dockeritzat des de S9).
+- **Exercici Python:** parser de PDF → markdown estructurat amb metadades; script d'indexació a Qdrant.
+- **Diferència amb RAG clàssic:** no construïm un pipeline de zero — entenem els conceptes per saber configurar i depurar eines que ja existeixen (Notion AI, Cursor @docs, Glean, etc.). Configurar `@docs` a Cursor amb la documentació de Spring Boot per veure el knowledge engineering en acció amb eines reals.
+- **Exercici Eines IA (Trobar Skills i MCP Servers):** buscar i avaluar eines existents per al projecte.
+- **Lliurament:** wiki estructurada de patch notes indexada a Qdrant; script d'ingesta reproduïble; skills i MCP servers del projecte documentats.
+
+**Setmana 15 — Knowledge Retrieval, Anti-al·lucinació i Cache d'IA**
+- Retrieval semàntic sobre la wiki indexada. Prompts de restricció: l'LLM només pot respondre amb informació de la wiki, amb citació obligatòria.
+- Tècniques anti-al·lucinació: "si no trobes la informació, digues que no ho saps".
+- Exercici d'avaluació: 10 preguntes amb respostes de referència (ground truth); mesurar fidelitat amb pytest.
+- **Caching de respostes d'LLM amb Redis:** guardar resultats a Redis per evitar crides repetides. Calcular estalvi de cost ($0.01/crida × N crides/dia).
+- **Cost management d'APIs IA:** rate limiting, pressupost diari, alertes. Redis en Docker afegit al `docker-compose.yml`.
+- **Lliurament:** sistema de retrieval amb citació obligatòria, anti-al·lucinació, evals bàsics, i cache Redis per a respostes d'LLM.
+
+**Setmana 16 — Agents: Configurar, Avaluar i Observar**
+- Teoria: el patró agent (prompt → LLM decideix eina → executa → resultat → decideix si ha acabat). NO construir un framework de zero — entendre el patró veient-lo funcionar amb Claude Code, que l'estudiant ja usa.
+- Configurar els agents d'EsportsPulse com a **system prompts + tool schemas** usant l'API de Claude/OpenAI amb tool use directament (sense framework extern): Agent Quantitatiu (eines `query_champions(filters)`, `get_stats(championId)`) i Agent de Knowledge (eines `search_patches(query)`, `get_patch_detail(id)` — connectat al retrieval de S15).
+- Eval dataset: 15+ preguntes; mètriques automàtiques al CI. Observabilitat amb LangFuse.
+- **Exercici Specs (OpenSpec):** documentar els agents formalment.
+- **Lliurament:** agents funcionant via API directa amb tool use, spec documentada, evals al CI, traces a LangFuse.
+
+**Setmana 17 — Spec-Driven Development: Feature Completa amb Agent**
+- **Exercici pràctic integrador:** l'estudiant rep un requisit de negoci nou ("afegir endpoint de comparació de dos campions") i ha de: 1) escriure la spec completa, 2) donar-la a un agent de codi, 3) revisar el codi generat, 4) executar els tests, 5) iterar.
+- **Exercici Eines IA:** crear skill `/review-esportspulse` i hook `pre-push` amb evals automàtics.
+- **Avaluació:** es mesura la qualitat de la spec, no la del codi generat.
+- **Lliurament:** feature completa implementada per agent amb spec documentada; skill funcional.
 
 **Bloc 4: Infraestructura Avançada i Integració (20% a mà / 80% assistit)**
 
-* **Setmana 18 (SQL Avançat i PostgreSQL):** Migrar d'H2 a PostgreSQL (ja dockeritzat des de S9). Disseny de BD normalitzada: taules relacionades amb foreign keys. Migrations amb Flyway. Queries SQL reals: JOINs, GROUP BY, subqueries, window functions bàsiques. Indexes i `EXPLAIN ANALYZE`. Caching de queries freqüents amb Redis (cache-aside pattern). *Exercici:* Trobar i optimitzar una query N+1 generada per JPA. *Lliurament:* BD PostgreSQL normalitzada, migracions automàtiques, queries optimitzades amb evidència d'EXPLAIN, cache Redis.
-* **Setmana 19 (Integració de Sistemes: Redis i Message Queues):** Consolidació de Redis: cache-aside, TTL, invalidació. Introducció a message queues: síncrono (REST) vs asíncron (cues). RabbitMQ en Docker. Productor Java: event `champion.ingested`. Consumidor Python: processar amb LLM, guardar a Redis. Dead letter queue, retry amb backoff, idempotència. *Lliurament:* Flux complet: POST campió → event a cua → processament asíncron → cache; tests d'integració.
-* **Setmana 20 (Consolidació CI/CD, Observabilitat i Monitoring):** Revisió i refactorització dels workflows GitHub Actions acumulats. Dockeritzar tots els serveis restants — `docker-compose up` arrenca tota la plataforma. Secrets management, caching de dependències. Health endpoints (`/actuator/health`). Dashboard de mètriques. *Lliurament:* Pipeline CI/CD consolidat; plataforma completa dockeritzada; dashboard de mètriques operacionals.
+**Setmana 18 — SQL Avançat i PostgreSQL**
+- Migrar d'H2 a PostgreSQL (ja dockeritzat des de S9). Disseny de BD normalitzada: taules relacionades amb foreign keys. Migrations amb Flyway.
+- Queries SQL reals: JOINs, GROUP BY, subqueries, window functions bàsiques. Indexes i `EXPLAIN ANALYZE`.
+- Caching de queries freqüents amb Redis (cache-aside pattern).
+- **Exercici:** trobar i optimitzar una query N+1 generada per JPA.
+- **Lliurament:** BD PostgreSQL normalitzada, migracions automàtiques, queries optimitzades amb evidència d'EXPLAIN, cache Redis.
+
+**Setmana 19 — Integració de Sistemes: Redis i Message Queues**
+- Consolidació de Redis: cache-aside, TTL, invalidació.
+- Introducció a message queues: síncrono (REST) vs asíncron (cues). RabbitMQ en Docker.
+- Productor Java: event `champion.ingested`. Consumidor Python: processar amb LLM, guardar a Redis.
+- Dead letter queue, retry amb backoff, idempotència.
+- **Lliurament:** flux complet POST campió → event a cua → processament asíncron → cache; tests d'integració.
+
+**Setmana 20 — Consolidació CI/CD, Observabilitat i Monitoring**
+- Revisió i refactorització dels workflows GitHub Actions acumulats.
+- Dockeritzar tots els serveis restants — `docker-compose up` arrenca tota la plataforma.
+- Secrets management, caching de dependències. Health endpoints (`/actuator/health`). Dashboard de mètriques.
+- **Lliurament:** pipeline CI/CD consolidat; plataforma completa dockeritzada; dashboard de mètriques operacionals.
 
 **Bloc 5: Producció i Portfolio (10% a mà / 90% assistit — Rol d'Auditor)**
 
-* **Setmana 21 (Especificacions Finals i Dashboard Avançat):** Consolidació de totes les specs: `CLAUDE.md` definitiu, `.cursorrules` finals, specs d'agents i retrieval. Dashboard Streamlit avançat. *Exercici avaluat:* Donar el `CLAUDE.md` a un agent "nou" i mesurar si pot contribuir sense explicació oral. *Lliurament:* Repositori amb specs completes; ecosistema IA documentat; dashboard complet.
-* **Setmana 22 (Desplegament al Núvol):** Auditoria de seguretat de claus API i secrets. Desplegament a Render/Fly.io. Variables d'entorn en producció. Domini i HTTPS. *Connexió amb S3 (Linux):* L'estudiant ja sap SSH, ports, DNS. *Lliurament:* Desplegament real accessible via URL pública.
-* **Setmana 23 (Testing End-to-End, Hardening i Arquitectura):** Tests d'integració complets del flux sencer. Load testing bàsic. Revisió de seguretat final: OWASP checklist, headers, rate limiting. Diagrames C4 (Context, Container, Component) amb fluxos d'observabilitat. *Exercici capstone:* Troubleshooting amb logs i mètriques (sense codi font). *Lliurament:* Suite E2E completa; informe de seguretat; diagrames C4; exercici troubleshooting resolt.
-* **Setmana 24 (GitHub Pages, Portfolio i Presentació):** Crear pàgina personal a GitHub Pages (`username.github.io`): sobre mi, projectes, skills tècnics, contacte. Desplegar amb GitHub Actions. Repositori pinned a GitHub amb description i topics. README professional amb API docs (Swagger/OpenAPI). Demo de 5 minuts del sistema complet. Assajar explicar decisions tècniques per entrevistes. *Lliurament:* Pàgina personal a GitHub Pages; repositori final amb demo en viu; l'estudiant pot explicar qualsevol decisió del projecte.
+**Setmana 21 — Especificacions Finals i Dashboard Avançat**
+- Consolidació de totes les specs: `CLAUDE.md` definitiu, `.cursorrules` finals, specs d'agents i retrieval. Dashboard Streamlit avançat.
+- **Exercici avaluat:** donar el `CLAUDE.md` a un agent "nou" i mesurar si pot contribuir sense explicació oral.
+- **Lliurament:** repositori amb specs completes; ecosistema IA documentat; dashboard complet.
+
+**Setmana 22 — Desplegament al Núvol**
+- Auditoria de seguretat de claus API i secrets. Desplegament a Render/Fly.io. Variables d'entorn en producció. Domini i HTTPS.
+- **Connexió amb S3 (Linux):** l'estudiant ja sap SSH, ports, DNS.
+- **Lliurament:** desplegament real accessible via URL pública.
+
+**Setmana 23 — Testing End-to-End, Hardening i Arquitectura**
+- Tests d'integració complets del flux sencer. Load testing bàsic.
+- Revisió de seguretat final: OWASP checklist, headers, rate limiting.
+- Diagrames C4 (Context, Container, Component) amb fluxos d'observabilitat.
+- **Exercici capstone:** troubleshooting amb logs i mètriques (sense codi font).
+- **Lliurament:** suite E2E completa; informe de seguretat; diagrames C4; exercici troubleshooting resolt.
+
+**Setmana 24 — GitHub Pages, Portfolio i Presentació**
+- Crear pàgina personal a GitHub Pages (`username.github.io`): sobre mi, projectes, skills tècnics, contacte. Desplegar amb GitHub Actions.
+- Repositori pinned a GitHub amb description i topics. README professional amb API docs (Swagger/OpenAPI).
+- Demo de 5 minuts del sistema complet. Assajar explicar decisions tècniques per entrevistes.
+- **Lliurament:** pàgina personal a GitHub Pages; repositori final amb demo en viu; l'estudiant pot explicar qualsevol decisió del projecte.
 
 ---
 
