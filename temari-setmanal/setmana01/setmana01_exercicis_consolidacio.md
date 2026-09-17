@@ -172,6 +172,33 @@ Pista: pensa en `@BeforeEach` i per què existeix.
 
 ---
 
+## Bloc 7: Clean Code (Divendres)
+
+**Exercici 7.1 — Detecta el Problema**
+
+Aquest mètode fa el que ha de fer, però té almenys dos problemes de clean code. Identifica'ls:
+
+```java
+public PlayerRecord get(List<PlayerRecord> l, String s) {
+    if (l != null) {
+        if (!l.isEmpty()) {
+            for (var p : l) {
+                if (p.playerId().equals(s)) {
+                    return p;
+                }
+            }
+        }
+    }
+    return null;
+}
+```
+
+**Exercici 7.2 — Reescriu'l**
+
+Reescriu el mètode de l'exercici 7.1 aplicant noms significatius i early return.
+
+---
+
 ## Exercici Final: Integració
 
 Crea un nou record `PlayerRecord` amb els camps: `playerId` (String), `username` (String), `level` (int), `hoursPlayed` (double).
@@ -332,6 +359,28 @@ El test funciona, però **crea les dades dins del propi test** en comptes d'usar
 - Si un test modifiqués l'estat (en casos amb objectes mutables), podria contaminar altres tests.
 
 La preparació de dades hauria d'anar a `@BeforeEach` perquè cada test arrenqui amb un estat fresc i compartit, sense duplicar codi.
+
+---
+
+## Bloc 7: Clean Code
+
+**Solució 7.1 — Detecta el Problema**
+
+1. **Noms críptics** — `get`, `l`, `s` no diuen res sobre què fa el mètode ni què representen els paràmetres.
+2. **Nesting excessiu** — dos `if` niats abans d'arribar al bucle són innecessaris; es poden convertir en early returns.
+
+**Solució 7.2 — Reescriu'l**
+
+```java
+public PlayerRecord searchLinear(List<PlayerRecord> players, String playerId) {
+    if (players == null || players.isEmpty()) return null;
+
+    for (var p : players) {
+        if (p.playerId().equals(playerId)) return p;
+    }
+    return null;
+}
+```
 
 ---
 

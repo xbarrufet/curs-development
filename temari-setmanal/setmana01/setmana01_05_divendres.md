@@ -97,6 +97,70 @@ void test1()
 
 ---
 
+### Clean Code: Escriure Codi que Altres Puguin Llegir
+
+Ja has escrit codi tota la setmana (`PlayerSearchService`, generadors de dades, tests). Abans de la PR d'avui, tres regles que has d'aplicar **des d'ara i sempre**, no només quan algú t'ho recordi:
+
+#### 1. Noms Significatius
+
+```java
+// ❌ Críptic — què fa això sense llegir el cos?
+public PlayerRecord get(List<PlayerRecord> l, String id) { ... }
+
+// ✅ Descriptiu — s'entén sense llegir el cos del mètode
+public PlayerRecord searchLinear(List<PlayerRecord> players, String playerId) { ... }
+```
+
+#### 2. Funcions Petites (Una Sola Responsabilitat)
+
+```java
+// ❌ Una funció que genera dades I calcula temps I compara resultats
+public void runBenchmark() {
+    var players = PlayerDataGenerator.generateList(100_000);
+    long start = System.nanoTime();
+    // ... cerca lineal ...
+    long linearTime = System.nanoTime() - start;
+    // ... cerca per mapa ...
+    // ... comparació i print ...
+}
+
+// ✅ Cada mètode fa una sola cosa, es pot testejar per separat
+private long measureLinearSearch(List<PlayerRecord> players, String id) { ... }
+private long measureHashSearch(Map<String, PlayerRecord> map, String id) { ... }
+```
+
+#### 3. Early Return (Evitar Niuament Excessiu)
+
+```java
+// ❌ Piràmide de la mort
+public PlayerRecord searchLinear(List<PlayerRecord> players, String id) {
+    if (players != null) {
+        if (!players.isEmpty()) {
+            for (var p : players) {
+                if (p.playerId().equals(id)) {
+                    return p;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+// ✅ Early return — el cas d'error surt de seguida, sense nesting
+public PlayerRecord searchLinear(List<PlayerRecord> players, String id) {
+    if (players == null || players.isEmpty()) return null;
+
+    for (var p : players) {
+        if (p.playerId().equals(id)) return p;
+    }
+    return null;
+}
+```
+
+**Aquestes tres regles formen part del checklist de PR d'avui i de totes les properes setmanes.** No és teoria per llegir un cop — és com escrius codi cada dia, des d'ara.
+
+---
+
 ## Activitat
 
 ### 1. Crear els tests — `PlayerSearchServiceTest` (45 min)
@@ -216,6 +280,7 @@ git branch -d feature/week1-benchmarking  # Elimina la branca local
 
 - [ ] `mvn test` passa amb 3 tests verds (correcció + null + rendiment)
 - [ ] El test de rendiment verifica que HashMap és almenys 10x més ràpid
+- [ ] Noms clars, funcions petites i sense nesting excessiu (early return)
 - [ ] Commit amb format Conventional Commits
 - [ ] Pull Request creada, revisada i fusionada a `main`
 - [ ] Branca `feature/week1-benchmarking` eliminada
