@@ -230,6 +230,22 @@ addopts = """
 
 ---
 
+### Què és un Linter?
+
+Un **linter** és una eina que analitza el codi **sense executar-lo** (anàlisi estàtica) i detecta errors d'estil, bugs potencials i males pràctiques. El nom ve de "lint" — les borrissetes de la roba que no veus a simple vista però que embruten el resultat final.
+
+> **Analogia:** Un linter és com el corrector ortogràfic d'un editor de text. No sap si la teva novel·la és bona, però sí que "haber" s'escriu "a ver" en certs contextos. Detecta problemes mecànics perquè tu et puguis centrar en els problemes de disseny.
+
+Exemples del que detecta un linter:
+- **Imports no usats** — codi mort que embruta el fitxer
+- **Variables definides però mai llegides** — probable bug o codi inacabat
+- **Estil inconsistent** — tabs vs espais, línies massa llargues
+- **Patrons perillosos** — comparar amb `==` en lloc de `is` per a `None`
+
+A Java, l'equivalent seria **Checkstyle** o **SpotBugs**. A Python, l'eina moderna és **ruff**.
+
+---
+
 ### ruff: Linter de Python (com Checkstyle per a Java)
 
 ruff és un linter ultra-ràpid per a Python. Detecta errors d'estil, imports no usats, variables mortes i problemes comuns:

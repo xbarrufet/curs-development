@@ -145,7 +145,9 @@ docker --version
 docker info
 ```
 
-Si no el tens, instal·la [Docker Desktop](https://www.docker.com/products/docker-desktop/). A macOS:
+Si no el tens, instal·la [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+**macOS:**
 
 ```bash
 # Instal·la Docker Desktop amb Homebrew
@@ -153,6 +155,59 @@ brew install --cask docker
 ```
 
 Obre Docker Desktop un cop per acceptar les condicions. Després pots tancar la finestra — el daemon continuarà corrent en segon pla.
+
+**Windows — El Cas Especial:**
+
+A Windows, Docker funciona diferent que a macOS/Linux perquè **el kernel de Windows no és Linux**. Recordes que els contenidors comparteixen el kernel del host? Doncs a Windows necessitem un kernel Linux extra. Hi ha dues maneres:
+
+**Opció recomanada: WSL 2 (Windows Subsystem for Linux 2)**
+
+WSL 2 executa un kernel Linux real dins de Windows. Docker Desktop el detecta automàticament i l'utilitza com a backend:
+
+```powershell
+# 1. Habilita WSL 2 (obre PowerShell com a Administrador)
+wsl --install
+
+# 2. Reinicia el PC
+
+# 3. Instal·la Docker Desktop des de docker.com
+# Durant la instal·lació, marca "Use WSL 2 instead of Hyper-V"
+
+# 4. Verifica des de Git Bash o la terminal WSL
+docker --version
+docker run hello-world
+```
+
+**Opció alternativa: Hyper-V**
+
+Docker Desktop també pot usar Hyper-V (el hipervisor natiu de Windows), però:
+- Només disponible a Windows Pro/Enterprise (no a Home)
+- Més lent que WSL 2
+- Incompatible amb VirtualBox
+
+**Per què importa saber-ho?**
+
+Quan un contenidor "no funciona" a Windows, sovint el problema és:
+- WSL 2 no està habilitat o actualitzat → `wsl --update`
+- Docker Desktop no està obert (el daemon no corre en segon pla com a macOS)
+- Problemes de permisos amb volums → els paths de Windows (`C:\Users\...`) es mapegen diferent dins del contenidor Linux
+
+```
+┌───────────────────────────────────────────────────────┐
+│                    macOS / Linux                      │
+│  Docker Engine → kernel del host directament          │
+│  (macOS usa una VM lleugera transparent, però ràpida) │
+└───────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────┐
+│                      Windows                          │
+│  Docker Engine → WSL 2 (kernel Linux real)            │
+│                  o Hyper-V (VM)                       │
+│  Els contenidors sempre corren sobre un kernel Linux  │
+└───────────────────────────────────────────────────────┘
+```
+
+> **Nota Windows:** Totes les comandes `docker` de la resta de la setmana funcionen igual un cop Docker Desktop està instal·lat. Usa **Git Bash** o la **terminal WSL** per seguir els exercicis — evita PowerShell per a comandes amb `\` (continuació de línia), que a PowerShell s'escriu amb `` ` ``.
 
 ### 2. Executar PostgreSQL amb Docker (20 min)
 

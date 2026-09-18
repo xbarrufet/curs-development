@@ -8,6 +8,19 @@ Entendre per què necessitem mocks, com funciona Mockito, i escriure tests unita
 
 ## Teoria
 
+### Què és un Mock?
+
+Un **mock** és un objecte fals que simula el comportament d'un objecte real en un test. En lloc d'usar una dependència real (base de dades, API externa, servei de mail), creem un objecte que **fa veure** que és real però que nosaltres controlem completament.
+
+> **Analogia:** Imagina que vols testejar si un porter de futbol para bé els penals. No necessites un estadi de 80.000 persones ni un àrbitre FIFA — necessites algú que xuti pilotes. Aquesta persona que xuta és el "mock" del davanter: fa el mateix (xutar) però en un entorn controlat.
+
+En el context de testing:
+- **Mock** = objecte simulat que imita una dependència
+- **Stub** = mock que retorna respostes predefinides (`when/thenReturn`)
+- **Spy** = objecte real que registra les crides que rep
+
+---
+
 ### Per Què Necessitem Mocks?
 
 Quan testem el `ChampionManagementService`, aquest depèn d'un `ChampionRepository`. Si usem el repositori real (JPA + H2), el test:
