@@ -98,6 +98,119 @@ OpenSpec Agent:   Eines + Comportament + Limits + Exemples (QUE, COM, QUAN, PER 
 
 ---
 
+### LangChain vs From-Scratch: Ara Que Saps Com Funciona Per Dins
+
+Aquesta setmana has construït agents "a mà" amb l'API de Claude i tool use. Existeixen frameworks que fan gran part d'aquesta feina per tu. El més conegut és **LangChain**. Ara que entens els mecanismes, pots avaluar-lo amb criteri.
+
+#### Què és LangChain?
+
+LangChain és un framework Python que abstrau la interacció amb LLMs. Proporciona:
+- **Chains**: seqüències de crides LLM encadenades
+- **Agents**: el loop observe→think→act implementat com a classe
+- **Tools**: sistema de definició d'eines
+- **Memory**: gestió automàtica d'historial de conversa
+- **Retrievers**: integració amb bases de dades vectorials
+
+#### El Mateix Agent, Dues Maneres
+
+```python
+# === FROM-SCRATCH (el que has fet aquesta setmana) ===
+
+def run_agent(query: str) -> str:
+    messages = [{"role": "user", "content": query}]
+    
+    for step in range(MAX_STEPS):
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            system=SYSTEM_PROMPT,
+            tools=TOOL_DEFINITIONS,
+            messages=messages,
+        )
+        
+        if response.stop_reason == "end_turn":
+            return response.content[0].text
+        
+        # Processar tool calls
+        for block in response.content:
+            if block.type == "tool_use":
+                result = execute_tool(block.name, block.input)
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": block.id, "content": str(result)}]
+                })
+    
+    return "Max steps reached"
+```
+
+```python
+# === AMB LANGCHAIN ===
+
+from langchain_anthropic import ChatAnthropic
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+
+@tool
+def query_champions(role: str = None, min_win_rate: float = None) -> list:
+    """Consulta champions amb filtres opcionals."""
+    return call_java_api(role=role, min_win_rate=min_win_rate)
+
+@tool
+def get_champion_stats(champion_id: str) -> dict:
+    """Obté estadístiques detallades d'un champion."""
+    return call_java_api(champion_id=champion_id)
+
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}"),
+])
+
+agent = create_tool_calling_agent(llm, [query_champions, get_champion_stats], prompt)
+executor = AgentExecutor(agent=agent, tools=[query_champions, get_champion_stats])
+
+result = executor.invoke({"input": "Compara Ahri i Lux"})
+```
+
+#### Comparació Honesta
+
+| Aspecte | From-Scratch | LangChain |
+|---------|-------------|-----------|
+| **Línies de codi** | ~50 per l'agent loop | ~15 amb el framework |
+| **Entendre què passa** | Total — tu controles cada pas | Parcial — el framework decideix |
+| **Debugging** | Fàcil — poses prints on vols | Difícil — les abstraccions oculten el flux |
+| **Flexibilitat** | Total — fas el que vols | Limitada — has de seguir les convencions |
+| **Prompt caching** | Tu el configures directament | Depèn de si el wrapper ho suporta |
+| **Actualitzacions API** | Usos l'SDK oficial directament | Esperes que LangChain actualitzi el wrapper |
+| **Dependències** | Només `anthropic` | `langchain` + `langchain-anthropic` + `langchain-core` + ... |
+| **Corba d'aprenentatge** | Alta (has d'entendre el protocol) | Baixa per començar, alta per personalitzar |
+
+#### Quan Usar Cada Un
+
+**Usa from-scratch quan:**
+- Necessites control total sobre el loop de l'agent
+- Vols optimitzar tokens i costos al detall
+- El projecte és de producció i necessites debugging clar
+- Treballes amb features noves de l'API (prompt caching, batching)
+
+**Usa LangChain quan:**
+- Fas un prototip ràpid o PoC
+- Necessites integrar múltiples proveïdors (OpenAI + Anthropic + local)
+- El cas d'ús encaixa perfectament amb les abstraccions existents
+- L'equip ja el coneix i hi ha codi existent
+
+**La nostra recomanació per a EsportsPulse:** Seguim amb **from-scratch**. Raons:
+1. El curs és per aprendre — les abstraccions amaguen el que has d'entendre
+2. L'API de Claude amb tool use ja és prou neta per no necessitar un wrapper
+3. Tenim control total sobre prompt caching, costos i observabilitat
+4. Menys dependències = menys coses que es trenquen
+
+> **Reflexió:** LangChain no és dolent — és una eina. Però usar-lo sense entendre què passa per dins (el que has après aquesta setmana) et fa completament dependent del framework. Ara que saps com funciona un agent, pots decidir amb criteri si LangChain t'aporta valor o t'afegeix complexitat innecessària.
+
+---
+
 ## Activitat
 
 ### 1. Escriure l'OpenSpec de l'Agent Quantitatiu (25 min)

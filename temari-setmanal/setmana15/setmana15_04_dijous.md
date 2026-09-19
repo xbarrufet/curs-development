@@ -114,6 +114,116 @@ Per controlar els costos, implementem:
 2. **Budget alert**: Notificació quan arribes al 80% del pressupost mensual
 3. **Circuit breaker**: Tallar crides si superes el pressupost
 
+### Tècniques de Minimització de Tokens
+
+Abans de pagar menys amb cache, pots **enviar menys** amb cada crida. Aquestes tècniques redueixen els input tokens:
+
+#### 1. Prompt Compression: Dir el Mateix amb Menys
+
+```python
+# ABANS — 180 tokens de system prompt:
+system_verbose = """
+Ets un analista expert de League of Legends amb anys d'experiència.
+La teva feina és analitzar campions i proporcionar informació detallada
+sobre les seves estadístiques, punts forts, punts febles i el seu estat
+actual al meta del joc. Quan responguis, assegura't de ser precís
+i objectiu, basant-te en dades reals i no en opinions subjectives.
+Respon sempre en català.
+"""
+
+# DESPRÉS — 45 tokens, mateixa informació:
+system_compact = """Analista LoL. Dades objectives de campions.
+Resposta en català. Si no tens dades, digues-ho."""
+```
+
+**Regla:** Cada token del system prompt es paga a TOTES les crides. Un prompt 4x més curt estalvia un 75% en system prompt tokens al llarg de milers de crides.
+
+#### 2. Sliding Window: Limitar l'Historial de Conversa
+
+En agents multi-pas, l'historial creix a cada iteració. Sense control, el context window s'omple:
+
+```python
+def trim_conversation(messages: list, max_messages: int = 10) -> list:
+    """Manté només els últims N missatges de la conversa."""
+    if len(messages) <= max_messages:
+        return messages
+    # Sempre conserva el primer missatge (context inicial)
+    # i els últims max_messages-1
+    return [messages[0]] + messages[-(max_messages - 1):]
+```
+
+#### 3. Summarization: Comprimir Resultats de Tools
+
+Quan un tool retorna molt de text (100 resultats d'una query), resumir abans d'enviar al model:
+
+```python
+def summarize_tool_results(results: list, max_items: int = 5) -> list:
+    """Retorna només els top-N resultats més rellevants."""
+    sorted_results = sorted(results, key=lambda x: x.get("relevance_score", 0), reverse=True)
+    return sorted_results[:max_items]
+```
+
+#### 4. Structured Output: JSON Compacte
+
+```python
+# ABANS — demanar text lliure genera 200+ output tokens
+# "Jinx és una Marksman amb un win rate del 51.5%..."
+
+# DESPRÉS — forçar JSON amb tool_use genera 50 output tokens
+# {"name": "Jinx", "role": "Marksman", "win_rate": 51.5}
+```
+
+### Prompt Caching d'Anthropic: Pagar Menys pel System Prompt
+
+Anthropic ofereix **prompt caching** — si el teu system prompt (o qualsevol prefix dels missatges) és idèntic entre crides, el servidor el cacheja i el cobres amb descompte:
+
+```python
+# Amb prompt caching, el system prompt llarg es paga 1 cop complet
+# i les crides posteriors paguen només el 10% pel prefix cachejat
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": system_prompt_llarg,  # 2000 tokens
+            "cache_control": {"type": "ephemeral"}  # Activa el caching
+        }
+    ],
+    messages=[{"role": "user", "content": query}]
+)
+
+# Primera crida: pagues 2000 input tokens complets
+# Crides següents (dins de 5 min): pagues 200 tokens (90% descompte)
+```
+
+| Escenari | Sense cache | Amb prompt caching |
+|----------|-------------|-------------------|
+| System prompt (2000 tokens) × 100 crides | 200K tokens input | 20K + 2K = 22K tokens |
+| Cost (Sonnet, $3/1M) | $0.60 | $0.066 |
+| **Estalvi** | — | **89%** |
+
+> **Quan usar-lo:** Sempre que el system prompt sigui > 1000 tokens i facis múltiples crides en poc temps. Perfecte per agents (mateix system prompt, múltiples passos) i per al pipeline RAG (system prompt + few-shot exemples fixes).
+
+### Resum: On Estalviar Tokens
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              ESTRATÈGIES DE MINIMITZACIÓ                     │
+│                                                              │
+│  1. Prompt compression     → Menys input tokens per crida   │
+│  2. Sliding window         → Menys historial acumulat       │
+│  3. Summarize tool results → Menys context de tools         │
+│  4. Structured output      → Menys output tokens            │
+│  5. Prompt caching         → 90% descompte en prefix fixe   │
+│  6. Model routing          → Haiku per tasques simples      │
+│  7. Redis cache (avui)     → 0 tokens per queries repetides │
+│                                                              │
+│  Combinant tot: reducció de cost del 80-95% vs naïf         │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Activitat

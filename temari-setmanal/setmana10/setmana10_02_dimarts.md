@@ -182,6 +182,97 @@ response = client.messages.create(
 
 Per a EsportsPulse, farem servir `temperature=0.2` — volem dades precises i consistents, no creativitat.
 
+### Tokens: Com Es Compta (i Es Paga) el que Envies a Claude
+
+Cada crida a l'API de Claude es mesura en **tokens**. Un token no es exactament una paraula — es un fragment de text que el model processa internament:
+
+```
+Exemples de tokenitzacio:
+  "Hola"          → 1 token
+  "League of Legends" → 3 tokens
+  "ChampionRecord" → 2 tokens  (Camel → 2 parts)
+  "{"name": "jinx"}" → ~7 tokens (JSON es car en tokens!)
+
+Regla practica:
+  Catala/Castellà: ~1 token per cada 3-4 caràcters
+  Angles: ~1 token per cada 4 caràcters (~0.75 paraules)
+  JSON/codi: mes tokens del que sembla (claus, cometes, estructura)
+```
+
+Cada crida te dues parts que es cobren per separat:
+
+| Part | Que inclou | Preu (Sonnet) |
+|------|-----------|---------------|
+| **Input tokens** | System prompt + tools + missatges anteriors + pregunta | $3 / milió tokens |
+| **Output tokens** | La resposta generada per Claude | $15 / milió tokens |
+
+> **Important:** Els output tokens son **5x mes cars** que els input tokens. Reduir la longitud de la resposta estalvia mes que reduir el prompt.
+
+### Context Window: El Limit de Memoria
+
+Cada model te un **context window** — el maxim de tokens que pot "veure" en una crida (input + output junts):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONTEXT WINDOW                            │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  System prompt (500 tokens)                          │   │
+│  │  + Definicio de tools (300 tokens)                   │   │
+│  │  + Historial de missatges (2000 tokens)              │   │
+│  │  + Pregunta actual (100 tokens)                      │   │
+│  │  ─────────────────────────────────                   │   │
+│  │  = 2900 tokens d'input                               │   │
+│  │                                                      │   │
+│  │  + Resposta del model (500 tokens d'output)          │   │
+│  │  ─────────────────────────────────                   │   │
+│  │  = 3400 tokens TOTALS (dins del limit)               │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  Limit Haiku:   200K tokens                                 │
+│  Limit Sonnet:  200K tokens                                 │
+│  Limit Opus:    200K tokens                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Si superes el context window, la crida falla. Aixo es critic quan:
+- Envies molts exemples few-shot (ocupen espai)
+- L'historial de conversa creix (agents amb molts passos)
+- Els resultats de tools son grans (respostes JSON extenses)
+
+### Triar el Model: Haiku vs Sonnet vs Opus
+
+No tot requereix el model mes potent. Triar be el model pot reduir costos 10-50x:
+
+| Model | Velocitat | Qualitat | Preu (input/output per 1M tokens) | Quan usar-lo |
+|-------|-----------|---------|----------------------------------|--------------|
+| **Haiku 4.5** | Molt rapid | Bona per tasques simples | $0.80 / $4 | Classificar, extreure dades simples, validar formats |
+| **Sonnet** | Rapid | Alta | $3 / $15 | Analisi, generacio de text, tool use — **el default** |
+| **Opus** | Mes lent | Molt alta | $15 / $75 | Raonament complex, decisions critiques, codi complex |
+
+```python
+# Estrategia: usar Haiku per a tasques simples, Sonnet per a la resta
+
+# Tasca simple: classificar un campio per tier → Haiku
+response = client.messages.create(
+    model="claude-haiku-4-5-20251001",  # 10x mes barat que Sonnet
+    max_tokens=50,
+    messages=[{"role": "user", "content": f"Classifica {name} en S/A/B/C tier. Respon NOMES amb la lletra."}]
+)
+
+# Tasca complexa: analisi detallada → Sonnet
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=2048,
+    tools=[tool_definition],
+    # ...
+)
+```
+
+> **Regla practica per a EsportsPulse:** Usa **Sonnet** per defecte. Canvia a **Haiku** per a validacions simples o classificacions. Reserva **Opus** per a decisions on la qualitat es critica (i el cost no importa).
+
+---
+
 ### Anatomia Completa d'una Resposta tool_use
 
 ```python
