@@ -18,7 +18,18 @@
       "Bash(sed -i '' '1s/Divendres: CLI Python/Dijous: CLI Python/' setmana05/setmana05_04_dijous.md)",
       "Bash(sed -i '' '1s/Setmana 05 — Dimecres: Virtual Threads/Setmana 06 — Dimecres: Virtual Threads/' setmana06/setmana06_03_dimecres.md)",
       "Bash(sed -i '' '1s/Dimecres: Concurrencia en Python/Dijous: Concurrencia en Python/' setmana06/setmana06_04_dijous.md)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.bing.com)",
+      "WebFetch(domain:thenewstack.io)",
+      "WebFetch(domain:stackoverflow.blog)",
+      "WebFetch(domain:www.langchain.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:blog.langchain.dev)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:simonwillison.net)",
+      "WebFetch(domain:ai.meta.com)",
+      "WebFetch(domain:www.pinecone.io)"
     ]
   }
 }

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:gamgee.ai)",
+      "WebFetch(domain:karpathy.ai)"
+    ]
+  }
+}
